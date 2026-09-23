@@ -1,0 +1,6 @@
+[Actions]
+CreateResource:Name=%DB_MEUPORTAL_DATA,Description="Meu Portal data database"
+CreateDatabase:Name=MEUPORTAL_DATA,Directory=/usr/irissys/mgr/MEUPORTAL_DATA,Resource=%DB_MEUPORTAL_DATA
+CreateResource:Name=%DB_MEUPORTAL_CODE,Description="Meu Portal code database"
+CreateDatabase:Name=MEUPORTAL_CODE,Directory=/usr/irissys/mgr/MEUPORTAL_CODE,Resource=%DB_MEUPORTAL_CODE
+CreateNamespace:Name=MEUPORTAL,Globals=MEUPORTAL_DATA,Routines=MEUPORTAL_CODE,Interop=0

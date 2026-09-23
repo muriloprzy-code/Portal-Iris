@@ -1,0 +1,27 @@
+services:
+  iris:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        IMAGE: ${IRIS_IMAGE:-containers.intersystems.com/intersystems/iris-community:latest-em}
+        MEUPORTAL_DEMO_PASSWORD: ${MEUPORTAL_DEMO_PASSWORD:-ChangeMe2026!}
+    container_name: meu-portal-iris
+    hostname: meu-portal-iris
+    restart: unless-stopped
+    ports:
+      - "${IRIS_SUPERSERVER_PORT:-1973}:1972"
+      - "${IRIS_WEB_PORT:-52774}:52773"
+    environment:
+      ISC_DATA_DIRECTORY: /durable/iris
+    volumes:
+      - meu-portal-data:/durable
+    healthcheck:
+      test: ["CMD-SHELL", "iris qlist IRIS | grep -q running"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+
+volumes:
+  meu-portal-data:

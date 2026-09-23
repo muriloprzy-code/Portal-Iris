@@ -1,0 +1,17 @@
+frontend/node_modules/
+frontend/dist/
+web/*
+!web/.gitkeep
+!web/index.html
+!web/assets/
+!web/assets/**
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+.idea/
+.tools/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
