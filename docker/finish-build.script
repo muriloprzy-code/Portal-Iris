@@ -1,0 +1,21 @@
+; Runs as a SEPARATE "iris session" invocation, after the module install
+; script (iris.script) has fully finished and that process has exited.
+;
+; This used to also set the _SYSTEM password here, but that turned out to
+; have no effect on the real container: with Durable %SYS (ISC_DATA_DIRECTORY),
+; %SYS -- including Security.Users -- is installed fresh the first time the
+; container actually starts against an empty external volume, discarding
+; whatever this throwaway build-time IRIS instance did to its own local %SYS.
+; The password is now handled the supported way, via the iris-main
+; entrypoint's --password-file flag (see compose.yaml "command" and the
+; Dockerfile step that writes docker/.runtime-password.txt).
+zn "MEUPORTAL"
+
+; Building the image runs IRIS once inside the transient BuildKit sandbox
+; container (hostname "buildkitsandbox"). Clearing any stamped hostname here
+; is cheap insurance against IRIS showing a harmless "System appears to have
+; failed over from node buildkitsandbox" warning on the portal.
+Set tSC = ##class(MeuPortal.Installer).PrepareForContainerBundling()
+Write !, "PrepareForContainerBundling: ", $Select(tSC=1:"OK", 1:$System.Status.GetErrorText(tSC))
+
+halt

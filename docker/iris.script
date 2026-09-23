@@ -2,22 +2,6 @@ zn "%SYS"
 do $System.OBJ.Load("/tmp/zpm.xml", "ck")
 zpm "enable -map -globally"
 
-; The initial _SYSTEM password for this demo container comes from the
-; MEUPORTAL_DEMO_PASSWORD build argument (see .env.example), not from a
-; value hardcoded in source. This avoids committing any real credential
-; to the repository while still giving a working, documented login.
-Set tPassword = $System.Util.GetEnviron("MEUPORTAL_DEMO_PASSWORD")
-If tPassword '= "" {
-    If ##class(Security.Users).Exists("_SYSTEM", .tUser, .tStatus) {
-        Set tUser.PasswordExternal = tPassword
-        Set tUser.ChangePassword = 0
-        Set tUser.PasswordNeverExpires = 1
-        Set tUser.AccountNeverExpires = 1
-        Set tUser.Enabled = 1
-        Do tUser.%Save()
-    }
-}
-
 zn "MEUPORTAL"
 zpm "load /home/irisowner/dev -v":1:1
 halt

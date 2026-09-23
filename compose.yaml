@@ -9,6 +9,16 @@ services:
     container_name: meu-portal-iris
     hostname: meu-portal-iris
     restart: unless-stopped
+    # A fresh IRIS Community instance's initial _SYSTEM password is always "SYS"
+    # and forces a change on first use. With Durable %SYS (ISC_DATA_DIRECTORY,
+    # below), that account is created fresh the first time this container starts
+    # against an empty volume, so setting the password during "docker build" (as
+    # this project used to do) has no effect at runtime. --password-file is the
+    # iris-main entrypoint's supported, non-interactive way to drive that required
+    # change; it points at a file the Dockerfile writes into the image from the
+    # MEUPORTAL_DEMO_PASSWORD build argument, and iris-main deletes that file once
+    # the password has been applied.
+    command: ["--password-file", "/home/irisowner/dev/docker/.runtime-password.txt"]
     ports:
       - "${IRIS_SUPERSERVER_PORT:-1973}:1972"
       - "${IRIS_WEB_PORT:-52774}:52773"

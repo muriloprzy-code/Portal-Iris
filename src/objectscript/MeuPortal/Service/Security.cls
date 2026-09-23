@@ -344,6 +344,15 @@ ClassMethod GetCredentialReferences(Output items As %DynamicArray) As %Status
 {
     Set tSC = $$$OK
     Set items = []
+
+    // Ens.Config.Credentials only exists when Interoperability is enabled for
+    // this namespace (e.g. plain IRIS Community has no such class). Checking
+    // for the class up front avoids depending on the wording of a localized
+    // SQLCODE error message, which previously only matched the English
+    // "does not exist" text and surfaced a raw SQL error on non-English
+    // instances instead of silently treating this as "no credentials".
+    If '##class(%Dictionary.CompiledClass).%ExistsId("Ens.Config.Credentials") Quit tSC
+
     Try {
         Set statement = ##class(%SQL.Statement).%New()
         Set tSC = statement.%PrepareClassQuery("Ens.Config.Credentials", "List")
@@ -364,10 +373,6 @@ ClassMethod GetCredentialReferences(Output items As %DynamicArray) As %Status
         }
     } Catch exception {
         Set tSC = exception.AsStatus()
-        // Interoperability credentials are optional and their List procedure may
-        // not be projected in a regular IRIS namespace.
-        Set errorText = $System.Status.GetErrorText(tSC)
-        If (errorText [ "Ens.Config.Credentials") && (errorText [ "does not exist") Set tSC = $$$OK
     }
     Quit tSC
 }

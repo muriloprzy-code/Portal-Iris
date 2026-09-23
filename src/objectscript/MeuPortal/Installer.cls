@@ -177,6 +177,55 @@ ClassMethod EnsureDemoTask(targetNamespace As %String) As %Status [ Private ]
     Quit tSC
 }
 
+/// Sets the _SYSTEM password from the MEUPORTAL_DEMO_PASSWORD build argument for this
+/// local demo container (see compose.yaml / .env.example). Broken out into a compiled
+/// method -- rather than inline multi-line "If ... { }" blocks in docker/iris.script --
+/// because a script piped into "iris session IRIS < file" runs one line at a time and
+/// does not reliably parse multi-line curly-brace blocks the way compiled code does; a
+/// method call is a single line and cannot hit that problem.
+ClassMethod SetDemoSystemPassword(password As %String) As %Status
+{
+    Set tSC = $$$OK
+    Try {
+        If password = "" Quit
+        New $Namespace
+        Set $Namespace = "%SYS"
+        If ##class(Security.Users).Exists("_SYSTEM", .tUser, .tStatus) {
+            Set tUser.PasswordExternal = password
+            Set tUser.ChangePassword = 0
+            Set tUser.PasswordNeverExpires = 1
+            Set tUser.AccountNeverExpires = 1
+            Set tUser.Enabled = 1
+            Set tSC = tUser.%Save()
+        }
+    } Catch exception {
+        Set tSC = exception.AsStatus()
+    }
+    Quit tSC
+}
+
+/// Prepares this instance to be safely captured into a container image. In particular
+/// it clears the hostname IRIS stamps into the database, so that when the image is
+/// later run under its real container hostname, IRIS does not mistake that for a
+/// failover from the transient build container (e.g. BuildKit's "buildkitsandbox") and
+/// show a "System appears to have failed over from node ..." warning. SYS.Container is
+/// a %SYS-only system class that is not present on every edition or version, so its
+/// absence here is not treated as an error -- this best-effort call is simply skipped.
+ClassMethod PrepareForContainerBundling() As %Status
+{
+    Set tSC = $$$OK
+    Try {
+        New $Namespace
+        Set $Namespace = "%SYS"
+        If ##class(%Dictionary.CompiledClass).%ExistsId("SYS.Container") {
+            Set tSC = ##class(SYS.Container).QuiesceForBundling()
+        }
+    } Catch exception {
+        Set tSC = exception.AsStatus()
+    }
+    Quit tSC
+}
+
 ClassMethod EnsureAuditEvent() As %Status [ Private ]
 {
     Set tSC = $$$OK

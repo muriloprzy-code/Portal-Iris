@@ -130,5 +130,5 @@ if (-not $SkipBackendPrompt) {
 }
 
 Write-Host ''
-Write-Host 'Once the backend command above finishes without an error, open http://localhost:52773/meuportal/ and sign in.' -ForegroundColor Green
+Write-Host 'Once the backend command above finishes without an error, open http://localhost:52773/meuportal/index.html and sign in.' -ForegroundColor Green
 Write-Host 'First time only: grant yourself (or whichever account should use Meu Portal) the MeuPortalAdministrator role — see "Signing in" in docs/REFERENCE.md, or sign in with _SYSTEM, which already works.' -ForegroundColor Green

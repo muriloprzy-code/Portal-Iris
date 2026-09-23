@@ -295,11 +295,19 @@ ClassMethod TestAPI() As %Status
     If (normalizedMethod '= "GET") && (normalizedMethod '= "HEAD") && ('confirmed) Quit ..WriteError(400, "CONFIRMATION_REQUIRED", "State-changing API tests require confirmation.")
 
     Set authorization = $Get(%request.CgiEnvs("HTTP_AUTHORIZATION"))
-    Set port = +$Get(%request.CgiEnvs("SERVER_PORT"))
-    If port = 0 Set port = 52773
+    ; SERVER_PORT reflects the port the browser used (e.g. Docker's published
+    ; 52774), not the port IRIS's private web server actually listens on
+    ; inside the container (52773) -- using it here made every API Explorer
+    ; request fail with "unable to open TCP/IP socket to 127.0.0.1:<external
+    ; port>". This call always targets IRIS's own private web server, so it
+    ; always uses that fixed, well-known port instead of trusting SERVER_PORT.
+    Set port = 52773
     Set tSC = ##class(MeuPortal.Service.APIExplorer).Execute(method, path, headers, body, authorization, port, .data)
     If (normalizedMethod '= "GET") && (normalizedMethod '= "HEAD") Do ##class(MeuPortal.Service.Audit).Record("APIRequest" _ normalizedMethod, path, $$$ISOK(tSC))
-    If $$$ISERR(tSC) Quit ..WriteError(400, "API_REQUEST_REJECTED", "The request was rejected or could not be completed.")
+    If $$$ISERR(tSC) {
+        Set detail = $System.Status.GetErrorText(tSC)
+        Quit ..WriteError(400, "API_REQUEST_REJECTED", "The request was rejected or could not be completed: " _ detail)
+    }
     Quit ..WriteSuccess(data)
 }
 

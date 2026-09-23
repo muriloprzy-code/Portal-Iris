@@ -93,7 +93,7 @@ Alternatively, the whole project (backend and frontend files together) can be in
 
 ### Step 3 — Open it
 
-Go to `http://localhost:52773/meuportal/` (adjust the port if that IRIS instance uses a different one). Node.js does not need to be running for this — only IRIS itself.
+Go to `http://localhost:52773/meuportal/index.html` (adjust the port if that IRIS instance uses a different one). Node.js does not need to be running for this — only IRIS itself.
 
 ## Signing in — which account to use
 
@@ -113,7 +113,7 @@ To grant one of these to an account:
 3. Click the username that should be able to use Meu Portal (or create a new user first, the normal IRIS way, if needed).
 4. Open the **Roles** tab for that user.
 5. Add `MeuPortalViewer` or `MeuPortalAdministrator` from the list of available roles, and save.
-6. That account can now sign in to Meu Portal directly at `http://localhost:52773/meuportal/`, with its own existing password — nothing else changes about that account, and it gains no extra access anywhere outside `/meuportal/api`.
+6. That account can now sign in to Meu Portal directly at `http://localhost:52773/meuportal/index.html`, with its own existing password — nothing else changes about that account, and it gains no extra access anywhere outside `/meuportal/api`.
 
 The same thing can be done from a terminal instead, for example:
 
@@ -193,7 +193,7 @@ The default examples use:
 - IRIS instance: `IRIS`
 - IRIS web port: `52773`
 - namespace: `MEUPORTAL`
-- project URL: `http://localhost:52773/meuportal/`
+- project URL: `http://localhost:52773/meuportal/index.html`
 
 ## Project structure
 

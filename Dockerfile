@@ -18,10 +18,23 @@ ADD --chown=${ISC_PACKAGE_MGRUSER}:${ISC_PACKAGE_IRISGROUP} \
 # anything beyond a local, throwaway demo.
 ARG MEUPORTAL_DEMO_PASSWORD=change-me-please
 RUN ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
-    MEUPORTAL_DEMO_PASSWORD=${MEUPORTAL_DEMO_PASSWORD} \
     iris start IRIS && \
     iris session IRIS < /home/irisowner/dev/docker/iris.script && \
+    iris session IRIS < /home/irisowner/dev/docker/finish-build.script && \
     iris stop IRIS quietly
+
+# Durable %SYS (ISC_DATA_DIRECTORY, set in compose.yaml) means %SYS -- including
+# Security.Users and the _SYSTEM account -- is installed FRESH, from scratch, the
+# first time the container actually starts with an empty external volume. Whatever
+# password this Dockerfile's own build-time IRIS instance had is local to that
+# throwaway instance and never carries over, so setting it here via ObjectScript
+# (as this project used to do) has no effect on the real container. A fresh IRIS
+# Community instance's initial _SYSTEM password is always "SYS" and forces a
+# change on first use, which the official iris-main entrypoint's --password-file
+# flag (see compose.yaml's "command") is the supported way to drive non-interactively.
+# The chosen password is written into the image here from the build argument --
+# never hardcoded in source -- so compose.yaml can point --password-file at it.
+RUN printf '%s' "${MEUPORTAL_DEMO_PASSWORD}" > /home/irisowner/dev/docker/.runtime-password.txt
 
 USER root
 RUN mkdir -p /durable && \

@@ -28,7 +28,7 @@
       />
       <Invoke Class="MeuPortal.Installer" Method="Setup" Phase="Configure" When="After" CheckStatus="true" />
 
-      <AfterInstallMessage>Meu Portal was installed. Open ${webroot}meuportal/ and assign MeuPortalViewer or MeuPortalAdministrator to authorized users.</AfterInstallMessage>
+      <AfterInstallMessage>Meu Portal was installed. Open ${webroot}meuportal/index.html and assign MeuPortalViewer or MeuPortalAdministrator to authorized users.</AfterInstallMessage>
     </Module>
   </Document>
 </Export>

@@ -33,7 +33,7 @@ This installs Meu Portal directly on your own IRIS instance — no Docker — so
    .\scripts\Install-MeuPortal.ps1
    ```
    It builds the frontend, deploys it, restarts the private web server, and opens an IRIS terminal with the backend command ready to paste — see [docs/REFERENCE.md](docs/REFERENCE.md#path-b--install-into-an-iris-you-already-use) for the full walkthrough.
-3. Open `http://localhost:52773/meuportal/` and sign in with `_SYSTEM` — or grant your own account the `MeuPortalAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](docs/REFERENCE.md#signing-in--which-account-to-use).
+3. Open `http://localhost:52773/meuportal/index.html` and sign in with `_SYSTEM` — or grant your own account the `MeuPortalAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](docs/REFERENCE.md#signing-in--which-account-to-use).
 
 </details>
 
