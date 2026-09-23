@@ -345,34 +345,40 @@ ClassMethod GetCredentialReferences(Output items As %DynamicArray) As %Status
     Set tSC = $$$OK
     Set items = []
 
-    // Ens.Config.Credentials only exists when Interoperability is enabled for
-    // this namespace (e.g. plain IRIS Community has no such class). Checking
-    // for the class up front avoids depending on the wording of a localized
-    // SQLCODE error message, which previously only matched the English
-    // "does not exist" text and surfaced a raw SQL error on non-English
-    // instances instead of silently treating this as "no credentials".
+    // Ens.Config.Credentials only exists -- and only has a working SQL class
+    // query -- when Interoperability is properly enabled for this namespace.
+    // A plain IRIS Community namespace has no such class at all; a namespace
+    // where the class is merely visible through a database mapping (without
+    // being fully Interoperability-enabled) can have the class compiled but
+    // no matching SQL stored procedure, which fails with SQLCODE -428
+    // ("stored procedure not found"). Both situations mean "no credential
+    // references available here", not an error worth surfacing to the
+    // administrator, so any failure below is treated the same as the class
+    // not existing at all -- consistent with the class-existence check above,
+    // and avoids depending on the wording of a localized error message too.
     If '##class(%Dictionary.CompiledClass).%ExistsId("Ens.Config.Credentials") Quit tSC
 
     Try {
         Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%PrepareClassQuery("Ens.Config.Credentials", "List")
-        $$$ThrowOnError(tSC)
-        Set result = statement.%Execute()
-        While result.%Next() {
-            Set item = {}
-            Set item.name = result.%Get("ID")
-            Set item.category = "Credential"
-            Set item.type = "Credential reference"
-            Set item.status = "Protected"
-            Set item.issuer = ""
-            Set item.validFrom = ""
-            Set item.expiresAt = ""
-            Set item.association = result.%Get("BusinessPartner")
-            Set item.detail = "Secret hidden"
-            Do items.%Push(item)
+        Set prepStatus = statement.%PrepareClassQuery("Ens.Config.Credentials", "List")
+        If $$$ISOK(prepStatus) {
+            Set result = statement.%Execute()
+            While result.%Next() {
+                Set item = {}
+                Set item.name = result.%Get("ID")
+                Set item.category = "Credential"
+                Set item.type = "Credential reference"
+                Set item.status = "Protected"
+                Set item.issuer = ""
+                Set item.validFrom = ""
+                Set item.expiresAt = ""
+                Set item.association = result.%Get("BusinessPartner")
+                Set item.detail = "Secret hidden"
+                Do items.%Push(item)
+            }
         }
-    } Catch exception {
-        Set tSC = exception.AsStatus()
+    } Catch {
+        Set items = []
     }
     Quit tSC
 }

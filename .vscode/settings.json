@@ -13,7 +13,7 @@
   "objectscript.conn": {
     "server": "meu-portal-local",
     "ns": "MEUPORTAL",
-    "active": false
+    "active": true
   },
   "objectscript.compileOnSave": true,
   "objectscript.compileFlags": "cuk",
