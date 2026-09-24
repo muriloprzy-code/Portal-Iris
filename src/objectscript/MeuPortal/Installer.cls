@@ -8,6 +8,33 @@ Parameter SystemAdminRole = "MeuPortalSystemAdmin";
 
 Parameter DemoTaskName = "Meu Portal health snapshot";
 
+/// SQL-callable wrapper around Setup(), so the one-click installer can trigger
+/// installation over the Atelier REST API (already built into every IRIS instance)
+/// instead of needing an interactively authenticated terminal session. Returns "OK"
+/// on success, or the error text otherwise -- never throws, so it is always safe to
+/// call from SQL.
+ClassMethod SetupViaSQL() As %String [ SqlName = MeuPortalSetup, SqlProc ]
+{
+    Set tSC = ..Setup()
+    If $$$ISOK(tSC) Quit "OK"
+    Quit $System.Status.GetErrorText(tSC)
+}
+
+/// SQL-callable wrapper that loads every .cls file under the given local directory
+/// (read directly off disk by the IRIS server process itself - no HTTP file upload
+/// involved) and then runs Setup(). The one-click installer uploads only this
+/// compiled class over the Atelier REST API and then calls this method to load
+/// everything else, because uploading many files in a row through that API's
+/// doc-put endpoint has proven unreliable on some Windows/IRIS setups. Returns
+/// "OK" on success, or a description of the error otherwise -- never throws, so
+/// it is always safe to call from SQL.
+ClassMethod LoadAndSetupViaSQL(dir As %String) As %String [ SqlName = MeuPortalLoadAndSetup, SqlProc ]
+{
+    Set tSC = $System.OBJ.LoadDir(dir, "ck", .errorLog, 1)
+    If $$$ISERR(tSC) Quit "LOAD ERROR: "_$System.Status.GetErrorText(tSC)
+    Quit ..SetupViaSQL()
+}
+
 /// Creates or updates the web application that serves the React frontend and REST API.
 ClassMethod Setup() As %Status
 {

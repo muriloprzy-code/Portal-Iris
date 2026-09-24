@@ -8,34 +8,48 @@ The browser application uses React and TypeScript. The REST backend, authorizati
 
 Meu Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. Full explanation in [docs/REFERENCE.md](docs/REFERENCE.md#how-it-works-in-plain-terms).
 
-### Try it now
+### The easy way: one double-click
 
-No IRIS installation needed — just Docker Desktop:
+Double-click **`Instalar.bat`** at the project root. It figures out the rest on its own:
+
+- **Docker path:** if Docker Desktop is installed, it builds and starts the demo container and opens `http://localhost:52774/meuportal/index.html` for you. **Docker Desktop needs to already be open before you run the installer** — if it isn't running yet, start it first, wait for it to finish starting up, then run `Instalar.bat`.
+- **Local IRIS path:** if you already have IRIS installed locally instead, it asks which namespace to install into (press Enter for the default, `MEUPORTAL`, or type the name of a namespace you already use), builds the frontend (downloading a local copy of Node.js first if needed, no admin rights required for that part), deploys the files, restarts the private web server, and installs the backend — fully automatically, over IRIS's own Atelier REST API, no terminal to paste into. It asks once for your IRIS username and password for that last step; they are used only in memory and never written to disk. It then opens `http://localhost:52773/meuportal/index.html`.
+- If both Docker and a local IRIS are found, it asks once which one you want.
+
+It will ask Windows for administrator permission once (needed only to restart the IRIS private web server on the local-install path) — approve that, and everything else runs by itself. The one thing it cannot do for you is the one-time creation of the namespace if it does not already exist on your IRIS instance; if that is the case, it stops and tells you exactly where to click (Management Portal → System Administration → Configuration → System Configuration → Namespaces → New Namespace) — then just run `Instalar.bat` again.
+
+<details>
+<summary>Prefer to run the commands yourself, or run outside Windows? (click to expand)</summary>
+
+<br>
+
+**Docker, by hand:**
+
+Make sure Docker Desktop is already open, then:
 
 ```shell
 docker compose up --build -d
 ```
 
-Open `http://localhost:52774/meuportal/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!` (the default demo password — see [docs/REFERENCE.md](docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed) to change it).
+Open `http://localhost:52774/meuportal/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!` (the default demo password — see [docs/REFERENCE.md](docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed) to change it). This spins up a fresh, disposable IRIS just for the demo, with zero risk to any IRIS instance you already have.
 
-This spins up a fresh, disposable IRIS just for the demo — the fastest way to see Meu Portal working, with zero risk to any IRIS instance you already have.
+**Local IRIS, by hand:**
 
-<details>
-<summary><strong>Want to run it for real, on an IRIS you already use?</strong> (click to expand)</summary>
-
-<br>
-
-This installs Meu Portal directly on your own IRIS instance — no Docker — so it shows your real users, roles, tasks, and logs, and you sign in with your own account.
-
-1. Create the `MEUPORTAL` namespace once, if it does not already exist (Management Portal → System Administration → Configuration → System Configuration → Namespaces → New Namespace).
-2. From the project folder, run:
+1. If the namespace you want to use does not exist yet, create it once (Management Portal → System Administration → Configuration → System Configuration → Namespaces → New Namespace). The installer's default is `MEUPORTAL`, but any existing namespace works — it is only a name.
+2. Build the frontend:
    ```powershell
-   .\scripts\Install-MeuPortal.ps1
+   cd frontend
+   npm install
+   npm run build
+   cd ..
    ```
-   It builds the frontend, deploys it, restarts the private web server, and opens an IRIS terminal with the backend command ready to paste — see [docs/REFERENCE.md](docs/REFERENCE.md#path-b--install-into-an-iris-you-already-use) for the full walkthrough.
-
-   Get a `'npm' is not recognized` error? Node.js is not on your `PATH`. Run `install-node-local.bat` once (downloads a local copy of Node, no admin rights needed), then `build-frontend.bat`, then re-run the command above with `-SkipBuild`.
-3. Open `http://localhost:52773/meuportal/index.html` and sign in with `_SYSTEM` — or grant your own account the `MeuPortalAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](docs/REFERENCE.md#signing-in--which-account-to-use).
+   No Node.js on your `PATH`? Run `install-node-local.bat` once first (downloads a local copy of Node.js, no admin rights needed), then repeat the commands above.
+3. From the project root, run the installer script directly (this is the same script `Instalar.bat` runs for the local-IRIS path — running it yourself is only useful if you want to pass explicit parameters, e.g. `-IrisInstallDir`, `-Instance`, or `-Namespace`):
+   ```powershell
+   .\scripts\Install-All.ps1
+   ```
+   It deploys the frontend you just built, restarts the private web server, then asks which namespace to use and for your IRIS username/password once — used only for that step, never stored — and installs the backend automatically over IRIS's built-in Atelier REST API (the same mechanism the VS Code ObjectScript extension uses). The exact HTTP calls it makes are all in [scripts/Install-All.ps1](scripts/Install-All.ps1), if you want to see or adapt them.
+4. Open `http://localhost:52773/meuportal/index.html` and sign in with `_SYSTEM` — or grant your own account the `MeuPortalAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](docs/REFERENCE.md#signing-in--which-account-to-use).
 
 </details>
 
