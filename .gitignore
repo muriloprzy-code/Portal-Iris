@@ -5,6 +5,10 @@ web/*
 !web/index.html
 !web/assets/
 !web/assets/**
+!web/*.png
+!web/*.ico
+!web/*.svg
+!web/*.webmanifest
 frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
