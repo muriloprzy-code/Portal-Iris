@@ -4,6 +4,8 @@ MyOwn Portal is a compact, English-language administration interface for InterSy
 
 The browser application uses React and TypeScript. The REST backend, authorization, auditing, and access to IRIS administration data are implemented in ObjectScript. Vite and Node.js are development and build tools only; the production React bundle is served by the private IRIS web server.
 
+Read the write-up on the InterSystems Developer Community: [English](https://community.intersystems.com/post/myown-portal-compact-management-portal-intersystems-iris) · [Português](https://pt.community.intersystems.com/post/myown-portal-um-portal-de-gerenciamento-compacto-para-o-intersystems-iris)
+
 ## Quick Start
 
 MyOwn Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. Full explanation in [docs/REFERENCE.md](docs/REFERENCE.md#how-it-works-in-plain-terms).
