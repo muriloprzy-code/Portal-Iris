@@ -8,7 +8,7 @@ Read the write-up on the InterSystems Developer Community: [English](https://com
 
 ## Quick Start
 
-MyOwn Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. Full explanation in [docs/REFERENCE.md](docs/REFERENCE.md#how-it-works-in-plain-terms).
+MyOwn Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. Full explanation in [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#how-it-works-in-plain-terms).
 
 ### The easy way: one double-click
 
@@ -33,7 +33,7 @@ Make sure Docker Desktop is already open, then:
 docker compose up --build -d
 ```
 
-Open `http://localhost:52774/myown/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!` (the default demo password — see [docs/REFERENCE.md](docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed) to change it). This spins up a fresh, disposable IRIS just for the demo, with zero risk to any IRIS instance you already have.
+Open `http://localhost:52774/myown/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!` (the default demo password — see [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed) to change it). This spins up a fresh, disposable IRIS just for the demo, with zero risk to any IRIS instance you already have.
 
 **Local IRIS, by hand:**
 
@@ -50,12 +50,12 @@ Open `http://localhost:52774/myown/index.html` and sign in with `_SYSTEM` / `Cha
    ```powershell
    .\scripts\Install-All.ps1
    ```
-   It deploys the frontend you just built, restarts the private web server, then asks which namespace to use and for your IRIS username/password once — used only for that step, never stored — and installs the backend automatically over IRIS's built-in Atelier REST API (the same mechanism the VS Code ObjectScript extension uses). The exact HTTP calls it makes are all in [scripts/Install-All.ps1](scripts/Install-All.ps1), if you want to see or adapt them.
-4. Open `http://localhost:52773/myown/index.html` and sign in with `_SYSTEM` — or grant your own account the `MyOwnAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](docs/REFERENCE.md#signing-in--which-account-to-use).
+   It deploys the frontend you just built, restarts the private web server, then asks which namespace to use and for your IRIS username/password once — used only for that step, never stored — and installs the backend automatically over IRIS's built-in Atelier REST API (the same mechanism the VS Code ObjectScript extension uses). The exact HTTP calls it makes are all in [scripts/Install-All.ps1](https://github.com/muriloprzy-code/Portal-Iris/blob/master/scripts/Install-All.ps1), if you want to see or adapt them.
+4. Open `http://localhost:52773/myown/index.html` and sign in with `_SYSTEM` — or grant your own account the `MyOwnAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#signing-in--which-account-to-use).
 
 </details>
 
-Everything else — architecture, every install detail, the API reference, and troubleshooting — is in **[docs/REFERENCE.md](docs/REFERENCE.md)**.
+Everything else — architecture, every install detail, the API reference, and troubleshooting — is in **[docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md)**.
 
 ## Features
 
@@ -81,7 +81,7 @@ Everything else — architecture, every install detail, the API reference, and t
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/muriloprzy-code/Portal-Iris/blob/master/LICENSE)
 
 ## Team
 
