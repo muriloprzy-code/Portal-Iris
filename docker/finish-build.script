@@ -9,13 +9,13 @@
 ; The password is now handled the supported way, via the iris-main
 ; entrypoint's --password-file flag (see compose.yaml "command" and the
 ; Dockerfile step that writes docker/.runtime-password.txt).
-zn "MEUPORTAL"
+zn "MYOWN"
 
 ; Building the image runs IRIS once inside the transient BuildKit sandbox
 ; container (hostname "buildkitsandbox"). Clearing any stamped hostname here
 ; is cheap insurance against IRIS showing a harmless "System appears to have
 ; failed over from node buildkitsandbox" warning on the portal.
-Set tSC = ##class(MeuPortal.Installer).PrepareForContainerBundling()
+Set tSC = ##class(MyOwn.Installer).PrepareForContainerBundling()
 Write !, "PrepareForContainerBundling: ", $Select(tSC=1:"OK", 1:$System.Status.GetErrorText(tSC))
 
 halt

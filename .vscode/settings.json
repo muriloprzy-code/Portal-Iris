@@ -1,19 +1,19 @@
 {
   "intersystems.servers": {
-    "meu-portal-local": {
+    "myown-portal-local": {
       "webServer": {
         "scheme": "http",
         "host": "127.0.0.1",
         "port": 52773
       },
       "username": "_SYSTEM",
-      "description": "Local InterSystems IRIS instance for Meu Portal"
+      "description": "Local InterSystems IRIS instance for MyOwn Portal"
     }
   },
   "objectscript.conn": {
-    "server": "meu-portal-local",
-    "ns": "MEUPORTAL",
-    "active": true
+    "server": "myown-portal-local",
+    "ns": "MYOWN",
+    "active": false
   },
   "objectscript.compileOnSave": true,
   "objectscript.compileFlags": "cuk",

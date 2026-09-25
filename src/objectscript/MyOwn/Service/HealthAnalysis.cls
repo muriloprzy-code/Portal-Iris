@@ -1,4 +1,4 @@
-Class MeuPortal.Service.HealthAnalysis
+Class MyOwn.Service.HealthAnalysis
 {
 
 /// Builds one report from live IRIS metrics, Embedded Python scoring, and IRIS Vector Search.
@@ -7,7 +7,7 @@ ClassMethod GetReport(Output report As %DynamicObject) As %Status
     Set tSC = $$$OK
     Set report = {}
     Try {
-        Set tSC = ##class(MeuPortal.Service.System).GetSummary(.summary)
+        Set tSC = ##class(MyOwn.Service.System).GetSummary(.summary)
         $$$ThrowOnError(tSC)
 
         Set diskRisk = ..PercentRisk(summary.disk.usedPercent)
@@ -80,7 +80,7 @@ ClassMethod FindClosestPattern(vectorText As %String, Output match As %DynamicOb
     Set match = {}
     Try {
         Set statement = ##class(%SQL.Statement).%New()
-        Set sql = "SELECT TOP 1 Code, Title, Severity, Recommendation, VECTOR_COSINE(MetricVector, TO_VECTOR(?, DOUBLE)) AS Similarity FROM MeuPortal.HealthPattern ORDER BY Similarity DESC"
+        Set sql = "SELECT TOP 1 Code, Title, Severity, Recommendation, VECTOR_COSINE(MetricVector, TO_VECTOR(?, DOUBLE)) AS Similarity FROM MyOwn.HealthPattern ORDER BY Similarity DESC"
         Set tSC = statement.%Prepare(sql)
         $$$ThrowOnError(tSC)
         Set result = statement.%Execute(vectorText)

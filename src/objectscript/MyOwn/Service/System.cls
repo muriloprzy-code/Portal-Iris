@@ -1,4 +1,4 @@
-Class MeuPortal.Service.System
+Class MyOwn.Service.System
 {
 
 /// Read-only operating system and IRIS runtime information.
@@ -9,7 +9,7 @@ ClassMethod GetSummary(Output summary As %DynamicObject) As %Status
     Try {
         Set summary.instance = ##class(%SYS.System).GetInstanceName()
         Set summary.version = $ZVersion
-        Set summary.namespace = "MEUPORTAL"
+        Set summary.namespace = "MYOWN"
         Set summary.cpu = {}
         Set summary.cpu.logicalProcessors = $System.Util.NumberOfCPUs()
         Set summary.memory = {}

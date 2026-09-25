@@ -1,7 +1,7 @@
-Class MeuPortal.Service.Audit
+Class MyOwn.Service.Audit
 {
 
-Parameter Source = "MeuPortal";
+Parameter Source = "MyOwn";
 Parameter Type = "Administration";
 Parameter Event = "Change";
 

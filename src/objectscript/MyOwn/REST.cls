@@ -1,7 +1,7 @@
-Class MeuPortal.REST Extends %CSP.REST
+Class MyOwn.REST Extends %CSP.REST
 {
 
-/// Authenticated REST entry point for the Meu Portal administration interface.
+/// Authenticated REST entry point for the MyOwn Portal administration interface.
 
 /// The React frontend is served from the same origin (or through the Vite proxy
 /// during development), so cross-origin requests are deliberately not accepted.
@@ -49,7 +49,7 @@ ClassMethod Health() As %Status
     Set payload = {}
     Set payload.data = {}
     Set payload.data.status = "ok"
-    Set payload.data.application = "Meu Portal"
+    Set payload.data.application = "MyOwn Portal"
     Set payload.data.instance = ##class(%SYS.System).GetInstanceName()
     Set payload.data.version = $ZVersion
     Set payload.meta = {}
@@ -63,7 +63,7 @@ ClassMethod Health() As %Status
 ClassMethod CurrentSession() As %Status
 {
     Set tSC = $$$OK
-    Set tSC = ##class(MeuPortal.Service.Access).Current(.access)
+    Set tSC = ##class(MyOwn.Service.Access).Current(.access)
     Set payload = {}
     Set payload.data = {}
     Set payload.data.authenticated = ($Username '= "")
@@ -84,7 +84,7 @@ ClassMethod SystemSummary() As %Status
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MeuPortal.Service.System).GetSummary(.data)
+        Set tSC = ##class(MyOwn.Service.System).GetSummary(.data)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
@@ -109,7 +109,7 @@ ClassMethod SystemProcesses() As %Status
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MeuPortal.Service.System).GetProcesses(.data)
+        Set tSC = ##class(MyOwn.Service.System).GetProcesses(.data)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
@@ -132,41 +132,41 @@ ClassMethod SystemProcesses() As %Status
 
 ClassMethod SystemHealthReport() As %Status
 {
-    Set tSC = ##class(MeuPortal.Service.HealthAnalysis).GetReport(.data)
+    Set tSC = ##class(MyOwn.Service.HealthAnalysis).GetReport(.data)
     If $$$ISERR(tSC) Quit ..WriteError(500, "HEALTH_REPORT_UNAVAILABLE", "The instance health report is temporarily unavailable.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod PermissionUsers() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WritePermissionResponse("users")
 }
 
 ClassMethod PermissionRoles() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WritePermissionResponse("roles")
 }
 
 ClassMethod PermissionResources() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WritePermissionResponse("resources")
 }
 
 ClassMethod PermissionUserDetail(user As %String) As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    Set tSC = ##class(MeuPortal.Service.Permissions).GetUserDetail(user, .data)
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Service.Permissions).GetUserDetail(user, .data)
     If $$$ISERR(tSC) Quit ..WriteError(404, "USER_NOT_FOUND", "The requested user could not be found.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod PermissionUserEffective(user As %String) As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    Set tSC = ##class(MeuPortal.Service.Permissions).GetUserDetail(user, .detail)
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Service.Permissions).GetUserDetail(user, .detail)
     If $$$ISERR(tSC) Quit ..WriteError(404, "USER_NOT_FOUND", "The requested user could not be found.")
     Set data = {}
     Set data.user = detail.name
@@ -177,16 +177,16 @@ ClassMethod PermissionUserEffective(user As %String) As %Status
 
 ClassMethod PermissionRoleDetail(role As %String) As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    Set tSC = ##class(MeuPortal.Service.Permissions).GetRoleDetail(role, .data)
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Service.Permissions).GetRoleDetail(role, .data)
     If $$$ISERR(tSC) Quit ..WriteError(404, "ROLE_NOT_FOUND", "The requested role could not be found.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod AddPermissionUserRole(user As %String) As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    If '##class(MeuPortal.Service.Permissions).CanManage() Quit ..WriteError(403, "FORBIDDEN", "You do not have permission to manage user roles.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Permissions).CanManage() Quit ..WriteError(403, "FORBIDDEN", "You do not have permission to manage user roles.")
     Set parseError = 0
     Try {
         Set body = {}.%FromJSON(%request.Content)
@@ -196,22 +196,22 @@ ClassMethod AddPermissionUserRole(user As %String) As %Status
     }
     If parseError Quit ..WriteError(400, "INVALID_JSON", "A valid JSON body is required.")
     If role = "" Quit ..WriteError(400, "ROLE_REQUIRED", "The role field is required.")
-    If role = "%All" Quit ..WriteError(400, "PROTECTED_ROLE", "The %All role cannot be changed through Meu Portal.")
+    If role = "%All" Quit ..WriteError(400, "PROTECTED_ROLE", "The %All role cannot be changed through MyOwn Portal.")
 
-    Set tSC = ##class(MeuPortal.Service.Permissions).AddUserRole(user, role, .data)
-    Do ##class(MeuPortal.Service.Audit).Record("AssignRole", user _ "/" _ role, $$$ISOK(tSC))
+    Set tSC = ##class(MyOwn.Service.Permissions).AddUserRole(user, role, .data)
+    Do ##class(MyOwn.Service.Audit).Record("AssignRole", user _ "/" _ role, $$$ISOK(tSC))
     If $$$ISERR(tSC) Quit ..WriteError(400, "ROLE_ASSIGNMENT_FAILED", "The role could not be assigned to this user.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod RemovePermissionUserRole(user As %String, role As %String) As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    If '##class(MeuPortal.Service.Permissions).CanManage() Quit ..WriteError(403, "FORBIDDEN", "You do not have permission to manage user roles.")
-    If role = "%All" Quit ..WriteError(400, "PROTECTED_ROLE", "The %All role cannot be changed through Meu Portal.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Permissions).CanManage() Quit ..WriteError(403, "FORBIDDEN", "You do not have permission to manage user roles.")
+    If role = "%All" Quit ..WriteError(400, "PROTECTED_ROLE", "The %All role cannot be changed through MyOwn Portal.")
 
-    Set tSC = ##class(MeuPortal.Service.Permissions).RemoveUserRole(user, role, .data)
-    Do ##class(MeuPortal.Service.Audit).Record("RemoveRole", user _ "/" _ role, $$$ISOK(tSC))
+    Set tSC = ##class(MyOwn.Service.Permissions).RemoveUserRole(user, role, .data)
+    Do ##class(MyOwn.Service.Audit).Record("RemoveRole", user _ "/" _ role, $$$ISOK(tSC))
     If $$$ISERR(tSC) Quit ..WriteError(400, "ROLE_REMOVAL_FAILED", "The role could not be removed from this user.")
     Quit ..WriteSuccess(data)
 }
@@ -221,7 +221,7 @@ ClassMethod Applications() As %Status
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MeuPortal.Service.Applications).GetApplications(.data)
+        Set tSC = ##class(MyOwn.Service.Applications).GetApplications(.data)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
@@ -246,15 +246,15 @@ ClassMethod ApplicationDetail() As %Status
     Set application = $Get(%request.Data("name", 1))
     If application = "" Quit ..WriteError(400, "APPLICATION_REQUIRED", "The application name is required.")
 
-    Set tSC = ##class(MeuPortal.Service.Applications).GetApplication(application, .data)
+    Set tSC = ##class(MyOwn.Service.Applications).GetApplication(application, .data)
     If $$$ISERR(tSC) Quit ..WriteError(404, "APPLICATION_NOT_FOUND", "The requested web application could not be found.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod SetApplicationState() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    If '##class(MeuPortal.Service.Applications).CanManage() Quit ..WriteError(403, "FORBIDDEN", "You do not have permission to manage web applications.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Applications).CanManage() Quit ..WriteError(403, "FORBIDDEN", "You do not have permission to manage web applications.")
     Set parseError = 0
     Try {
         Set body = {}.%FromJSON(%request.Content)
@@ -266,19 +266,19 @@ ClassMethod SetApplicationState() As %Status
     If parseError Quit ..WriteError(400, "INVALID_JSON", "A valid JSON body is required.")
     If application = "" Quit ..WriteError(400, "APPLICATION_REQUIRED", "The application name is required.")
 
-    Set tSC = ##class(MeuPortal.Service.Applications).GetApplication(application, .detail)
+    Set tSC = ##class(MyOwn.Service.Applications).GetApplication(application, .detail)
     If $$$ISERR(tSC) Quit ..WriteError(404, "APPLICATION_NOT_FOUND", "The requested web application could not be found.")
     If 'detail.manageable Quit ..WriteError(400, "PROTECTED_APPLICATION", detail.protectionReason)
 
-    Set tSC = ##class(MeuPortal.Service.Applications).SetApplicationEnabled(application, enabled, .data)
-    Do ##class(MeuPortal.Service.Audit).Record($Select(enabled:"EnableApplication", 1:"DisableApplication"), application, $$$ISOK(tSC))
+    Set tSC = ##class(MyOwn.Service.Applications).SetApplicationEnabled(application, enabled, .data)
+    Do ##class(MyOwn.Service.Audit).Record($Select(enabled:"EnableApplication", 1:"DisableApplication"), application, $$$ISOK(tSC))
     If $$$ISERR(tSC) Quit ..WriteError(400, "APPLICATION_UPDATE_FAILED", "The web application state could not be changed.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod TestAPI() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set parseError = 0
     Try {
         Set requestBody = {}.%FromJSON(%request.Content)
@@ -302,8 +302,8 @@ ClassMethod TestAPI() As %Status
     ; port>". This call always targets IRIS's own private web server, so it
     ; always uses that fixed, well-known port instead of trusting SERVER_PORT.
     Set port = 52773
-    Set tSC = ##class(MeuPortal.Service.APIExplorer).Execute(method, path, headers, body, authorization, port, .data)
-    If (normalizedMethod '= "GET") && (normalizedMethod '= "HEAD") Do ##class(MeuPortal.Service.Audit).Record("APIRequest" _ normalizedMethod, path, $$$ISOK(tSC))
+    Set tSC = ##class(MyOwn.Service.APIExplorer).Execute(method, path, headers, body, authorization, port, .data)
+    If (normalizedMethod '= "GET") && (normalizedMethod '= "HEAD") Do ##class(MyOwn.Service.Audit).Record("APIRequest" _ normalizedMethod, path, $$$ISOK(tSC))
     If $$$ISERR(tSC) {
         Set detail = $System.Status.GetErrorText(tSC)
         Quit ..WriteError(400, "API_REQUEST_REJECTED", "The request was rejected or could not be completed: " _ detail)
@@ -316,12 +316,12 @@ ClassMethod OpenAPI() As %Status
     Set spec = {}
     Set spec.openapi = "3.0.3"
     Set spec.info = {}
-    Set spec.info.title = "Meu Portal API"
+    Set spec.info.title = "MyOwn Portal API"
     Set spec.info.version = "1.0.0"
     Set spec.info.description = "Local administration API for InterSystems IRIS."
     Set spec.servers = []
     Set server = {}
-    Set server.url = "/meuportal/api"
+    Set server.url = "/myown/api"
     Do spec.servers.%Push(server)
     Set spec.paths = {}
     Do ..AddOpenAPIPath(spec.paths, "/health", "get", "Check API and IRIS availability")
@@ -358,7 +358,7 @@ ClassMethod Tasks() As %Status
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MeuPortal.Service.Tasks).GetTasks(.data)
+        Set tSC = ##class(MyOwn.Service.Tasks).GetTasks(.data)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
@@ -382,14 +382,14 @@ ClassMethod TaskDetail() As %Status
 {
     Set id = +$Get(%request.Data("id", 1))
     If id < 1 Quit ..WriteError(400, "TASK_REQUIRED", "A valid task ID is required.")
-    Set tSC = ##class(MeuPortal.Service.Tasks).GetTask(id, .data)
+    Set tSC = ##class(MyOwn.Service.Tasks).GetTask(id, .data)
     If $$$ISERR(tSC) Quit ..WriteError(404, "TASK_NOT_FOUND", "The requested task could not be found.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod TaskAction() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set parseError = 0
     Try {
         Set body = {}.%FromJSON(%request.Content)
@@ -402,23 +402,23 @@ ClassMethod TaskAction() As %Status
     If id < 1 Quit ..WriteError(400, "TASK_REQUIRED", "A valid task ID is required.")
     If (action '= "run") && (action '= "suspend") && (action '= "resume") Quit ..WriteError(400, "INVALID_ACTION", "Use run, suspend, or resume.")
 
-    Set tSC = ##class(MeuPortal.Service.Tasks).GetTask(id, .detail)
+    Set tSC = ##class(MyOwn.Service.Tasks).GetTask(id, .detail)
     If $$$ISERR(tSC) Quit ..WriteError(404, "TASK_NOT_FOUND", "The requested task could not be found.")
     If 'detail.manageable Quit ..WriteError(403, "PROTECTED_TASK", detail.protectionReason)
 
-    Set tSC = ##class(MeuPortal.Service.Tasks).PerformAction(id, action, .data)
-    Do ##class(MeuPortal.Service.Audit).Record("Task" _ $ZConvert(action, "T"), "Task " _ id, $$$ISOK(tSC))
+    Set tSC = ##class(MyOwn.Service.Tasks).PerformAction(id, action, .data)
+    Do ##class(MyOwn.Service.Audit).Record("Task" _ $ZConvert(action, "T"), "Task " _ id, $$$ISOK(tSC))
     If $$$ISERR(tSC) Quit ..WriteError(400, "TASK_ACTION_FAILED", "The task action could not be completed.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod Security() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MeuPortal.Service.Security).GetInventory(.data)
+        Set tSC = ##class(MyOwn.Service.Security).GetInventory(.data)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
@@ -440,45 +440,45 @@ ClassMethod Security() As %Status
 
 ClassMethod SecuritySummary() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    Set tSC = ##class(MeuPortal.Service.Security).GetSummary(.data)
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Service.Security).GetSummary(.data)
     If $$$ISERR(tSC) Quit ..WriteError(500, "SECURITY_SUMMARY_UNAVAILABLE", "The security summary is temporarily unavailable.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod SecurityCertificates() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WriteSecurityCategory("certificates")
 }
 
 ClassMethod SecurityOAuth() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WriteSecurityCategory("oauth")
 }
 
 ClassMethod SecurityCredentials() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WriteSecurityCategory("credentials")
 }
 
 ClassMethod SecurityDetail() As %Status
 {
-    If '##class(MeuPortal.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set category = $Get(%request.Data("category", 1))
     Set name = $Get(%request.Data("name", 1))
     Set type = $Get(%request.Data("type", 1))
     If (category = "") || (name = "") Quit ..WriteError(400, "SECURITY_ITEM_REQUIRED", "The security category and item name are required.")
-    Set tSC = ##class(MeuPortal.Service.Security).GetDetail(category, name, type, .data)
+    Set tSC = ##class(MyOwn.Service.Security).GetDetail(category, name, type, .data)
     If $$$ISERR(tSC) Quit ..WriteError(404, "SECURITY_ITEM_NOT_FOUND", "The requested security item could not be found.")
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod WriteSecurityCategory(category As %String) As %Status
 {
-    Set tSC = ##class(MeuPortal.Service.Security).GetCategory(category, .data)
+    Set tSC = ##class(MyOwn.Service.Security).GetCategory(category, .data)
     If $$$ISERR(tSC) Quit ..WriteError(500, "SECURITY_CATEGORY_UNAVAILABLE", "The requested security inventory is temporarily unavailable.")
     Quit ..WriteSuccess(data)
 }
@@ -488,7 +488,7 @@ ClassMethod Logs() As %Status
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MeuPortal.Service.Logs).GetLogs(.data)
+        Set tSC = ##class(MyOwn.Service.Logs).GetLogs(.data)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
@@ -515,15 +515,15 @@ ClassMethod WritePermissionResponse(kind As %String) As %Status
         If kind = "users" {
             Set errorCode = "USERS_UNAVAILABLE"
             Set errorMessage = "The user list is temporarily unavailable."
-            Set tSC = ##class(MeuPortal.Service.Permissions).GetUsers(.data)
+            Set tSC = ##class(MyOwn.Service.Permissions).GetUsers(.data)
         } ElseIf kind = "roles" {
             Set errorCode = "ROLES_UNAVAILABLE"
             Set errorMessage = "The role list is temporarily unavailable."
-            Set tSC = ##class(MeuPortal.Service.Permissions).GetRoles(.data)
+            Set tSC = ##class(MyOwn.Service.Permissions).GetRoles(.data)
         } Else {
             Set errorCode = "RESOURCES_UNAVAILABLE"
             Set errorMessage = "The resource list is temporarily unavailable."
-            Set tSC = ##class(MeuPortal.Service.Permissions).GetResources(.data)
+            Set tSC = ##class(MyOwn.Service.Permissions).GetResources(.data)
         }
         $$$ThrowOnError(tSC)
         Set payload = {}
@@ -574,9 +574,9 @@ ClassMethod OnPreDispatch(pUrl As %String, pMethod As %String, ByRef pContinue A
     Set %response.CharSet = "UTF-8"
     Set %response.Headers("X-Content-Type-Options") = "nosniff"
     Set %response.Headers("Cache-Control") = "no-store"
-    If (pMethod '= "OPTIONS") && ('##class(MeuPortal.Service.Access).CanView()) {
+    If (pMethod '= "OPTIONS") && ('##class(MyOwn.Service.Access).CanView()) {
         Set pContinue = 0
-        Do ..WriteError(403, "PORTAL_ACCESS_REQUIRED", "Your IRIS account is not authorized to use Meu Portal.")
+        Do ..WriteError(403, "PORTAL_ACCESS_REQUIRED", "Your IRIS account is not authorized to use MyOwn Portal.")
     }
     Quit tSC
 }

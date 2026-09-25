@@ -1,4 +1,4 @@
-Class MeuPortal.Service.Permissions
+Class MyOwn.Service.Permissions
 {
 
 /// Access to the published IRIS user, role, resource, and permission APIs.
@@ -211,7 +211,7 @@ ClassMethod ValidateRoleChange(username As %String, roleName As %String) As %Sta
             $$$ThrowOnError(tSC)
         }
         If roleName = "%All" {
-            Set tSC = $$$ERROR($$$GeneralError, "The %All role cannot be changed through Meu Portal.")
+            Set tSC = $$$ERROR($$$GeneralError, "The %All role cannot be changed through MyOwn Portal.")
             $$$ThrowOnError(tSC)
         }
 

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Installs Meu Portal end to end: builds and deploys the frontend, restarts the
+Installs MyOwn Portal end to end: builds and deploys the frontend, restarts the
 private IRIS web server, and prepares the backend install command.
 
 .DESCRIPTION
@@ -11,7 +11,7 @@ authenticated IRIS terminal, because that requires your IRIS login and this
 script never stores or types a password for you. Everything else runs
 automatically.
 
-Prerequisite: the target namespace (MEUPORTAL by default) must already exist.
+Prerequisite: the target namespace (MYOWN by default) must already exist.
 Create it once in the native Management Portal: System Administration >
 Configuration > System Configuration > Namespaces > New Namespace.
 #>
@@ -19,7 +19,7 @@ Configuration > System Configuration > Namespaces > New Namespace.
 param(
     [string]$IrisInstallDir = 'C:\InterSystems\IRIS',
     [string]$Instance = 'IRIS',
-    [string]$Namespace = 'MEUPORTAL',
+    [string]$Namespace = 'MYOWN',
     [switch]$SkipBuild,
     [switch]$SkipWebServerRestart,
     [switch]$SkipBackendPrompt
@@ -30,13 +30,13 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $frontendDir = Join-Path $projectRoot 'frontend'
 $distDir = Join-Path $frontendDir 'dist'
 $sourceDir = Join-Path $projectRoot 'src\objectscript'
-$targetDir = Join-Path $IrisInstallDir 'CSP\meuportal'
+$targetDir = Join-Path $IrisInstallDir 'CSP\myown'
 $httpdConfig = Join-Path $IrisInstallDir 'httpd\conf\httpd-local.conf'
 $httpdExecutable = Join-Path $IrisInstallDir 'httpd\bin\httpd.exe'
 $irisExecutable = Join-Path $IrisInstallDir 'bin\iris.exe'
-$configTemplate = Join-Path $projectRoot 'deploy\httpd-meuportal.conf'
-$configStart = '# BEGIN MEU PORTAL'
-$configEnd = '# END MEU PORTAL'
+$configTemplate = Join-Path $projectRoot 'deploy\httpd-myown.conf'
+$configStart = '# BEGIN MYOWN PORTAL'
+$configEnd = '# END MYOWN PORTAL'
 
 if (-not (Test-Path -LiteralPath $IrisInstallDir)) {
     throw "IRIS installation directory was not found: $IrisInstallDir"
@@ -81,7 +81,7 @@ if (-not (Test-Path -LiteralPath $httpdConfig)) {
 }
 
 $currentConfig = Get-Content -LiteralPath $httpdConfig -Raw
-if (($currentConfig -notmatch [regex]::Escape($configStart)) -and ($currentConfig -notmatch '<Location\s+/meuportal/>')) {
+if (($currentConfig -notmatch [regex]::Escape($configStart)) -and ($currentConfig -notmatch '<Location\s+/myown/>')) {
     $portalConfig = Get-Content -LiteralPath $configTemplate -Raw
     Add-Content -LiteralPath $httpdConfig -Value "`r`n$configStart`r`n$portalConfig`r`n$configEnd`r`n"
 }
@@ -114,8 +114,8 @@ Write-Host ''
 $backendCommands = @"
 zn "$Namespace"
 Do `$System.OBJ.LoadDir("$sourceDir", "ck", , 1)
-Set status = ##class(MeuPortal.Installer).Setup()
-Write "Meu Portal installer status: ", `$System.Status.GetErrorText(status), !
+Set status = ##class(MyOwn.Installer).Setup()
+Write "MyOwn Portal installer status: ", `$System.Status.GetErrorText(status), !
 "@
 
 Write-Host 'Paste these lines into the IRIS terminal window (opening now), then press Enter after the last line:' -ForegroundColor Yellow
@@ -130,5 +130,5 @@ if (-not $SkipBackendPrompt) {
 }
 
 Write-Host ''
-Write-Host 'Once the backend command above finishes without an error, open http://localhost:52773/meuportal/index.html and sign in.' -ForegroundColor Green
-Write-Host 'First time only: grant yourself (or whichever account should use Meu Portal) the MeuPortalAdministrator role — see "Signing in" in docs/REFERENCE.md, or sign in with _SYSTEM, which already works.' -ForegroundColor Green
+Write-Host 'Once the backend command above finishes without an error, open http://localhost:52773/myown/index.html and sign in.' -ForegroundColor Green
+Write-Host 'First time only: grant yourself (or whichever account should use MyOwn Portal) the MyOwnAdministrator role — see "Signing in" in docs/REFERENCE.md, or sign in with _SYSTEM, which already works.' -ForegroundColor Green

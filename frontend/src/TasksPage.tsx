@@ -143,7 +143,7 @@ export default function TasksPage() {
             </tr>
           })}</tbody>
         </table>{!visible.length && <div className="data-state">No matching tasks.</div>}</div>}
-        {!loading && !error && <div className="panel-footnote">{completedCount} tasks have recorded execution history. Only MEUPORTAL tasks can be changed.</div>}
+        {!loading && !error && <div className="panel-footnote">{completedCount} tasks have recorded execution history. Only MYOWN tasks can be changed.</div>}
       </section>
       {detailLoading && <div className="modal-backdrop"><div className="permission-modal"><div className="data-state">Loading task details…</div></div></div>}
       {selected && !detailLoading && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}>

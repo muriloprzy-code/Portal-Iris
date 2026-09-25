@@ -1,19 +1,19 @@
-# Meu Portal
+# MyOwn Portal
 
-Meu Portal is a compact, English-language administration interface for InterSystems IRIS and IRIS for Health. It was created for the **InterSystems Programming Contest: Build Your Own Management Portal**.
+MyOwn Portal is a compact, English-language administration interface for InterSystems IRIS and IRIS for Health. It was created for the **InterSystems Programming Contest: Build Your Own Management Portal**.
 
 The browser application uses React and TypeScript. The REST backend, authorization, auditing, and access to IRIS administration data are implemented in ObjectScript. Vite and Node.js are development and build tools only; the production React bundle is served by the private IRIS web server.
 
 ## Quick Start
 
-Meu Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. Full explanation in [docs/REFERENCE.md](docs/REFERENCE.md#how-it-works-in-plain-terms).
+MyOwn Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. Full explanation in [docs/REFERENCE.md](docs/REFERENCE.md#how-it-works-in-plain-terms).
 
 ### The easy way: one double-click
 
 Double-click **`Instalar.bat`** at the project root. It figures out the rest on its own:
 
-- **Docker path:** if Docker Desktop is installed, it builds and starts the demo container and opens `http://localhost:52774/meuportal/index.html` for you. **Docker Desktop needs to already be open before you run the installer** — if it isn't running yet, start it first, wait for it to finish starting up, then run `Instalar.bat`.
-- **Local IRIS path:** if you already have IRIS installed locally instead, it asks which namespace to install into (press Enter for the default, `MEUPORTAL`, or type the name of a namespace you already use), builds the frontend (downloading a local copy of Node.js first if needed, no admin rights required for that part), deploys the files, restarts the private web server, and installs the backend — fully automatically, over IRIS's own Atelier REST API, no terminal to paste into. It asks once for your IRIS username and password for that last step; they are used only in memory and never written to disk. It then opens `http://localhost:52773/meuportal/index.html`.
+- **Docker path:** if Docker Desktop is installed, it builds and starts the demo container and opens `http://localhost:52774/myown/index.html` for you. **Docker Desktop needs to already be open before you run the installer** — if it isn't running yet, start it first, wait for it to finish starting up, then run `Instalar.bat`.
+- **Local IRIS path:** if you already have IRIS installed locally instead, it asks which namespace to install into (press Enter for the default, `MYOWN`, or type the name of a namespace you already use), builds the frontend (downloading a local copy of Node.js first if needed, no admin rights required for that part), deploys the files, restarts the private web server, and installs the backend — fully automatically, over IRIS's own Atelier REST API, no terminal to paste into. It asks once for your IRIS username and password for that last step; they are used only in memory and never written to disk. It then opens `http://localhost:52773/myown/index.html`.
 - If both Docker and a local IRIS are found, it asks once which one you want.
 
 It will ask Windows for administrator permission once (needed only to restart the IRIS private web server on the local-install path) — approve that, and everything else runs by itself. The one thing it cannot do for you is the one-time creation of the namespace if it does not already exist on your IRIS instance; if that is the case, it stops and tells you exactly where to click (Management Portal → System Administration → Configuration → System Configuration → Namespaces → New Namespace) — then just run `Instalar.bat` again.
@@ -31,11 +31,11 @@ Make sure Docker Desktop is already open, then:
 docker compose up --build -d
 ```
 
-Open `http://localhost:52774/meuportal/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!` (the default demo password — see [docs/REFERENCE.md](docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed) to change it). This spins up a fresh, disposable IRIS just for the demo, with zero risk to any IRIS instance you already have.
+Open `http://localhost:52774/myown/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!` (the default demo password — see [docs/REFERENCE.md](docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed) to change it). This spins up a fresh, disposable IRIS just for the demo, with zero risk to any IRIS instance you already have.
 
 **Local IRIS, by hand:**
 
-1. If the namespace you want to use does not exist yet, create it once (Management Portal → System Administration → Configuration → System Configuration → Namespaces → New Namespace). The installer's default is `MEUPORTAL`, but any existing namespace works — it is only a name.
+1. If the namespace you want to use does not exist yet, create it once (Management Portal → System Administration → Configuration → System Configuration → Namespaces → New Namespace). The installer's default is `MYOWN`, but any existing namespace works — it is only a name.
 2. Build the frontend:
    ```powershell
    cd frontend
@@ -49,7 +49,7 @@ Open `http://localhost:52774/meuportal/index.html` and sign in with `_SYSTEM` / 
    .\scripts\Install-All.ps1
    ```
    It deploys the frontend you just built, restarts the private web server, then asks which namespace to use and for your IRIS username/password once — used only for that step, never stored — and installs the backend automatically over IRIS's built-in Atelier REST API (the same mechanism the VS Code ObjectScript extension uses). The exact HTTP calls it makes are all in [scripts/Install-All.ps1](scripts/Install-All.ps1), if you want to see or adapt them.
-4. Open `http://localhost:52773/meuportal/index.html` and sign in with `_SYSTEM` — or grant your own account the `MeuPortalAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](docs/REFERENCE.md#signing-in--which-account-to-use).
+4. Open `http://localhost:52773/myown/index.html` and sign in with `_SYSTEM` — or grant your own account the `MyOwnAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](docs/REFERENCE.md#signing-in--which-account-to-use).
 
 </details>
 
@@ -67,7 +67,7 @@ Everything else — architecture, every install detail, the API reference, and t
 - IRIS Task Manager inventory with protected Run, Suspend, and Resume actions.
 - Sanitized `messages.log` browsing with search, filters, pagination, and details.
 - Native IRIS role-based access control and audit events for state changes.
-- A demonstration Task Manager task (`Meu Portal health snapshot`) so that Run, Suspend, and Resume can be tried on a fresh instance.
+- A demonstration Task Manager task (`MyOwn Portal health snapshot`) so that Run, Suspend, and Resume can be tried on a fresh instance.
 - Responsive English user interface.
 
 ## Contest technology bonuses
@@ -75,7 +75,7 @@ Everything else — architecture, every install detail, the API reference, and t
 - **Embedded Python:** the instance health score and the host memory and disk metrics are computed in `Language = python` methods.
 - **Vector Search:** health patterns are stored in a `%Vector` property and matched with `VECTOR_COSINE`.
 - **Docker:** `Dockerfile` and `compose.yaml` build and run the portal on IRIS Community Edition.
-- **IPM package:** `module.xml` defines the `meu-portal` module.
+- **IPM package:** `module.xml` defines the `myown-portal` module.
 
 ## License
 

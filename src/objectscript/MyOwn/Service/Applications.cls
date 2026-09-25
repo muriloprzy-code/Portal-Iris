@@ -1,9 +1,9 @@
-Class MeuPortal.Service.Applications
+Class MyOwn.Service.Applications
 {
 
-Parameter ProtectedApplication = "/meuportal/api";
+Parameter ProtectedApplication = "/myown/api";
 
-Parameter ProtectedRoot = "/meuportal";
+Parameter ProtectedRoot = "/myown";
 
 /// Read-only inventory of web applications through the published security API.
 ClassMethod GetApplications(Output items As %DynamicArray) As %Status
@@ -122,8 +122,8 @@ ClassMethod CanManage() As %Boolean
 ClassMethod ProtectionReason(application As %String, namespace As %String) As %String [ Private ]
 {
     Set lower = $ZConvert(application, "L")
-    If (lower = ..#ProtectedApplication) || (lower = ..#ProtectedRoot) || ($Extract(lower, 1, $Length(..#ProtectedRoot) + 1) = (..#ProtectedRoot _ "/")) Quit "The Meu Portal applications are protected from state changes."
-    If namespace '= "MEUPORTAL" Quit "Only applications in the MEUPORTAL namespace can be changed."
+    If (lower = ..#ProtectedApplication) || (lower = ..#ProtectedRoot) || ($Extract(lower, 1, $Length(..#ProtectedRoot) + 1) = (..#ProtectedRoot _ "/")) Quit "The MyOwn Portal applications are protected from state changes."
+    If namespace '= "MYOWN" Quit "Only applications in the MYOWN namespace can be changed."
     Quit ""
 }
 

@@ -1,4 +1,4 @@
-Class MeuPortal.Service.Tasks
+Class MyOwn.Service.Tasks
 {
 
 /// Task Manager inventory and bounded actions through the published %SYS.Task API.
@@ -33,7 +33,7 @@ ClassMethod GetTasks(Output response As %DynamicObject) As %Status
             Set item.nextScheduledTime = result.%Get("Next Scheduled Time")
             Set item.schedule = result.%Get("Run Task")
             Set item.interval = result.%Get("Run Interval")
-            Set item.manageable = ($ZConvert(item.namespace, "U") = "MEUPORTAL")
+            Set item.manageable = ($ZConvert(item.namespace, "U") = "MYOWN")
             Do items.%Push(item)
         }
 
@@ -73,8 +73,8 @@ ClassMethod GetTask(id As %Integer, Output response As %DynamicObject) As %Statu
         Set response.priority = task.Priority
         Set response.runAsUser = task.RunAsUser
         Set response.runningJobNumber = task.RunningJobNumber
-        Set response.manageable = ($ZConvert(task.NameSpace, "U") = "MEUPORTAL")
-        Set response.protectionReason = $Select(response.manageable:"", 1:"Only tasks in the MEUPORTAL namespace can be changed here.")
+        Set response.manageable = ($ZConvert(task.NameSpace, "U") = "MYOWN")
+        Set response.protectionReason = $Select(response.manageable:"", 1:"Only tasks in the MYOWN namespace can be changed here.")
     } Catch exception {
         Set tSC = exception.AsStatus()
     }
@@ -92,7 +92,7 @@ ClassMethod PerformAction(id As %Integer, action As %String, Output response As 
         $$$ThrowOnError(tSC)
         If '$IsObject(task) Set tSC = $$$ERROR($$$GeneralError, "Task not found")
         $$$ThrowOnError(tSC)
-        If $ZConvert(task.NameSpace, "U") '= "MEUPORTAL" Set tSC = $$$ERROR($$$GeneralError, "Protected task")
+        If $ZConvert(task.NameSpace, "U") '= "MYOWN" Set tSC = $$$ERROR($$$GeneralError, "Protected task")
         $$$ThrowOnError(tSC)
 
         Set normalizedAction = $ZConvert(action, "L")

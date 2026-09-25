@@ -1,4 +1,4 @@
-Class MeuPortal.Service.Logs
+Class MyOwn.Service.Logs
 {
 
 /// Returns a bounded, read-only view of recent messages.log events.

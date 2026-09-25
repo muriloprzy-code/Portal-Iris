@@ -1,4 +1,4 @@
-Class MeuPortal.Service.Security Extends %RegisteredObject
+Class MyOwn.Service.Security Extends %RegisteredObject
 {
 
 /// Returns security configuration metadata only. Secret values, passwords,

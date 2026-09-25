@@ -1,19 +1,19 @@
-Class MeuPortal.Installer
+Class MyOwn.Installer
 {
 
-/// Roles added to portal users only inside the /meuportal/api application.
-Parameter SystemReadRole = "MeuPortalSystemRead";
+/// Roles added to portal users only inside the /myown/api application.
+Parameter SystemReadRole = "MyOwnSystemRead";
 
-Parameter SystemAdminRole = "MeuPortalSystemAdmin";
+Parameter SystemAdminRole = "MyOwnSystemAdmin";
 
-Parameter DemoTaskName = "Meu Portal health snapshot";
+Parameter DemoTaskName = "MyOwn Portal health snapshot";
 
 /// SQL-callable wrapper around Setup(), so the one-click installer can trigger
 /// installation over the Atelier REST API (already built into every IRIS instance)
 /// instead of needing an interactively authenticated terminal session. Returns "OK"
 /// on success, or the error text otherwise -- never throws, so it is always safe to
 /// call from SQL.
-ClassMethod SetupViaSQL() As %String [ SqlName = MeuPortalSetup, SqlProc ]
+ClassMethod SetupViaSQL() As %String [ SqlName = MyOwnSetup, SqlProc ]
 {
     Set tSC = ..Setup()
     If $$$ISOK(tSC) Quit "OK"
@@ -28,7 +28,7 @@ ClassMethod SetupViaSQL() As %String [ SqlName = MeuPortalSetup, SqlProc ]
 /// doc-put endpoint has proven unreliable on some Windows/IRIS setups. Returns
 /// "OK" on success, or a description of the error otherwise -- never throws, so
 /// it is always safe to call from SQL.
-ClassMethod LoadAndSetupViaSQL(dir As %String) As %String [ SqlName = MeuPortalLoadAndSetup, SqlProc ]
+ClassMethod LoadAndSetupViaSQL(dir As %String) As %String [ SqlName = MyOwnLoadAndSetup, SqlProc ]
 {
     Set tSC = $System.OBJ.LoadDir(dir, "ck", .errorLog, 1)
     If $$$ISERR(tSC) Quit "LOAD ERROR: "_$System.Status.GetErrorText(tSC)
@@ -41,7 +41,7 @@ ClassMethod Setup() As %Status
     Set tSC = $$$OK
     Try {
         Set targetNamespace = $Namespace
-        Set application = "/meuportal/api"
+        Set application = "/myown/api"
 
         Set tSC = ..EnsureHealthPatterns()
         $$$ThrowOnError(tSC)
@@ -55,19 +55,19 @@ ClassMethod Setup() As %Status
         Set tSC = ..EnsureAuditEvent()
         $$$ThrowOnError(tSC)
 
-        // Portal users only hold the MeuPortal roles, which do not include access to the
+        // Portal users only hold the MyOwn roles, which do not include access to the
         // %SYS namespace. These application roles are added only while a request is
-        // handled by /meuportal/api, so viewers and administrators never hold the system
+        // handled by /myown/api, so viewers and administrators never hold the system
         // database roles in a terminal or in any other application.
-        Set matchRoles = "MeuPortalViewer:" _ ..#SystemReadRole _ ",MeuPortalAdministrator:" _ ..#SystemAdminRole
+        Set matchRoles = "MyOwnViewer:" _ ..#SystemReadRole _ ",MyOwnAdministrator:" _ ..#SystemAdminRole
 
         Set exists = ##class(Security.Applications).Exists(application, .applicationObject, .tSC)
         If exists {
-            Set properties("DispatchClass") = "MeuPortal.REST"
+            Set properties("DispatchClass") = "MyOwn.REST"
             Set properties("Enabled") = 1
             Set properties("AutheEnabled") = 32
             Set properties("NameSpace") = targetNamespace
-            Set properties("Resource") = "MeuPortal.View"
+            Set properties("Resource") = "MyOwn.View"
             Set properties("MatchRoles") = matchRoles
             Set tSC = ##class(Security.Applications).Modify(application, .properties)
             $$$ThrowOnError(tSC)
@@ -75,12 +75,12 @@ ClassMethod Setup() As %Status
             // A not-found status is expected when the application is first installed.
             Set tSC = $$$OK
             Set properties("Name") = application
-            Set properties("DispatchClass") = "MeuPortal.REST"
+            Set properties("DispatchClass") = "MyOwn.REST"
             Set properties("NameSpace") = targetNamespace
             Set properties("Enabled") = 1
             Set properties("AutheEnabled") = 32
             Set properties("CookiePath") = application
-            Set properties("Resource") = "MeuPortal.View"
+            Set properties("Resource") = "MyOwn.View"
             Set properties("MatchRoles") = matchRoles
             Set tSC = ##class(Security.Applications).Create(application, .properties)
             $$$ThrowOnError(tSC)
@@ -88,7 +88,7 @@ ClassMethod Setup() As %Status
 
         // The demonstration task is optional: a failure must not abort the installation.
         Set taskStatus = ..EnsureDemoTask(targetNamespace)
-        If $$$ISERR(taskStatus) Write !, "Meu Portal: the demonstration task was not created: ", $System.Status.GetErrorText(taskStatus), !
+        If $$$ISERR(taskStatus) Write !, "MyOwn Portal: the demonstration task was not created: ", $System.Status.GetErrorText(taskStatus), !
     } Catch exception {
         Set tSC = exception.AsStatus()
     }
@@ -100,7 +100,7 @@ ClassMethod EnsureHealthPatterns() As %Status [ Private ]
     Set tSC = $$$OK
     Try {
         Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%Prepare("SELECT COUNT(*) AS PatternCount FROM MeuPortal.HealthPattern")
+        Set tSC = statement.%Prepare("SELECT COUNT(*) AS PatternCount FROM MyOwn.HealthPattern")
         $$$ThrowOnError(tSC)
         Set result = statement.%Execute()
         If result.%SQLCODE < 0 Throw ##class(%Exception.StatusException).CreateFromStatus($$$ERROR($$$GeneralError, result.%Message))
@@ -128,7 +128,7 @@ ClassMethod EnsureHealthPatterns() As %Status [ Private ]
 ClassMethod AddHealthPattern(code As %String, title As %String, severity As %String, recommendation As %String, vector As %String) As %Status [ Private ]
 {
     Set statement = ##class(%SQL.Statement).%New()
-    Set tSC = statement.%Prepare("INSERT INTO MeuPortal.HealthPattern (Code, Title, Severity, Recommendation, MetricVector) VALUES (?, ?, ?, ?, TO_VECTOR(?, DOUBLE))")
+    Set tSC = statement.%Prepare("INSERT INTO MyOwn.HealthPattern (Code, Title, Severity, Recommendation, MetricVector) VALUES (?, ?, ?, ?, TO_VECTOR(?, DOUBLE))")
     If $$$ISERR(tSC) Quit tSC
     Set result = statement.%Execute(code, title, severity, recommendation, vector)
     If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
@@ -139,26 +139,26 @@ ClassMethod EnsureAccessControl() As %Status [ Private ]
 {
     Set tSC = $$$OK
     Try {
-        Set exists = ##class(Security.Resources).Exists("MeuPortal.View", .resource, .checkStatus)
+        Set exists = ##class(Security.Resources).Exists("MyOwn.View", .resource, .checkStatus)
         If 'exists {
-            Set tSC = ##class(Security.Resources).Create("MeuPortal.View", "Allows read-only access to Meu Portal.", "")
+            Set tSC = ##class(Security.Resources).Create("MyOwn.View", "Allows read-only access to MyOwn Portal.", "")
             $$$ThrowOnError(tSC)
         }
-        Set exists = ##class(Security.Resources).Exists("MeuPortal.Manage", .resource, .checkStatus)
+        Set exists = ##class(Security.Resources).Exists("MyOwn.Manage", .resource, .checkStatus)
         If 'exists {
-            Set tSC = ##class(Security.Resources).Create("MeuPortal.Manage", "Allows administrative actions in Meu Portal.", "")
+            Set tSC = ##class(Security.Resources).Create("MyOwn.Manage", "Allows administrative actions in MyOwn Portal.", "")
             $$$ThrowOnError(tSC)
         }
 
-        Set tSC = ..EnsureRole("MeuPortalViewer", "Read-only access to Meu Portal.", "MeuPortal.View:U")
+        Set tSC = ..EnsureRole("MyOwnViewer", "Read-only access to MyOwn Portal.", "MyOwn.View:U")
         $$$ThrowOnError(tSC)
-        Set tSC = ..EnsureRole("MeuPortalAdministrator", "Administrative access to Meu Portal.", "MeuPortal.View:U,MeuPortal.Manage:U,%Admin_Secure:U,%Admin_Task:U")
+        Set tSC = ..EnsureRole("MyOwnAdministrator", "Administrative access to MyOwn Portal.", "MyOwn.View:U,MyOwn.Manage:U,%Admin_Secure:U,%Admin_Task:U")
         $$$ThrowOnError(tSC)
 
-        // Application roles: granted by MatchRoles on /meuportal/api (see Setup).
-        Set tSC = ..EnsureRole(..#SystemReadRole, "Read access to the IRIS system database, granted only inside Meu Portal.", "%DB_IRISSYS:R")
+        // Application roles: granted by MatchRoles on /myown/api (see Setup).
+        Set tSC = ..EnsureRole(..#SystemReadRole, "Read access to the IRIS system database, granted only inside MyOwn Portal.", "%DB_IRISSYS:R")
         $$$ThrowOnError(tSC)
-        Set tSC = ..EnsureRole(..#SystemAdminRole, "Read and write access to the IRIS system database, granted only inside Meu Portal.", "%DB_IRISSYS:RW")
+        Set tSC = ..EnsureRole(..#SystemAdminRole, "Read and write access to the IRIS system database, granted only inside MyOwn Portal.", "%DB_IRISSYS:RW")
         $$$ThrowOnError(tSC)
     } Catch exception {
         Set tSC = exception.AsStatus()
@@ -191,9 +191,9 @@ ClassMethod EnsureDemoTask(targetNamespace As %String) As %Status [ Private ]
         If ##class(%SYS.Task).FindId(..#DemoTaskName) = "" {
             Set task = ##class(%SYS.Task).%New()
             Set task.Name = ..#DemoTaskName
-            Set task.Description = "Stores a periodic Meu Portal health score. Created by the Meu Portal installer."
+            Set task.Description = "Stores a periodic MyOwn Portal health score. Created by the MyOwn Portal installer."
             Set task.NameSpace = targetNamespace
-            Set task.TaskClass = "MeuPortal.Task.HealthSnapshot"
+            Set task.TaskClass = "MyOwn.Task.HealthSnapshot"
             Set task.RunAsUser = "_SYSTEM"
             Set tSC = task.%Save()
             $$$ThrowOnError(tSC)
@@ -204,7 +204,7 @@ ClassMethod EnsureDemoTask(targetNamespace As %String) As %Status [ Private ]
     Quit tSC
 }
 
-/// Sets the _SYSTEM password from the MEUPORTAL_DEMO_PASSWORD build argument for this
+/// Sets the _SYSTEM password from the MYOWN_DEMO_PASSWORD build argument for this
 /// local demo container (see compose.yaml / .env.example). Broken out into a compiled
 /// method -- rather than inline multi-line "If ... { }" blocks in docker/iris.script --
 /// because a script piped into "iris session IRIS < file" runs one line at a time and
@@ -257,14 +257,14 @@ ClassMethod EnsureAuditEvent() As %Status [ Private ]
 {
     Set tSC = $$$OK
     Try {
-        Set exists = ##class(Security.Events).Exists("MeuPortal", "Administration", "Change", .event, .checkStatus)
+        Set exists = ##class(Security.Events).Exists("MyOwn", "Administration", "Change", .event, .checkStatus)
         If exists {
             Kill eventProperties
-            Set eventProperties("Description") = "Administrative changes performed through Meu Portal."
+            Set eventProperties("Description") = "Administrative changes performed through MyOwn Portal."
             Set eventProperties("Enabled") = 1
-            Set tSC = ##class(Security.Events).Modify("MeuPortal", "Administration", "Change", .eventProperties)
+            Set tSC = ##class(Security.Events).Modify("MyOwn", "Administration", "Change", .eventProperties)
         } Else {
-            Set tSC = ##class(Security.Events).Create("MeuPortal", "Administration", "Change", "Administrative changes performed through Meu Portal.", 1)
+            Set tSC = ##class(Security.Events).Create("MyOwn", "Administration", "Change", "Administrative changes performed through MyOwn Portal.", 1)
         }
         $$$ThrowOnError(tSC)
     } Catch exception {

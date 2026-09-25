@@ -56,9 +56,9 @@ Get-ChildItem -LiteralPath $packageWebRoot -Force |
 Copy-Item -Path (Join-Path $distributionRoot '*') -Destination $packageWebRoot -Recurse -Force
 
 [xml]$manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'module.xml')
-if ($manifest.Export.Document.Module.Name -ne 'meu-portal') {
-    throw 'module.xml does not define the expected meu-portal package.'
+if ($manifest.Export.Document.Module.Name -ne 'myown-portal') {
+    throw 'module.xml does not define the expected myown-portal package.'
 }
 
 Write-Host "IPM package assets are ready in '$packageWebRoot'." -ForegroundColor Green
-Write-Host "Load the package from MEUPORTAL with: zpm `"load $projectRoot`"" -ForegroundColor Cyan
+Write-Host "Load the package from MYOWN with: zpm `"load $projectRoot`"" -ForegroundColor Cyan

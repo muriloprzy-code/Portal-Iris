@@ -1,4 +1,4 @@
-Class MeuPortal.HealthPattern Extends %Persistent
+Class MyOwn.HealthPattern Extends %Persistent
 {
 
 /// Stable identifier used by the health report.
@@ -37,11 +37,11 @@ Storage Default
 <Value>MetricVector</Value>
 </Value>
 </Data>
-<DataLocation>^MeuPortal.HealthPatternD</DataLocation>
+<DataLocation>^MyOwn.HealthPatternD</DataLocation>
 <DefaultData>HealthPatternDefaultData</DefaultData>
-<IdLocation>^MeuPortal.HealthPatternD</IdLocation>
-<IndexLocation>^MeuPortal.HealthPatternI</IndexLocation>
-<StreamLocation>^MeuPortal.HealthPatternS</StreamLocation>
+<IdLocation>^MyOwn.HealthPatternD</IdLocation>
+<IndexLocation>^MyOwn.HealthPatternI</IndexLocation>
+<StreamLocation>^MyOwn.HealthPatternS</StreamLocation>
 <Type>%Storage.Persistent</Type>
 }
 

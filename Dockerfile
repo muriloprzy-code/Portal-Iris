@@ -11,12 +11,12 @@ ADD --chown=${ISC_PACKAGE_MGRUSER}:${ISC_PACKAGE_IRISGROUP} \
     https://pm.community.intersystems.com/packages/zpm/latest/installer \
     /tmp/zpm.xml
 
-# MEUPORTAL_DEMO_PASSWORD sets the initial _SYSTEM password for this local
+# MYOWN_DEMO_PASSWORD sets the initial _SYSTEM password for this local
 # demo container. It is supplied at build time (see compose.yaml and
 # .env.example), never hardcoded in the ObjectScript source, so no
 # credential is committed to the repository. Override it in .env for
 # anything beyond a local, throwaway demo.
-ARG MEUPORTAL_DEMO_PASSWORD=change-me-please
+ARG MYOWN_DEMO_PASSWORD=change-me-please
 RUN ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
     iris start IRIS && \
     iris session IRIS < /home/irisowner/dev/docker/iris.script && \
@@ -34,7 +34,7 @@ RUN ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
 # flag (see compose.yaml's "command") is the supported way to drive non-interactively.
 # The chosen password is written into the image here from the build argument --
 # never hardcoded in source -- so compose.yaml can point --password-file at it.
-RUN printf '%s' "${MEUPORTAL_DEMO_PASSWORD}" > /home/irisowner/dev/docker/.runtime-password.txt
+RUN printf '%s' "${MYOWN_DEMO_PASSWORD}" > /home/irisowner/dev/docker/.runtime-password.txt
 
 USER root
 RUN mkdir -p /durable && \

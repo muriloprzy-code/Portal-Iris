@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-One-click installer for Meu Portal. Detects whether to use Docker or an
+One-click installer for MyOwn Portal. Detects whether to use Docker or an
 existing local IRIS installation and automates everything it safely can.
 
 .DESCRIPTION
@@ -12,7 +12,7 @@ project root, not run by hand. It:
      available, uses it automatically.
   3. Docker path: builds and starts the container, waits for it to become
      healthy, and opens the browser - fully automatic, no manual step.
-  4. Native path: checks the MEUPORTAL namespace, builds the frontend
+  4. Native path: checks the MYOWN namespace, builds the frontend
      (downloading a local copy of Node.js first if needed), deploys the
      files, and restarts the private web server automatically. The backend
      install (loading and compiling ObjectScript, running the installer)
@@ -24,14 +24,14 @@ project root, not run by hand. It:
      is done, it opens the browser.
 
 If anything cannot be done safely without a person's judgment (for example,
-the MEUPORTAL namespace not existing yet), the script stops and explains
+the MYOWN namespace not existing yet), the script stops and explains
 exactly what to do, instead of guessing.
 #>
 [CmdletBinding()]
 param(
     [string]$IrisInstallDir,
     [string]$Instance,
-    [string]$Namespace = 'MEUPORTAL'
+    [string]$Namespace = 'MYOWN'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,7 +62,7 @@ function Fail($text) {
 
 Write-Host ''
 Write-Host '========================================' -ForegroundColor Magenta
-Write-Host '   Meu Portal - one-click installer' -ForegroundColor Magenta
+Write-Host '   MyOwn Portal - one-click installer' -ForegroundColor Magenta
 Write-Host '========================================' -ForegroundColor Magenta
 
 # ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ if ($resolvedIrisDir) {
 }
 
 if (-not $dockerAvailable -and -not $resolvedIrisDir) {
-    Fail "Neither Docker Desktop nor a local IRIS installation was found.`n`nInstall one of the two:`n  - Docker Desktop: https://www.docker.com/products/docker-desktop/ (fastest way to try Meu Portal)`n  - InterSystems IRIS Community Edition, if you want to install onto a real instance.`n`nThen run this installer again."
+    Fail "Neither Docker Desktop nor a local IRIS installation was found.`n`nInstall one of the two:`n  - Docker Desktop: https://www.docker.com/products/docker-desktop/ (fastest way to try MyOwn Portal)`n  - InterSystems IRIS Community Edition, if you want to install onto a real instance.`n`nThen run this installer again."
 }
 
 # ---------------------------------------------------------------------------
@@ -119,7 +119,7 @@ if (-not $dockerAvailable -and -not $resolvedIrisDir) {
 $useDocker = $false
 if ($dockerAvailable -and $resolvedIrisDir) {
     Write-Host ''
-    Write-Host 'Both Docker and a local IRIS installation were found. Choose how to install Meu Portal:'
+    Write-Host 'Both Docker and a local IRIS installation were found. Choose how to install MyOwn Portal:'
     Write-Host '  [1] Docker  - fastest, a brand-new disposable IRIS, only demo data (recommended to just try it out)'
     Write-Host '  [2] Local IRIS - installs onto the IRIS you already have, shows your real users, roles, tasks, and logs'
     $choice = Read-Host 'Type 1 or 2 and press Enter (default: 1)'
@@ -143,7 +143,7 @@ if ($useDocker) {
     Write-Step 'Waiting for the instance to become healthy'
     $healthy = $false
     for ($i = 0; $i -lt 40; $i++) {
-        $status = docker inspect --format '{{.State.Health.Status}}' meu-portal-iris 2>$null
+        $status = docker inspect --format '{{.State.Health.Status}}' myown-portal-iris 2>$null
         if ($status -match 'healthy') { $healthy = $true; break }
         Start-Sleep -Seconds 5
         Write-Host '.' -NoNewline
@@ -157,14 +157,14 @@ if ($useDocker) {
 
     $demoPassword = 'ChangeMe2026!'
     if (Test-Path -LiteralPath '.env') {
-        $envLine = Get-Content -LiteralPath '.env' | Where-Object { $_ -match '^\s*MEUPORTAL_DEMO_PASSWORD\s*=' }
+        $envLine = Get-Content -LiteralPath '.env' | Where-Object { $_ -match '^\s*MYOWN_DEMO_PASSWORD\s*=' }
         if ($envLine) { $demoPassword = ($envLine -split '=', 2)[1].Trim() }
     }
 
-    Start-Process 'http://localhost:52774/meuportal/index.html'
+    Start-Process 'http://localhost:52774/myown/index.html'
 
     Write-Host ''
-    Write-Ok 'Done! Meu Portal should now be open in your browser.'
+    Write-Ok 'Done! MyOwn Portal should now be open in your browser.'
     Write-Host "Sign in with username _SYSTEM and password $demoPassword"
     Write-Host 'To stop it later: docker compose down (add -v to also delete the demo data).'
     Read-Host 'Press Enter to close this window'
@@ -185,10 +185,10 @@ $httpdConfig = Join-Path $IrisInstallDir 'httpd\conf\httpd-local.conf'
 $sourceDir = Join-Path $projectRoot 'src\objectscript'
 $frontendDir = Join-Path $projectRoot 'frontend'
 $distDir = Join-Path $frontendDir 'dist'
-$targetDir = Join-Path $IrisInstallDir 'CSP\meuportal'
-$configTemplate = Join-Path $projectRoot 'deploy\httpd-meuportal.conf'
-$configStart = '# BEGIN MEU PORTAL'
-$configEnd = '# END MEU PORTAL'
+$targetDir = Join-Path $IrisInstallDir 'CSP\myown'
+$configTemplate = Join-Path $projectRoot 'deploy\httpd-myown.conf'
+$configStart = '# BEGIN MYOWN PORTAL'
+$configEnd = '# END MYOWN PORTAL'
 
 # Check for administrator rights - needed to restart the private web server.
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -197,7 +197,7 @@ if (-not $isAdmin) {
 }
 
 Write-Step 'Choosing the IRIS namespace'
-Write-Host "By default, Meu Portal installs into its own namespace (keeps its classes, security roles and tables separate from anything else on this instance)."
+Write-Host "By default, MyOwn Portal installs into its own namespace (keeps its classes, security roles and tables separate from anything else on this instance)."
 $namespaceChoice = Read-Host "Type the namespace to install into, or press Enter for the default ('$Namespace')"
 if ($namespaceChoice) { $Namespace = $namespaceChoice.Trim() }
 
@@ -281,12 +281,18 @@ if (Test-Path -LiteralPath $targetAssets) { Remove-Item -LiteralPath $targetAsse
 New-Item -ItemType Directory -Path $targetAssets -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $distDir 'index.html') -Destination $targetDir -Force
 Copy-Item -Path (Join-Path $distDir 'assets\*') -Destination $targetAssets -Force
+# Vite also places public/ assets (logos, favicon) directly at the root of dist/,
+# alongside index.html rather than inside assets/ - copy those too, or the
+# page ends up with broken images.
+Get-ChildItem -LiteralPath $distDir -File | Where-Object { $_.Name -ne 'index.html' } | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $targetDir -Force
+}
 
 if (-not (Test-Path -LiteralPath $httpdConfig)) {
     Fail "IRIS private web server configuration was not found: $httpdConfig"
 }
 $currentConfig = Get-Content -LiteralPath $httpdConfig -Raw
-if (($currentConfig -notmatch [regex]::Escape($configStart)) -and ($currentConfig -notmatch '<Location\s+/meuportal/>')) {
+if (($currentConfig -notmatch [regex]::Escape($configStart)) -and ($currentConfig -notmatch '<Location\s+/myown/>')) {
     $portalConfig = Get-Content -LiteralPath $configTemplate -Raw
     Add-Content -LiteralPath $httpdConfig -Value "`r`n$configStart`r`n$portalConfig`r`n$configEnd`r`n"
 }
@@ -388,18 +394,18 @@ try {
 # exactly like the original, proven terminal-based install script did) - no
 # further HTTP file transfer involved for the rest of the backend.
 Write-Host 'Enviando o instalador para o IRIS...'
-$installerRelativePath = Join-Path 'MeuPortal' 'Installer.cls'
+$installerRelativePath = Join-Path 'MyOwn' 'Installer.cls'
 $installerFullPath = Join-Path $sourceDir $installerRelativePath
 $installerContent = Get-Content -LiteralPath $installerFullPath -Raw
 $installerLines = @($installerContent -split "`r`n|`r|`n")
 $installerPutBody = @{ enc = $false; content = $installerLines } | ConvertTo-Json -Depth 5 -Compress
 try {
-    Invoke-Atelier -Method 'PUT' -Path "/v1/$Namespace/doc/MeuPortal.Installer.cls?ignoreConflict=1" -Body $installerPutBody -ContentType 'application/json' | Out-Null
+    Invoke-Atelier -Method 'PUT' -Path "/v1/$Namespace/doc/MyOwn.Installer.cls?ignoreConflict=1" -Body $installerPutBody -ContentType 'application/json' | Out-Null
 } catch {
     Fail "Falha ao enviar o instalador para o IRIS. Detalhe: $($_.Exception.Message)"
 }
 try {
-    $compileResult = Invoke-Atelier -Method 'POST' -Path "/v1/$Namespace/action/compile?flags=ck" -Body '["MeuPortal.Installer.cls"]' -ContentType 'application/json'
+    $compileResult = Invoke-Atelier -Method 'POST' -Path "/v1/$Namespace/action/compile?flags=ck" -Body '["MyOwn.Installer.cls"]' -ContentType 'application/json'
 } catch {
     Fail "Falha ao compilar o instalador. Detalhe: $($_.Exception.Message)"
 }
@@ -410,7 +416,7 @@ Write-Ok 'Instalador enviado.'
 
 Write-Host 'Carregando o restante do backend direto do disco e executando o instalador...'
 try {
-    $loadQueryBody = @{ query = 'SELECT MeuPortal.MeuPortalLoadAndSetup(?) AS Result'; parameters = @($sourceDir) } | ConvertTo-Json
+    $loadQueryBody = @{ query = 'SELECT MyOwn.MyOwnLoadAndSetup(?) AS Result'; parameters = @($sourceDir) } | ConvertTo-Json
     $loadResult = Invoke-Atelier -Method 'POST' -Path "/v1/$Namespace/action/query" -Body $loadQueryBody -ContentType 'application/json'
 } catch {
     Fail "Falha ao carregar/instalar o backend. Detalhe: $($_.Exception.Message)"
@@ -427,10 +433,10 @@ if ($loadStatusText -and $loadStatusText -ne 'OK') {
 }
 Write-Ok 'Backend instalado.'
 
-Start-Process 'http://localhost:52773/meuportal/index.html'
+Start-Process 'http://localhost:52773/myown/index.html'
 
 Write-Host ''
-Write-Ok 'Done! Meu Portal should now be open in your browser.'
-Write-Host 'Sign in with _SYSTEM, or grant your own account the MeuPortalAdministrator role first (see "Signing in" in docs/REFERENCE.md).'
+Write-Ok 'Done! MyOwn Portal should now be open in your browser.'
+Write-Host 'Sign in with _SYSTEM, or grant your own account the MyOwnAdministrator role first (see "Signing in" in docs/REFERENCE.md).'
 Read-Host 'Press Enter to close this window'
 exit 0

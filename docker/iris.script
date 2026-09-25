@@ -2,6 +2,6 @@ zn "%SYS"
 do $System.OBJ.Load("/tmp/zpm.xml", "ck")
 zpm "enable -map -globally"
 
-zn "MEUPORTAL"
+zn "MYOWN"
 zpm "load /home/irisowner/dev -v":1:1
 halt

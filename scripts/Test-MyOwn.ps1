@@ -28,12 +28,12 @@ function Get-StatusCode {
     }
 }
 
-$portalUrl = "$($BaseUrl.TrimEnd('/'))/meuportal/index.html"
+$portalUrl = "$($BaseUrl.TrimEnd('/'))/myown/index.html"
 $portal = Invoke-WebRequest -UseBasicParsing -Uri $portalUrl -MaximumRedirection 5
 Test-Condition ($portal.StatusCode -eq 200) 'Production portal returns HTTP 200.'
 Test-Condition ($portal.Content -match '<div id="root"></div>') 'Production HTML contains the React root element.'
 
-$assetMatches = [regex]::Matches($portal.Content, '(?:src|href)="(?<path>/meuportal/assets/[^"]+)"')
+$assetMatches = [regex]::Matches($portal.Content, '(?:src|href)="(?<path>/myown/assets/[^"]+)"')
 Test-Condition ($assetMatches.Count -ge 2) 'Production HTML references compiled JavaScript and CSS assets.'
 foreach ($match in $assetMatches) {
     $assetUrl = "$($BaseUrl.TrimEnd('/'))$($match.Groups['path'].Value)"
@@ -41,7 +41,7 @@ foreach ($match in $assetMatches) {
     Test-Condition ($asset.StatusCode -eq 200 -and $asset.RawContentLength -gt 0) "Asset is available: $($match.Groups['path'].Value)"
 }
 
-$healthUrl = "$($BaseUrl.TrimEnd('/'))/meuportal/api/health"
+$healthUrl = "$($BaseUrl.TrimEnd('/'))/myown/api/health"
 $anonymousStatus = Get-StatusCode { Invoke-WebRequest -UseBasicParsing -Uri $healthUrl }
 Test-Condition ($anonymousStatus -in 401, 403) 'REST API rejects anonymous access.'
 
@@ -52,11 +52,11 @@ if ($Credential) {
     $health = Invoke-RestMethod -Uri $healthUrl -Headers $headers
     Test-Condition ($health.data.status -eq 'ok') 'Authenticated health endpoint reports ok.'
 
-    $session = Invoke-RestMethod -Uri "$($BaseUrl.TrimEnd('/'))/meuportal/api/session" -Headers $headers
+    $session = Invoke-RestMethod -Uri "$($BaseUrl.TrimEnd('/'))/myown/api/session" -Headers $headers
     Test-Condition ([bool]$session.data.authenticated) 'Authenticated session is recognized by IRIS.'
-    Test-Condition ($session.data.accessLevel -in 'Viewer', 'Administrator') 'Authenticated user has a Meu Portal access role.'
+    Test-Condition ($session.data.accessLevel -in 'Viewer', 'Administrator') 'Authenticated user has a MyOwn Portal access role.'
 
-    $report = Invoke-RestMethod -Uri "$($BaseUrl.TrimEnd('/'))/meuportal/api/system/health-report" -Headers $headers
+    $report = Invoke-RestMethod -Uri "$($BaseUrl.TrimEnd('/'))/myown/api/system/health-report" -Headers $headers
     Test-Condition ($report.data.score -ge 0 -and $report.data.score -le 100) 'Embedded Python returns a valid health score.'
     Test-Condition ($report.data.engine -eq 'InterSystems IRIS Embedded Python') 'Health report identifies the Embedded Python engine.'
     Test-Condition (-not [string]::IsNullOrWhiteSpace($report.data.vectorMatch.code)) 'IRIS Vector Search returns a matching health pattern.'
@@ -67,4 +67,4 @@ if ($failures.Count -gt 0) {
     throw "$($failures.Count) smoke test(s) failed."
 }
 
-Write-Host 'All Meu Portal smoke tests passed.' -ForegroundColor Green
+Write-Host 'All MyOwn Portal smoke tests passed.' -ForegroundColor Green

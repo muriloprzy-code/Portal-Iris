@@ -29,11 +29,11 @@ $checks = [ordered]@{
     'Community IRIS image' = $dockerfile -match 'intersystems/iris-community'
     'CPF initialization' = $dockerfile -match 'ISC_CPF_MERGE_FILE'
     'IPM bootstrap' = $dockerfile -match '/tmp/zpm\.xml'
-    'MEUPORTAL namespace' = $merge -match 'CreateNamespace:Name=MEUPORTAL'
+    'MYOWN namespace' = $merge -match 'CreateNamespace:Name=MYOWN'
     'IPM package load' = $init -match 'zpm "load /home/irisowner/dev -v"'
-    'Administrative login initialization' = $init -match 'UnExpireUserPasswords\("_SYSTEM"\)'
+    'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($compose -match '--password-file')
     'Web port mapping' = $compose -match '52774.*:52773'
-    'Durable IRIS data' = ($compose -match 'ISC_DATA_DIRECTORY: /durable/iris') -and ($compose -match 'meu-portal-data:/durable')
+    'Durable IRIS data' = ($compose -match 'ISC_DATA_DIRECTORY: /durable/iris') -and ($compose -match 'myown-portal-data:/durable')
     'Static web application' = $null -ne $manifest.Export.Document.Module.WebApplication
 }
 

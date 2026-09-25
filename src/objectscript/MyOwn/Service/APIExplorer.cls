@@ -1,4 +1,4 @@
-Class MeuPortal.Service.APIExplorer Extends %RegisteredObject
+Class MyOwn.Service.APIExplorer Extends %RegisteredObject
 {
 
 Parameter MaximumBodyLength = 32768;
@@ -24,7 +24,7 @@ ClassMethod Execute(method As %String, path As %String, headers As %DynamicObjec
         Set request.WriteTimeout = 5
         Set request.FollowRedirect = 0
         Set request.AcceptGzip = 0
-        Set request.UserAgent = "MeuPortal-APIExplorer/1.0"
+        Set request.UserAgent = "MyOwn-APIExplorer/1.0"
 
         If authorization '= "" Do request.SetHeader("Authorization", authorization)
         Set tSC = ..ApplyHeaders(request, headers)
@@ -72,10 +72,10 @@ ClassMethod ValidateRequest(method As %String, path As %String, body As %String)
     If (lower [ "://") || (path [ "\") || (lower [ "%5c") || (lower [ "%2e") || (path [ "#") Quit $$$ERROR($$$GeneralError, "The request path contains a prohibited value.")
 
     Set allowed = 0
-    If (lower = "/meuportal/api") || ($Extract(lower, 1, 15) = "/meuportal/api/") Set allowed = 1
+    If (lower = "/myown/api") || ($Extract(lower, 1, $Length("/myown/api/")) = "/myown/api/") Set allowed = 1
     If $Extract(lower, 1, 5) = "/api/" Set allowed = 1
-    If 'allowed Quit $$$ERROR($$$GeneralError, "Only local Meu Portal and IRIS API paths are allowed.")
-    If $Piece(lower, "?", 1) = "/meuportal/api/apis/test" Quit $$$ERROR($$$GeneralError, "The explorer cannot call itself.")
+    If 'allowed Quit $$$ERROR($$$GeneralError, "Only local MyOwn Portal and IRIS API paths are allowed.")
+    If $Piece(lower, "?", 1) = "/myown/api/apis/test" Quit $$$ERROR($$$GeneralError, "The explorer cannot call itself.")
     Quit $$$OK
 }
 

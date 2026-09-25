@@ -40,8 +40,8 @@ export default function App() {
       setAccessLevel('None')
     }
 
-    window.addEventListener('meuportal:unauthorized', handleUnauthorized)
-    return () => window.removeEventListener('meuportal:unauthorized', handleUnauthorized)
+    window.addEventListener('myown:unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('myown:unauthorized', handleUnauthorized)
   }, [])
 
   useEffect(() => {
@@ -98,7 +98,7 @@ export default function App() {
     return (
       <main className="login-page">
         <section className="login-panel">
-          <div className="brand login-brand"><span className="brand-mark">M</span><span>Meu Portal</span></div>
+          <div className="brand login-brand"><img className="brand-mark" src={`${import.meta.env.BASE_URL}logo-mark.png`} alt="MyOwn Portal" /><span>MyOwn Portal</span></div>
           <p className="eyebrow">INTERSYSTEMS IRIS MANAGEMENT</p>
           <h1>Welcome back</h1>
           <p className="login-copy">Sign in with your InterSystems IRIS account to access the management portal.</p>
@@ -112,7 +112,7 @@ export default function App() {
           </form>
           <p className="security-note">Your credentials are kept only in this browser tab and are never stored.</p>
         </section>
-        <section className="login-visual" aria-hidden="true"><div className="login-glow"><span /><span /><span /></div><div className="login-caption"><strong>One portal.</strong><br />Complete control of your IRIS environment.</div></section>
+        <section className="login-visual" aria-hidden="true"><img className="login-logo" src={`${import.meta.env.BASE_URL}logo-large.png`} alt="" /><div className="login-caption"><strong>One portal.</strong><br />Complete control of your IRIS environment.</div></section>
       </main>
     )
   }
@@ -120,7 +120,7 @@ export default function App() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">M</span><span>Meu Portal</span></div>
+        <div className="brand"><img className="brand-mark" src={`${import.meta.env.BASE_URL}logo-mark.png`} alt="MyOwn Portal" /><span>MyOwn Portal</span></div>
         <nav aria-label="Main navigation">
           {visibleSections.map((item) => (
             <button className={activeSection === item ? 'active' : ''} onClick={() => setActiveSection(item)} key={item} type="button">
@@ -140,7 +140,7 @@ export default function App() {
         {activeSection === 'Overview' && <>
         <section className="hero">
           <div><p className="eyebrow">OPERATIONS CENTER</p><h2>Hello, your environment is<br /><em>ready for you.</em></h2><p>Monitor instance health and access your administrative tools from one place.</p></div>
-          <div className="orb" aria-hidden="true"><span /><span /><span /></div>
+          <img className="hero-logo" src={`${import.meta.env.BASE_URL}logo-large.png`} alt="" aria-hidden="true" />
         </section>
 
         <section className="metrics" aria-label="System metrics">

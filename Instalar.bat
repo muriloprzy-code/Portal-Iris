@@ -1,5 +1,5 @@
 @echo off
-:: Meu Portal - one-click installer.
+:: MyOwn Portal - one-click installer.
 :: Just double-click this file. It asks Windows for permission (needed to
 :: restart the IRIS private web server on the local-install path), then does
 :: everything else automatically: Docker or local IRIS, whichever you have.

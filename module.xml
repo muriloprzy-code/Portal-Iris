@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Export generator="IRIS" version="26">
-  <Document name="meu-portal.ZPM">
+  <Document name="myown-portal.ZPM">
     <Module>
-      <Name>meu-portal</Name>
+      <Name>myown-portal</Name>
       <Version>1.0.0</Version>
       <Description>Compact management portal for InterSystems IRIS and IRIS for Health.</Description>
       <Author>
-        <Organization>Meu Portal</Organization>
+        <Organization>MyOwn Portal</Organization>
         <CopyrightDate>2026</CopyrightDate>
         <License>MIT</License>
       </Author>
@@ -14,21 +14,21 @@
       <SystemRequirements Version=">=2024.1" />
       <SourcesRoot>src/objectscript</SourcesRoot>
 
-      <Resource Name="MeuPortal.PKG" />
-      <FileCopy Name="web/" Target="${cspDir}meuportal/" Overlay="1" />
+      <Resource Name="MyOwn.PKG" />
+      <FileCopy Name="web/" Target="${cspDir}myown/" Overlay="1" />
       <WebApplication
-        Name="/meuportal"
+        Name="/myown"
         NameSpace="${ns}"
-        Path="${cspDir}meuportal"
+        Path="${cspDir}myown"
         Enabled="1"
         AutheEnabled="64"
         ServeFiles="1"
         Recurse="1"
-        CookiePath="/meuportal"
+        CookiePath="/myown"
       />
-      <Invoke Class="MeuPortal.Installer" Method="Setup" Phase="Configure" When="After" CheckStatus="true" />
+      <Invoke Class="MyOwn.Installer" Method="Setup" Phase="Configure" When="After" CheckStatus="true" />
 
-      <AfterInstallMessage>Meu Portal was installed. Open ${webroot}meuportal/index.html and assign MeuPortalViewer or MeuPortalAdministrator to authorized users.</AfterInstallMessage>
+      <AfterInstallMessage>MyOwn Portal was installed. Open ${webroot}myown/index.html and assign MyOwnViewer or MyOwnAdministrator to authorized users.</AfterInstallMessage>
     </Module>
   </Document>
 </Export>

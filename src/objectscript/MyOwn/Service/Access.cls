@@ -1,8 +1,8 @@
-Class MeuPortal.Service.Access
+Class MyOwn.Service.Access
 {
 
-Parameter ViewResource = "MeuPortal.View";
-Parameter ManageResource = "MeuPortal.Manage";
+Parameter ViewResource = "MyOwn.View";
+Parameter ManageResource = "MyOwn.Manage";
 
 ClassMethod CanView() As %Boolean
 {

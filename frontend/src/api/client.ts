@@ -256,7 +256,7 @@ async function apiRequest<T>(path: string, signal?: AbortSignal, init: RequestIn
   if (authorizationHeader) headers.Authorization = authorizationHeader
   if (init.body) headers['Content-Type'] = 'application/json'
 
-  const response = await fetch(`/meuportal/api${path}`, {
+  const response = await fetch(`/myown/api${path}`, {
     credentials: 'include',
     ...init,
     headers,
@@ -265,7 +265,7 @@ async function apiRequest<T>(path: string, signal?: AbortSignal, init: RequestIn
 
   if (!response.ok) {
     if (response.status === 401) {
-      window.dispatchEvent(new Event('meuportal:unauthorized'))
+      window.dispatchEvent(new Event('myown:unauthorized'))
       throw new Error('INVALID_CREDENTIALS')
     }
     const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
