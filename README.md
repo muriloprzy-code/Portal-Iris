@@ -8,7 +8,7 @@ Read the write-up on the InterSystems Developer Community: [English](https://com
 
 ## Quick Start
 
-MyOwn Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. Full explanation in [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#how-it-works-in-plain-terms).
+MyOwn Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. See [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#how-it-works-in-plain-terms) for the full explanation.
 
 ### The easy way: one double-click
 
@@ -55,7 +55,7 @@ Open `http://localhost:52774/myown/index.html` and sign in with `_SYSTEM` / `Cha
 
 </details>
 
-Everything else — architecture, every install detail, the API reference, and troubleshooting — is in **[docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md)**.
+Everything else — architecture, every install detail, the API reference, and troubleshooting — is in **[docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md)** in this repository.
 
 ## Features
 
