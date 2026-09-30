@@ -5,9 +5,10 @@ import APIExplorer from './APIExplorer'
 type Filter = 'All' | 'REST' | 'Enabled'
 type PageView = 'Inventory' | 'API Explorer'
 
-function isEnabled(value: string) {
-  const normalized = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  return value === '1' || normalized === 'true' || normalized === 'sim' || normalized.includes('yes') || normalized.includes('enabled') || normalized.includes('ativado') || normalized.includes('habilitado') || normalized === 'ativo'
+function isEnabled(value: unknown) {
+  const text = String(value ?? '')
+  const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  return text === '1' || normalized === 'true' || normalized === 'sim' || normalized.includes('yes') || normalized.includes('enabled') || normalized.includes('ativado') || normalized.includes('habilitado') || normalized === 'ativo'
 }
 
 function isRest(application: WebApplication) {

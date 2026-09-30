@@ -26,7 +26,10 @@ ClassMethod Execute(method As %String, path As %String, headers As %DynamicObjec
         Set request.AcceptGzip = 0
         Set request.UserAgent = "MyOwn-APIExplorer/1.0"
 
-        If authorization '= "" Do request.SetHeader("Authorization", authorization)
+        If authorization '= "" {
+            Do request.SetHeader("Authorization", authorization)
+            Do request.SetHeader("X-MyOwn-SysAdmin-Authorization", authorization)
+        }
         Set tSC = ..ApplyHeaders(request, headers)
         $$$ThrowOnError(tSC)
 
@@ -101,7 +104,7 @@ ClassMethod ApplyHeaders(request As %Net.HttpRequest, headers As %DynamicObject)
             Set tSC = $$$ERROR($$$GeneralError, "A request header is too long.")
             Quit
         }
-        If $ListFind($ListBuild("authorization", "cookie", "host", "content-length", "connection", "proxy-authorization", "transfer-encoding"), lower) {
+        If $ListFind($ListBuild("authorization", "x-myown-sysadmin-authorization", "cookie", "host", "content-length", "connection", "proxy-authorization", "transfer-encoding"), lower) {
             Set tSC = $$$ERROR($$$GeneralError, "A protected request header was provided.")
             Quit
         }

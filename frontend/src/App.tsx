@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from 'react'
-import { clearCredentials, getHealth, getHealthReport, getProcesses, getSession, getSystemSummary, setCredentials, type HealthReportResponse, type HealthResponse, type ProcessItem, type SystemSummaryResponse } from './api/client'
+import { clearCredentials, getHealth, getHealthReport, getProcesses, getSession, getSysAdminStatus, getSystemSummary, setCredentials, type HealthReportResponse, type HealthResponse, type IntegrationSource, type ProcessItem, type SystemSummaryResponse } from './api/client'
 import PermissionsPage from './PermissionsPage'
 import ApplicationsPage from './ApplicationsPage'
 import TasksPage from './TasksPage'
@@ -15,6 +15,7 @@ export default function App() {
   const [summary, setSummary] = useState<SystemSummaryResponse | null>(null)
   const [healthReport, setHealthReport] = useState<HealthReportResponse | null>(null)
   const [processes, setProcesses] = useState<ProcessItem[]>([])
+  const [integrationSource, setIntegrationSource] = useState<IntegrationSource | null>(null)
   const [processError, setProcessError] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -24,7 +25,7 @@ export default function App() {
   const [activeSection, setActiveSection] = useState('Overview')
   const [accessLevel, setAccessLevel] = useState<'Administrator' | 'Viewer' | 'None'>('None')
   const canManage = accessLevel === 'Administrator'
-  const visibleSections = canManage ? sections : sections.filter((section) => section !== 'Permissions' && section !== 'Security')
+  const visibleSections = canManage ? sections : sections.filter((section) => section === 'Overview' || section === 'Logs')
 
   useEffect(() => {
     const handleUnauthorized = () => {
@@ -34,6 +35,7 @@ export default function App() {
       setSummary(null)
       setHealthReport(null)
       setProcesses([])
+      setIntegrationSource(null)
       setProcessError('')
       setPassword('')
       setError('Your session has expired. Please sign in again.')
@@ -49,11 +51,16 @@ export default function App() {
     const refresh = () => {
       getSystemSummary().then(setSummary).catch(() => undefined)
       getHealthReport().then(setHealthReport).catch(() => undefined)
-      getProcesses().then((response) => { setProcesses(response.data); setProcessError('') }).catch((reason: Error) => setProcessError(reason.message))
+      if (canManage) {
+        getProcesses().then((response) => { setProcesses(response.data); setIntegrationSource(response.meta.source); setProcessError('') }).catch((reason: Error) => setProcessError(reason.message))
+      } else {
+        setProcesses([])
+        setProcessError('')
+      }
     }
     const interval = window.setInterval(refresh, 15_000)
     return () => window.clearInterval(interval)
-  }, [currentUser])
+  }, [canManage, currentUser])
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -65,11 +72,19 @@ export default function App() {
       const [session, healthResult] = await Promise.all([getSession(), getHealth()])
       setCurrentUser(session.data.username || username.trim())
       setAccessLevel(session.data.accessLevel)
+      setActiveSection('Overview')
       setHealth(healthResult)
       setPassword('')
       getSystemSummary().then(setSummary).catch(() => setSummary(null))
       getHealthReport().then(setHealthReport).catch(() => setHealthReport(null))
-      getProcesses().then((response) => { setProcesses(response.data); setProcessError('') }).catch((reason: Error) => { setProcesses([]); setProcessError(reason.message) })
+      if (session.data.accessLevel === 'Administrator') {
+        getSysAdminStatus().then((response) => setIntegrationSource(response.data.mode)).catch(() => setIntegrationSource(null))
+        getProcesses().then((response) => { setProcesses(response.data); setIntegrationSource(response.meta.source); setProcessError('') }).catch((reason: Error) => { setProcesses([]); setProcessError(reason.message) })
+      } else {
+        setIntegrationSource(null)
+        setProcesses([])
+        setProcessError('')
+      }
     } catch (reason) {
       clearCredentials()
       setError(reason instanceof Error && reason.message === 'INVALID_CREDENTIALS'
@@ -87,6 +102,7 @@ export default function App() {
     setSummary(null)
     setHealthReport(null)
     setProcesses([])
+    setIntegrationSource(null)
     setProcessError('')
     setUsername('')
     setPassword('')
@@ -112,7 +128,7 @@ export default function App() {
           </form>
           <p className="security-note">Your credentials are kept only in this browser tab and are never stored.</p>
         </section>
-        <section className="login-visual" aria-hidden="true"><img className="login-logo" src={`${import.meta.env.BASE_URL}logo-large.png`} alt="" /><div className="login-caption"><strong>One portal.</strong><br />Complete control of your IRIS environment.</div></section>
+      <section className="login-visual" aria-hidden="true"><img className="login-logo" src={`${import.meta.env.BASE_URL}logo-large.png`} alt="" /><div className="login-caption"><strong>One portal.</strong><br />Manage and monitor your IRIS environment.</div></section>
       </main>
     )
   }
@@ -134,7 +150,12 @@ export default function App() {
       <main>
         <header>
           <div><p className="eyebrow">INTERSYSTEMS IRIS</p><h1>{activeSection}</h1></div>
-          <div className={`connection ${health ? 'online' : ''}`}><i />{health ? 'Instance online' : error || 'Connecting…'}</div>
+          <div className="header-statuses">
+            {canManage
+              ? <div className={`integration-badge ${integrationSource === 'sysadmin-v2' ? 'official' : ''}`}><i />{integrationSource === 'sysadmin-v2' ? 'SysAdmin API v2' : 'Checking SysAdmin API v2…'}</div>
+              : <div className="integration-badge viewer"><i />Viewer access</div>}
+            <div className={`connection ${health ? 'online' : ''}`}><i />{health ? 'Instance online' : error || 'Connecting…'}</div>
+          </div>
         </header>
 
         {activeSection === 'Overview' && <>
@@ -182,8 +203,8 @@ export default function App() {
           </div>
         </section>
 
-        <section className="process-panel">
-          <div className="section-title"><div><p className="eyebrow">LIVE ACTIVITY</p><h3>IRIS processes</h3></div><span className="table-count">{processes.length} shown</span></div>
+        {canManage && <section className="process-panel">
+          <div className="section-title"><div><p className="eyebrow">LIVE ACTIVITY</p><h3>IRIS processes</h3></div><span className="table-count">{processes.length} shown · {integrationSource === 'sysadmin-v2' ? 'SysAdmin API v2' : 'Integration unavailable'}</span></div>
           <div className="table-wrap">
             <table>
               <thead><tr><th>PID</th><th>User</th><th>Namespace</th><th>Routine</th><th>State</th><th>CPU time</th><th>Started (UTC)</th></tr></thead>
@@ -203,7 +224,7 @@ export default function App() {
               </tbody>
             </table>
           </div>
-        </section>
+        </section>}
         </>}
 
         {activeSection === 'Permissions' && <PermissionsPage />}
@@ -211,7 +232,6 @@ export default function App() {
         {activeSection === 'Security' && <SecurityPage />}
         {activeSection === 'Tasks' && <TasksPage />}
         {activeSection === 'Logs' && <LogsPage />}
-        {!['Overview', 'Permissions', 'Applications & APIs', 'Security', 'Tasks', 'Logs'].includes(activeSection) && <section className="coming-soon"><span>{icons[sections.indexOf(activeSection)]}</span><h2>{activeSection}</h2><p>This module is next in the development roadmap.</p></section>}
       </main>
     </div>
   )

@@ -51,7 +51,7 @@ Nothing else needs to be pre-installed for either path.
    - Username: `_SYSTEM`
    - Password: the value of `MYOWN_DEMO_PASSWORD` (default `ChangeMe2026!`).
 
-   Changing this password is **optional for a quick local test** — `compose.yaml` already falls back to `ChangeMe2026!` on its own (`${MYOWN_DEMO_PASSWORD:-ChangeMe2026!}`), so nothing needs to be configured just to try the app on your own machine. It is **recommended for anything beyond that** — for example if the container will stay running, be reachable from other machines, or be shown to someone else. To set a different password, copy `.env.example` to `.env`, change `MYOWN_DEMO_PASSWORD` there, and run `docker compose up --build -d` again. That value only ever exists in the local `.env` file (which is not committed to the repository); it is never hardcoded in the project's source code, so nobody's real password ends up in the code either way.
+   `ChangeMe2026!` is intentionally stored in the repository as a well-known convenience credential for the local demonstration container. It is suitable only for a quick test on the same computer. Before leaving the container running, presenting it on a shared network, or allowing access from another computer, copy `.env.example` to `.env`, replace `MYOWN_DEMO_PASSWORD`, and run `docker compose up --build -d` again. The `.env` file is ignored by Git, but the demonstration default remains visible in the repository by design.
 6. To stop it: `docker compose down`. To also delete all data created inside the container and start fully fresh next time: `docker compose down -v`.
 
 Because this container is a brand-new IRIS, it starts with no real users, roles, or history beyond what the installer itself creates for the demo. That is expected — this path is for evaluating the interface quickly, not for day-to-day use. For that, use Path B.
@@ -99,7 +99,7 @@ Anyone can sign in to MyOwn Portal with **any account that already exists in tha
 
 **Any other account — including someone's own everyday work account — needs to be granted a MyOwn Portal role once.** `Installer.Setup()` created two roles for exactly this purpose:
 
-- `MyOwnViewer` — read-only access to MyOwn Portal (can look, cannot change anything).
+- `MyOwnViewer` — limited read-only monitoring access (Overview and Logs).
 - `MyOwnAdministrator` — full access, including the sensitive pages (Permissions, Security, Tasks) and administrative actions.
 
 To grant one of these to an account:
@@ -109,7 +109,7 @@ To grant one of these to an account:
 3. Click the username that should be able to use MyOwn Portal (or create a new user first, the normal IRIS way, if needed).
 4. Open the **Roles** tab for that user.
 5. Add `MyOwnViewer` or `MyOwnAdministrator` from the list of available roles, and save.
-6. That account can now sign in to MyOwn Portal directly at `http://localhost:52773/myown/index.html`, with its own existing password — nothing else changes about that account, and it gains no extra access anywhere outside `/myown/api`.
+6. That account can now sign in to MyOwn Portal directly at `http://localhost:52773/myown/index.html`, with its own existing password. `MyOwnViewer` adds no administrative privileges; `MyOwnAdministrator` is intended only for trusted administrators because it includes the native privileges required by SysAdmin API v2.
 
 The same thing can be done from a terminal instead, for example:
 
@@ -119,7 +119,7 @@ Do user.Roles.Insert("MyOwnAdministrator")
 Do user.%Save()
 ```
 
-A note on why this is a separate, explicit step rather than automatic: MyOwn Portal only grants extra, elevated access (read or write to the IRIS system database) to a signed-in account for the duration of a MyOwn Portal request, and only to accounts that were deliberately given one of the two roles above. Nobody's account gains any new capability just by MyOwn Portal being installed — someone with security rights has to choose to grant it, the same way any other IRIS application permission is granted.
+A note on why this is a separate, explicit step rather than automatic: nobody gains access merely because MyOwn Portal was installed. An administrator must deliberately assign one of the portal roles. `MyOwnAdministrator` includes native `%Admin_*` privileges required by the official API and must therefore be granted only to trusted IRIS administrators.
 
 ### Installing through IPM (alternative to Step 2)
 
@@ -150,13 +150,13 @@ This imports and compiles all `MyOwn.*` classes, copies the compiled React appli
 
 ## A tour of the app
 
-Once signed in, everything lives behind a single sidebar with up to six tabs. A `MyOwnViewer` account sees four of them (Overview, Applications & APIs, Tasks, Logs); a `MyOwnAdministrator` account (or `_SYSTEM`) sees all six, including the two sensitive ones (Permissions, Security).
+Once signed in, everything lives behind a single sidebar with up to six tabs. A `MyOwnViewer` account sees Overview and Logs. A `MyOwnAdministrator` account (or `_SYSTEM`) sees all six tabs and the process inventory. This separation prevents read-only accounts from invoking SysAdmin endpoints guarded by native `%Admin_*` privileges.
 
-- **Overview** — the landing page. Four summary cards (CPU, memory, disk usage, running processes), an instance-information panel (name, version, uptime, status), a Quick Access shortcut panel to the other tabs, an automatic health-score card with a plain-language diagnosis and recommendation (the Embedded Python + Vector Search feature described below), and a live table of running IRIS processes that refreshes every 15 seconds.
+- **Overview** — the landing page. Four summary cards (CPU, memory, disk usage, running processes), instance information, shortcuts, and the Embedded Python + Vector Search health report. Administrators also see a live SysAdmin API process table that refreshes every 15 seconds.
 - **Permissions** *(administrators only)* — Users, Roles, and Resources, each as a searchable table. Clicking a user or role opens its directly assigned and effective roles and permissions. An administrator can assign or remove a role from a user, with a confirmation step before the change is applied.
-- **Applications & APIs** — every IRIS web application and REST service, filterable and searchable, with status, namespace, type, and authentication method. Clicking a row shows its full configuration, and an administrator can enable or disable it. Administrators also get a bounded REST API Explorer to send test requests to approved endpoints and browse the OpenAPI specification.
+- **Applications & APIs** *(administrators only)* — every IRIS web application and REST service, filterable and searchable, with status, namespace, type, and authentication method. Clicking a row shows its full configuration, and an administrator can enable or disable it. The page also provides a bounded REST API Explorer for approved local endpoints.
 - **Security** *(administrators only)* — a read-only inventory of certificates (with expiration warnings), OAuth configurations, Secure Wallet items, and credential references. Actual secret values, passwords, tokens, and private keys are never exposed — only metadata.
-- **Tasks** — the native IRIS Task Manager's scheduled tasks, searchable and filterable, with status, next run time, and last result. An administrator can run a task immediately, or suspend and resume it, each with a confirmation step.
+- **Tasks** *(administrators only)* — the native IRIS Task Manager's scheduled tasks, searchable and filterable, with status, next run time, and last result. An administrator can run a task immediately, or suspend and resume it, each with a confirmation step.
 - **Logs** — a sanitized, paginated view of the IRIS system log (`messages.log`), searchable and filterable by severity, source, and time range, with a note that potentially sensitive log content is withheld by the backend before it ever reaches the browser.
 
 ## Architecture
@@ -226,6 +226,16 @@ Most administration data lives in the `%SYS` namespace, which ordinary users can
 
 These roles are never assigned to the user account itself, so they do not apply in a terminal or in any other application — they only take effect for the duration of a MyOwn Portal request. Users that already hold `%All` (for example `_SYSTEM`) do not need this mapping. Authentication is always mandatory; users without `MyOwn.View` receive HTTP 403.
 
+## SysAdmin API integration
+
+MyOwn Portal checks the official `/api/admin/info` capability endpoint on every authenticated integration path. If the instance reports SysAdmin API v2, the portal uses the documented `/api/admin/v2/...` endpoints for processes, users, roles, resources, tasks, web applications, X.509 credentials, OAuth configuration metadata, and Secure Wallet metadata. The incoming Basic authorization header is forwarded only to the local IRIS private web server; it is never stored or logged.
+
+The portal requires API version 2. If `/api/admin/info` reports a lower version, the portal returns a clear compatibility error from `/myown/api/sysadmin/status` and does not substitute a legacy implementation. Inventory responses identify the official source with `meta.source: sysadmin-v2`.
+
+SysAdmin API endpoints enforce native `%Admin_*` privileges in addition to MyOwn Portal access. `MyOwnAdministrator` therefore includes the privileges used by the implemented integration: `%Admin_Operate`, `%Admin_Secure`, `%Admin_Task`, `%Admin_Wallet`, `%Admin_OAuth2_Client`, `%Admin_OAuth2_Server`, and `%Admin_OAuth2_Registration`. These native resources expose a single `USE` permission rather than separate read/write permissions, so they are not granted to `MyOwnViewer`. Administrator accounts can use those privileges outside MyOwn Portal as well; grant `MyOwnAdministrator` only to trusted IRIS administrators. The portal still applies its own `MyOwn.Manage` checks and project-scope protections before every supported state-changing operation.
+
+The Logs page remains backed by the sanitized local `messages.log` reader because SysAdmin API v2 does not provide a general system-log endpoint. Interoperability credential references are also supplementary metadata because the specification has no equivalent endpoint for them.
+
 ## Development
 
 ```shell
@@ -262,8 +272,17 @@ This verifies the production HTML, compiled JavaScript and CSS, and anonymous AP
 
 ```powershell
 $credential = Get-Credential
-.\scripts\Test-MyOwn.ps1 -Credential $credential
+.\scripts\Test-MyOwn.ps1 -Credential $credential -ExpectedProduct iris
 ```
+
+On an isolated test or demonstration instance, the controlled mutation suite also verifies role assignment/removal, web-application disable/enable, and task Run/Suspend/Resume through SysAdmin API v2. It creates a disabled temporary user and a temporary `/myown-smoke-test` web application, restores the task's original suspended state, and removes both temporary objects in a `finally` block:
+
+```powershell
+$credential = Get-Credential
+.\scripts\Test-SysAdminMutations.ps1 -BaseUrl http://localhost:52774 -Credential $credential
+```
+
+Use `-ExpectedProduct irisforhealth` when validating an IRIS for Health instance. The same read and controlled-mutation suites are designed to run against both products; use an isolated test instance for the mutation suite.
 
 ## Main API endpoints
 
@@ -296,7 +315,7 @@ The same normalized metrics form a six-dimensional vector. IRIS stores baseline 
 
 ## Design note
 
-MyOwn Portal calls the native IRIS administration classes (`Security.*`, `%SYS.Task`, `%Wallet.*`, `%SYS.X509Credentials`, and the OAuth 2.0 classes) from its own ObjectScript REST layer at `/myown/api`, instead of calling the REST endpoints described in the contest's [sysadmin API specification](https://github.com/intersystems-community/sysadmin-api-specification). The portal adds its own authorization, sanitization, and auditing on top of those classes.
+MyOwn Portal calls the official `/api/admin/v2/...` endpoints from its ObjectScript REST layer and reports `meta.source` as `sysadmin-v2`. Host metrics, `messages.log`, Embedded Python, Vector Search, auditing, and interoperability credential references remain native because the SysAdmin specification has no equivalent general endpoint for those features.
 
 ## Security model
 
@@ -308,14 +327,14 @@ MyOwn Portal calls the native IRIS administration classes (`Security.*`, `%SYS.T
 - Application and task changes are restricted to the project's allowed scope.
 - Administrative changes create native IRIS audit entries.
 - API Explorer destinations, methods, headers, body size, redirects, and response size are bounded.
-- No credential of any kind is hardcoded in the project's source code. The one password MyOwn Portal's own Docker build sets (`MYOWN_DEMO_PASSWORD`) is supplied at build time from a git-ignored `.env` file, defaults to a clearly labeled local-demo value, and only ever applies inside that person's own fresh, isolated container.
+- The repository intentionally includes `ChangeMe2026!` as the well-known password for a fresh local demonstration container. It is not a production secret and must be overridden through the git-ignored `.env` file before the container is exposed beyond the local computer. Credentials entered in the portal itself are never stored by MyOwn Portal.
 - Production deployments should enable HTTPS before accepting credentials over a network.
 
 ## Troubleshooting
 
 - **Portal returns 404:** confirm that the React build exists under `<IRIS installation>/CSP/myown` and that `deploy/httpd-myown.conf` was added to `httpd-local.conf`.
 - **API returns 401:** sign in with a valid IRIS account.
-- **API returns 403:** assign `MyOwnViewer` or `MyOwnAdministrator` to that account (see [Signing in](#signing-in--which-account-to-use)) and, if it was just installed, rerun `MyOwn.Installer.Setup()`.
+- **API returns 403:** assign `MyOwnViewer` for Overview and Logs, or `MyOwnAdministrator` for administrative inventories and actions. If the project was just updated, rerun `MyOwn.Installer.Setup()`.
 - **Pages fail for users that are not administrators of IRIS:** rerun `MyOwn.Installer.Setup()` so that the `MatchRoles` mapping on `/myown/api` is created, then sign in again.
 - **The Security page shows a warning about an inventory:** that category could not be read and its items are missing from the list; the message names the cause (for example, a missing `%Admin_Wallet` privilege).
 - **Frontend shows old files:** rebuild, redeploy, and clear the browser cache.

@@ -14,6 +14,7 @@ XData UrlMap
 <Routes>
   <Route Url="/health" Method="GET" Call="Health" />
   <Route Url="/session" Method="GET" Call="CurrentSession" />
+  <Route Url="/sysadmin/status" Method="GET" Call="SysAdminStatus" />
   <Route Url="/system/summary" Method="GET" Call="SystemSummary" />
   <Route Url="/system/health-report" Method="GET" Call="SystemHealthReport" />
   <Route Url="/system/processes" Method="GET" Call="SystemProcesses" />
@@ -106,15 +107,18 @@ ClassMethod SystemSummary() As %Status
 
 ClassMethod SystemProcesses() As %Status
 {
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MyOwn.Service.System).GetProcesses(.data)
+        Set authorization = ..GetForwardedAuthorization()
+        Set tSC = ##class(MyOwn.Service.System).GetProcesses(authorization, .data, .source)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
         Set payload.meta.timestamp = $ZDateTime($Horolog, 3, 1)
         Set payload.meta.limit = 25
+        Set payload.meta.source = source
         Set %response.ContentType = "application/json; charset=utf-8"
         Write payload.%ToJSON()
     } Catch exception {
@@ -128,6 +132,24 @@ ClassMethod SystemProcesses() As %Status
         Write payload.%ToJSON()
     }
     Quit $$$OK
+}
+
+/// Confirms that this IRIS instance provides the required SysAdmin API v2.
+ClassMethod SysAdminStatus() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).RequireV2(authorization, .info)
+    If $$$ISERR(tSC) Quit ..WriteError(502, "SYSADMIN_API_V2_REQUIRED", "The local IRIS SysAdmin API v2 is unavailable or incompatible.")
+
+    Set data = {}
+    Set data.available = 1
+    Set data.apiVersion = info.%Get("apiVersion")
+    Set data.serverVersion = info.%Get("serverVersion")
+    Set data.product = info.%Get("product")
+    Set data.v2Supported = 1
+    Set data.mode = "sysadmin-v2"
+    Quit ..WriteSuccess(data)
 }
 
 ClassMethod SystemHealthReport() As %Status
@@ -158,28 +180,34 @@ ClassMethod PermissionResources() As %Status
 ClassMethod PermissionUserDetail(user As %String) As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    Set tSC = ##class(MyOwn.Service.Permissions).GetUserDetail(user, .data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Permissions).GetUserDetail(user, authorization, .data, .source)
     If $$$ISERR(tSC) Quit ..WriteError(404, "USER_NOT_FOUND", "The requested user could not be found.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod PermissionUserEffective(user As %String) As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    Set tSC = ##class(MyOwn.Service.Permissions).GetUserDetail(user, .detail)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Permissions).GetUserDetail(user, authorization, .detail, .source)
     If $$$ISERR(tSC) Quit ..WriteError(404, "USER_NOT_FOUND", "The requested user could not be found.")
     Set data = {}
     Set data.user = detail.name
     Set data.roles = detail.effectiveRoles
     Set data.permissions = detail.effectivePermissions
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod PermissionRoleDetail(role As %String) As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    Set tSC = ##class(MyOwn.Service.Permissions).GetRoleDetail(role, .data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Permissions).GetRoleDetail(role, authorization, .data, .source)
     If $$$ISERR(tSC) Quit ..WriteError(404, "ROLE_NOT_FOUND", "The requested role could not be found.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
@@ -198,9 +226,11 @@ ClassMethod AddPermissionUserRole(user As %String) As %Status
     If role = "" Quit ..WriteError(400, "ROLE_REQUIRED", "The role field is required.")
     If role = "%All" Quit ..WriteError(400, "PROTECTED_ROLE", "The %All role cannot be changed through MyOwn Portal.")
 
-    Set tSC = ##class(MyOwn.Service.Permissions).AddUserRole(user, role, .data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Permissions).AddUserRole(user, role, authorization, .data, .source)
     Do ##class(MyOwn.Service.Audit).Record("AssignRole", user _ "/" _ role, $$$ISOK(tSC))
     If $$$ISERR(tSC) Quit ..WriteError(400, "ROLE_ASSIGNMENT_FAILED", "The role could not be assigned to this user.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
@@ -210,22 +240,27 @@ ClassMethod RemovePermissionUserRole(user As %String, role As %String) As %Statu
     If '##class(MyOwn.Service.Permissions).CanManage() Quit ..WriteError(403, "FORBIDDEN", "You do not have permission to manage user roles.")
     If role = "%All" Quit ..WriteError(400, "PROTECTED_ROLE", "The %All role cannot be changed through MyOwn Portal.")
 
-    Set tSC = ##class(MyOwn.Service.Permissions).RemoveUserRole(user, role, .data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Permissions).RemoveUserRole(user, role, authorization, .data, .source)
     Do ##class(MyOwn.Service.Audit).Record("RemoveRole", user _ "/" _ role, $$$ISOK(tSC))
     If $$$ISERR(tSC) Quit ..WriteError(400, "ROLE_REMOVAL_FAILED", "The role could not be removed from this user.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod Applications() As %Status
 {
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MyOwn.Service.Applications).GetApplications(.data)
+        Set authorization = ..GetForwardedAuthorization()
+        Set tSC = ##class(MyOwn.Service.Applications).GetApplications(authorization, .data, .source)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
         Set payload.meta.timestamp = $ZDateTime($Horolog, 3, 1)
+        Set payload.meta.source = source
         Set %response.ContentType = "application/json; charset=utf-8"
         Write payload.%ToJSON()
     } Catch exception {
@@ -243,11 +278,14 @@ ClassMethod Applications() As %Status
 
 ClassMethod ApplicationDetail() As %Status
 {
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set application = $Get(%request.Data("name", 1))
     If application = "" Quit ..WriteError(400, "APPLICATION_REQUIRED", "The application name is required.")
 
-    Set tSC = ##class(MyOwn.Service.Applications).GetApplication(application, .data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Applications).GetApplication(application, authorization, .data, .source)
     If $$$ISERR(tSC) Quit ..WriteError(404, "APPLICATION_NOT_FOUND", "The requested web application could not be found.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
@@ -266,13 +304,15 @@ ClassMethod SetApplicationState() As %Status
     If parseError Quit ..WriteError(400, "INVALID_JSON", "A valid JSON body is required.")
     If application = "" Quit ..WriteError(400, "APPLICATION_REQUIRED", "The application name is required.")
 
-    Set tSC = ##class(MyOwn.Service.Applications).GetApplication(application, .detail)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Applications).GetApplication(application, authorization, .detail, .source)
     If $$$ISERR(tSC) Quit ..WriteError(404, "APPLICATION_NOT_FOUND", "The requested web application could not be found.")
     If 'detail.manageable Quit ..WriteError(400, "PROTECTED_APPLICATION", detail.protectionReason)
 
-    Set tSC = ##class(MyOwn.Service.Applications).SetApplicationEnabled(application, enabled, .data)
+    Set tSC = ##class(MyOwn.Service.Applications).SetApplicationEnabled(application, enabled, authorization, .data, .source)
     Do ##class(MyOwn.Service.Audit).Record($Select(enabled:"EnableApplication", 1:"DisableApplication"), application, $$$ISOK(tSC))
     If $$$ISERR(tSC) Quit ..WriteError(400, "APPLICATION_UPDATE_FAILED", "The web application state could not be changed.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
@@ -294,7 +334,7 @@ ClassMethod TestAPI() As %Status
     Set normalizedMethod = $ZConvert(method, "U")
     If (normalizedMethod '= "GET") && (normalizedMethod '= "HEAD") && ('confirmed) Quit ..WriteError(400, "CONFIRMATION_REQUIRED", "State-changing API tests require confirmation.")
 
-    Set authorization = $Get(%request.CgiEnvs("HTTP_AUTHORIZATION"))
+    Set authorization = ..GetForwardedAuthorization()
     ; SERVER_PORT reflects the port the browser used (e.g. Docker's published
     ; 52774), not the port IRIS's private web server actually listens on
     ; inside the container (52773) -- using it here made every API Explorer
@@ -325,6 +365,7 @@ ClassMethod OpenAPI() As %Status
     Do spec.servers.%Push(server)
     Set spec.paths = {}
     Do ..AddOpenAPIPath(spec.paths, "/health", "get", "Check API and IRIS availability")
+    Do ..AddOpenAPIPath(spec.paths, "/sysadmin/status", "get", "Check the local IRIS SysAdmin API capability")
     Do ..AddOpenAPIPath(spec.paths, "/system/summary", "get", "Read the IRIS system summary")
     Do ..AddOpenAPIPath(spec.paths, "/system/health-report", "get", "Analyze instance health with Embedded Python and IRIS Vector Search")
     Do ..AddOpenAPIPath(spec.paths, "/system/processes", "get", "List active IRIS processes")
@@ -355,14 +396,17 @@ ClassMethod AddOpenAPIPath(paths As %DynamicObject, path As %String, method As %
 
 ClassMethod Tasks() As %Status
 {
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MyOwn.Service.Tasks).GetTasks(.data)
+        Set authorization = ..GetForwardedAuthorization()
+        Set tSC = ##class(MyOwn.Service.Tasks).GetTasks(authorization, .data, .source)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
         Set payload.meta.timestamp = $ZDateTime($Horolog, 3, 1)
+        Set payload.meta.source = source
         Set %response.ContentType = "application/json; charset=utf-8"
         Write payload.%ToJSON()
     } Catch exception {
@@ -380,10 +424,13 @@ ClassMethod Tasks() As %Status
 
 ClassMethod TaskDetail() As %Status
 {
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set id = +$Get(%request.Data("id", 1))
     If id < 1 Quit ..WriteError(400, "TASK_REQUIRED", "A valid task ID is required.")
-    Set tSC = ##class(MyOwn.Service.Tasks).GetTask(id, .data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Tasks).GetTask(id, authorization, .data, .source)
     If $$$ISERR(tSC) Quit ..WriteError(404, "TASK_NOT_FOUND", "The requested task could not be found.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
@@ -402,13 +449,15 @@ ClassMethod TaskAction() As %Status
     If id < 1 Quit ..WriteError(400, "TASK_REQUIRED", "A valid task ID is required.")
     If (action '= "run") && (action '= "suspend") && (action '= "resume") Quit ..WriteError(400, "INVALID_ACTION", "Use run, suspend, or resume.")
 
-    Set tSC = ##class(MyOwn.Service.Tasks).GetTask(id, .detail)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Tasks).GetTask(id, authorization, .detail, .source)
     If $$$ISERR(tSC) Quit ..WriteError(404, "TASK_NOT_FOUND", "The requested task could not be found.")
     If 'detail.manageable Quit ..WriteError(403, "PROTECTED_TASK", detail.protectionReason)
 
-    Set tSC = ##class(MyOwn.Service.Tasks).PerformAction(id, action, .data)
+    Set tSC = ##class(MyOwn.Service.Tasks).PerformAction(id, action, authorization, .data, .source)
     Do ##class(MyOwn.Service.Audit).Record("Task" _ $ZConvert(action, "T"), "Task " _ id, $$$ISOK(tSC))
     If $$$ISERR(tSC) Quit ..WriteError(400, "TASK_ACTION_FAILED", "The task action could not be completed.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
@@ -418,11 +467,13 @@ ClassMethod Security() As %Status
     Set tSC = $$$OK
     Try {
         Set payload = {}
-        Set tSC = ##class(MyOwn.Service.Security).GetInventory(.data)
+        Set authorization = ..GetForwardedAuthorization()
+        Set tSC = ##class(MyOwn.Service.Security).GetInventory(authorization, .data, .source)
         $$$ThrowOnError(tSC)
         Set payload.data = data
         Set payload.meta = {}
         Set payload.meta.timestamp = $ZDateTime($Horolog, 3, 1)
+        Set payload.meta.source = source
         Set %response.ContentType = "application/json; charset=utf-8"
         Write payload.%ToJSON()
     } Catch exception {
@@ -441,8 +492,10 @@ ClassMethod Security() As %Status
 ClassMethod SecuritySummary() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
-    Set tSC = ##class(MyOwn.Service.Security).GetSummary(.data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Security).GetSummary(authorization, .data, .source)
     If $$$ISERR(tSC) Quit ..WriteError(500, "SECURITY_SUMMARY_UNAVAILABLE", "The security summary is temporarily unavailable.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
@@ -471,14 +524,17 @@ ClassMethod SecurityDetail() As %Status
     Set name = $Get(%request.Data("name", 1))
     Set type = $Get(%request.Data("type", 1))
     If (category = "") || (name = "") Quit ..WriteError(400, "SECURITY_ITEM_REQUIRED", "The security category and item name are required.")
-    Set tSC = ##class(MyOwn.Service.Security).GetDetail(category, name, type, .data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Security).GetDetail(category, name, type, authorization, .data, .source)
     If $$$ISERR(tSC) Quit ..WriteError(404, "SECURITY_ITEM_NOT_FOUND", "The requested security item could not be found.")
+    Set data.integrationSource = source
     Quit ..WriteSuccess(data)
 }
 
 ClassMethod WriteSecurityCategory(category As %String) As %Status
 {
-    Set tSC = ##class(MyOwn.Service.Security).GetCategory(category, .data)
+    Set authorization = ..GetForwardedAuthorization()
+    Set tSC = ##class(MyOwn.Service.Security).GetCategory(category, authorization, .data, .source)
     If $$$ISERR(tSC) Quit ..WriteError(500, "SECURITY_CATEGORY_UNAVAILABLE", "The requested security inventory is temporarily unavailable.")
     Quit ..WriteSuccess(data)
 }
@@ -512,24 +568,26 @@ ClassMethod WritePermissionResponse(kind As %String) As %Status
 {
     Set tSC = $$$OK
     Try {
+        Set authorization = ..GetForwardedAuthorization()
         If kind = "users" {
             Set errorCode = "USERS_UNAVAILABLE"
             Set errorMessage = "The user list is temporarily unavailable."
-            Set tSC = ##class(MyOwn.Service.Permissions).GetUsers(.data)
+            Set tSC = ##class(MyOwn.Service.Permissions).GetUsers(authorization, .data, .source)
         } ElseIf kind = "roles" {
             Set errorCode = "ROLES_UNAVAILABLE"
             Set errorMessage = "The role list is temporarily unavailable."
-            Set tSC = ##class(MyOwn.Service.Permissions).GetRoles(.data)
+            Set tSC = ##class(MyOwn.Service.Permissions).GetRoles(authorization, .data, .source)
         } Else {
             Set errorCode = "RESOURCES_UNAVAILABLE"
             Set errorMessage = "The resource list is temporarily unavailable."
-            Set tSC = ##class(MyOwn.Service.Permissions).GetResources(.data)
+            Set tSC = ##class(MyOwn.Service.Permissions).GetResources(authorization, .data, .source)
         }
         $$$ThrowOnError(tSC)
         Set payload = {}
         Set payload.data = data
         Set payload.meta = {}
         Set payload.meta.timestamp = $ZDateTime($Horolog, 3, 1)
+        Set payload.meta.source = source
         Set %response.ContentType = "application/json; charset=utf-8"
         Write payload.%ToJSON()
     } Catch exception {
@@ -554,6 +612,16 @@ ClassMethod WriteSuccess(data As %DynamicAbstractObject) As %Status
     Set %response.ContentType = "application/json; charset=utf-8"
     Write payload.%ToJSON()
     Quit $$$OK
+}
+
+/// IRIS consumes the standard Authorization header while authenticating the
+/// request. The browser therefore mirrors it into this same-origin-only header
+/// so the backend can authenticate its local SysAdmin API v2 calls.
+ClassMethod GetForwardedAuthorization() As %String [ Private ]
+{
+    Set authorization = $Get(%request.CgiEnvs("HTTP_X_MYOWN_SYSADMIN_AUTHORIZATION"))
+    If authorization = "" Set authorization = $Get(%request.CgiEnvs("HTTP_AUTHORIZATION"))
+    Quit authorization
 }
 
 ClassMethod WriteError(status As %Integer, code As %String, message As %String) As %Status

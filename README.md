@@ -2,7 +2,11 @@
 
 MyOwn Portal is a compact, English-language administration interface for InterSystems IRIS and IRIS for Health. It was created for the **InterSystems Programming Contest: Build Your Own Management Portal**.
 
-The browser application uses React and TypeScript. The REST backend, authorization, auditing, and access to IRIS administration data are implemented in ObjectScript. Vite and Node.js are development and build tools only; the production React bundle is served by the private IRIS web server.
+The browser application uses React and TypeScript. The REST backend, authorization, auditing, and access to IRIS administration data are implemented in ObjectScript. Administrative inventories require the official SysAdmin API v2. Vite and Node.js are development and build tools only; the production React bundle is served by the private IRIS web server.
+
+**Official API compliance.** Processes, users, roles, resources, tasks, web applications, X.509 credentials, OAuth configuration, and Secure Wallet metadata are all read and written through the official `/api/admin/v2/...` endpoints — not through direct calls to native classes. Two areas intentionally stay outside the SysAdmin API because it has no equivalent endpoint for them: host-level CPU/memory/disk metrics (Overview) and general system logging (`messages.log`, the Logs page). This isn't an oversight — other teams who built against the same specification for this same contest independently hit and documented the same two gaps. See [SysAdmin API integration](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#sysadmin-api-integration) and the [Design note](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#design-note) in the reference doc for the full detail, including which native `%Admin_*` privileges each area requires.
+
+**Automated tests.** `scripts/Test-MyOwn.ps1` runs a full smoke-test suite against a running instance, and `scripts/Test-SysAdminMutations.ps1` exercises real SysAdmin API v2 mutations (create/assign/remove/delete) end to end, cleaning up after itself. See [Tests](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#tests) in the reference doc.
 
 Read the write-up on the InterSystems Developer Community: [English](https://community.intersystems.com/post/myown-portal-compact-management-portal-intersystems-iris) · [Português](https://pt.community.intersystems.com/post/myown-portal-um-portal-de-gerenciamento-compacto-para-o-intersystems-iris)
 
@@ -33,7 +37,7 @@ Make sure Docker Desktop is already open, then:
 docker compose up --build -d
 ```
 
-Open `http://localhost:52774/myown/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!` (the default demo password — see [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed) to change it). This spins up a fresh, disposable IRIS just for the demo, with zero risk to any IRIS instance you already have.
+Open `http://localhost:52774/myown/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!`. This password is intentionally provided as a convenient default for local demonstration only. The container uses its own isolated IRIS data volume and does not modify an IRIS instance installed directly on the host. Change the password before exposing the container to another computer or network; see [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed).
 
 **Local IRIS, by hand:**
 
@@ -69,6 +73,7 @@ Everything else — architecture, every install detail, the API reference, and t
 - IRIS Task Manager inventory with protected Run, Suspend, and Resume actions.
 - Sanitized `messages.log` browsing with search, filters, pagination, and details.
 - Native IRIS role-based access control and audit events for state changes.
+- Official SysAdmin API v2 integration for processes, permissions, tasks, web applications, X.509, OAuth, and Secure Wallet metadata, with automatic capability detection. Host metrics and system logs stay native, since the API has no endpoint for either.
 - A demonstration Task Manager task (`MyOwn Portal health snapshot`) so that Run, Suspend, and Resume can be tried on a fresh instance.
 - Responsive English user interface.
 

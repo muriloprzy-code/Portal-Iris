@@ -77,17 +77,32 @@ export type ProcessItem = {
 
 export type ProcessesResponse = {
   data: ProcessItem[]
-  meta: { timestamp: string; limit: number }
+  meta: { timestamp: string; limit: number; source: IntegrationSource }
 }
 
-export type PermissionUser = { name: string; enabled: string; roles: string; lastLogin: string }
+export type IntegrationSource = 'sysadmin-v2'
+export type IntegrationMeta = { timestamp: string; source: IntegrationSource }
+
+export type SysAdminStatusResponse = {
+  data: {
+    available: boolean | number
+    apiVersion: number
+    serverVersion: string
+    product: string
+    v2Supported: boolean | number
+    mode: IntegrationSource
+  }
+  meta: { timestamp: string }
+}
+
+export type PermissionUser = { name: string; enabled: string | number | boolean; roles: string; lastLogin: string }
 export type PermissionRole = { name: string; description: string; grantedRoles: string; canBeEdited: boolean }
 export type PermissionResource = { name: string; description: string; publicPermission: string; resourceType: string; canBeDeleted: boolean }
 export type EffectivePermission = { resource: string; permission: string }
 export type PermissionUserDetail = {
   name: string
   fullName: string
-  enabled: string
+  enabled: string | number | boolean
   namespace: string
   comment: string
   expirationDate: string
@@ -109,7 +124,7 @@ export type WebApplication = {
   name: string
   namespace: string
   namespaceDefault: string
-  enabled: string
+  enabled: string | number | boolean
   type: string
   resource: string
   authenticationMethods: string
@@ -171,7 +186,7 @@ export type TaskDetail = TaskItem & {
 
 export type TasksResponse = {
   data: { managerStatus: number; tasks: TaskItem[] }
-  meta: { timestamp: string }
+  meta: { timestamp: string; source: IntegrationSource }
 }
 
 export type LogItem = {
@@ -210,7 +225,7 @@ export type SecurityResponse = {
     credentials: SecurityItem[]
     errors?: SecurityInventoryError[]
   }
-  meta: { timestamp: string }
+  meta: IntegrationMeta
 }
 
 export type SecurityInventoryError = { category: string; message: string }
@@ -253,7 +268,12 @@ export function clearCredentials() {
 
 async function apiRequest<T>(path: string, signal?: AbortSignal, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (authorizationHeader) headers.Authorization = authorizationHeader
+  if (authorizationHeader) {
+    headers.Authorization = authorizationHeader
+    // IRIS consumes the standard Authorization header during authentication.
+    // Forward the same short-lived value separately for local SysAdmin API calls.
+    headers['X-MyOwn-SysAdmin-Authorization'] = authorizationHeader
+  }
   if (init.body) headers['Content-Type'] = 'application/json'
 
   const response = await fetch(`/myown/api${path}`, {
@@ -282,6 +302,10 @@ export async function getSession(signal?: AbortSignal): Promise<SessionResponse>
   return apiRequest<SessionResponse>('/session', signal)
 }
 
+export async function getSysAdminStatus(signal?: AbortSignal): Promise<SysAdminStatusResponse> {
+  return apiRequest<SysAdminStatusResponse>('/sysadmin/status', signal)
+}
+
 export async function getSystemSummary(signal?: AbortSignal): Promise<SystemSummaryResponse> {
   return apiRequest<SystemSummaryResponse>('/system/summary', signal)
 }
@@ -295,15 +319,15 @@ export async function getProcesses(signal?: AbortSignal): Promise<ProcessesRespo
 }
 
 export async function getPermissionUsers() {
-  return apiRequest<{ data: PermissionUser[] }>('/permissions/users')
+  return apiRequest<{ data: PermissionUser[]; meta: IntegrationMeta }>('/permissions/users')
 }
 
 export async function getPermissionRoles() {
-  return apiRequest<{ data: PermissionRole[] }>('/permissions/roles')
+  return apiRequest<{ data: PermissionRole[]; meta: IntegrationMeta }>('/permissions/roles')
 }
 
 export async function getPermissionResources() {
-  return apiRequest<{ data: PermissionResource[] }>('/permissions/resources')
+  return apiRequest<{ data: PermissionResource[]; meta: IntegrationMeta }>('/permissions/resources')
 }
 
 export async function getPermissionUserDetail(user: string) {
@@ -332,7 +356,7 @@ export async function removePermissionUserRole(user: string, role: string) {
 }
 
 export async function getApplications() {
-  return apiRequest<{ data: WebApplication[] }>('/applications')
+  return apiRequest<{ data: WebApplication[]; meta: IntegrationMeta }>('/applications')
 }
 
 export async function getApplicationDetail(name: string) {

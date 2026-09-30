@@ -7,6 +7,7 @@
 frontend/node_modules
 frontend/dist
 frontend/*.tsbuildinfo
+backups/
 *.log
 .env
 .env.*

@@ -100,30 +100,39 @@ ClassMethod GetPhysicalMemoryKB() As %BigInt [ Language = python ]
     return int(status.total_physical / 1024)
 }
 
-ClassMethod GetProcesses(Output processes As %DynamicArray) As %Status
+/// Lists active processes through the contest SysAdmin API v2.
+ClassMethod GetProcesses(authorization As %String, Output processes As %DynamicArray, Output source As %String) As %Status
+{
+    Set source = "sysadmin-v2"
+    Quit ..GetProcessesFromSysAdmin(authorization, .processes)
+}
+
+ClassMethod GetProcessesFromSysAdmin(authorization As %String, Output processes As %DynamicArray) As %Status [ Private ]
 {
     Set tSC = $$$OK
     Set processes = []
     Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-
-        Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%Prepare("SELECT TOP 25 JobNumber AS jobNumber, Pid AS pid, UserName AS username, NameSpace AS namespaceName, Routine AS routine, State AS processState, ClientIPAddress AS clientAddress, CPUTime AS cpuTime, StartTimeUTC AS startedAt FROM %SYS.ProcessQuery ORDER BY CPUTime DESC")
+        Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", "/api/admin/v2/processes?maxRows=25", authorization, "", .payload, .httpStatus)
         $$$ThrowOnError(tSC)
-        Set result = statement.%Execute()
+        Set result = payload.%Get("result")
+        If '$IsObject(result) {
+            Set tSC = $$$ERROR($$$GeneralError, "The SysAdmin process response did not include a result array.")
+            $$$ThrowOnError(tSC)
+        }
 
-        While result.%Next() {
+        For index = 0:1:(result.%Size() - 1) {
+            Set record = result.%Get(index)
             Set item = {}
-            Set item.jobNumber = result.%Get("jobNumber")
-            Set item.pid = result.%Get("pid")
-            Set item.username = result.%Get("username")
-            Set item.namespace = result.%Get("namespaceName")
-            Set item.routine = result.%Get("routine")
-            Set item.state = result.%Get("processState")
-            Set item.clientAddress = result.%Get("clientAddress")
-            Set item.cpuTime = result.%Get("cpuTime")
-            Set item.startedAt = result.%Get("startedAt")
+            Set item.jobNumber = record.%Get("Job")
+            Set item.pid = record.%Get("Pid")
+            Set item.username = record.%Get("Username")
+            Set item.namespace = record.%Get("Nspace")
+            Set item.routine = record.%Get("Routine")
+            Set item.state = record.%Get("State")
+            Set item.clientAddress = record.%Get("IPAddress")
+            If item.clientAddress = "" Set item.clientAddress = record.%Get("ClientName")
+            Set item.cpuTime = record.%Get("CPUTime")
+            Set item.startedAt = ""
             Do processes.%Push(item)
         }
     } Catch exception {

@@ -8,11 +8,7 @@ Parameter SystemAdminRole = "MyOwnSystemAdmin";
 
 Parameter DemoTaskName = "MyOwn Portal health snapshot";
 
-/// SQL-callable wrapper around Setup(), so the one-click installer can trigger
-/// installation over the Atelier REST API (already built into every IRIS instance)
-/// instead of needing an interactively authenticated terminal session. Returns "OK"
-/// on success, or the error text otherwise -- never throws, so it is always safe to
-/// call from SQL.
+/// SQL wrapper used by the one-click installer. Returns "OK" or an error message.
 ClassMethod SetupViaSQL() As %String [ SqlName = MyOwnSetup, SqlProc ]
 {
     Set tSC = ..Setup()
@@ -20,14 +16,8 @@ ClassMethod SetupViaSQL() As %String [ SqlName = MyOwnSetup, SqlProc ]
     Quit $System.Status.GetErrorText(tSC)
 }
 
-/// SQL-callable wrapper that loads every .cls file under the given local directory
-/// (read directly off disk by the IRIS server process itself - no HTTP file upload
-/// involved) and then runs Setup(). The one-click installer uploads only this
-/// compiled class over the Atelier REST API and then calls this method to load
-/// everything else, because uploading many files in a row through that API's
-/// doc-put endpoint has proven unreliable on some Windows/IRIS setups. Returns
-/// "OK" on success, or a description of the error otherwise -- never throws, so
-/// it is always safe to call from SQL.
+/// Loads backend classes from a server-local directory and runs Setup().
+/// Returns "OK" or an error message to the SQL caller.
 ClassMethod LoadAndSetupViaSQL(dir As %String) As %String [ SqlName = MyOwnLoadAndSetup, SqlProc ]
 {
     Set tSC = $System.OBJ.LoadDir(dir, "ck", .errorLog, 1)
@@ -55,10 +45,7 @@ ClassMethod Setup() As %Status
         Set tSC = ..EnsureAuditEvent()
         $$$ThrowOnError(tSC)
 
-        // Portal users only hold the MyOwn roles, which do not include access to the
-        // %SYS namespace. These application roles are added only while a request is
-        // handled by /myown/api, so viewers and administrators never hold the system
-        // database roles in a terminal or in any other application.
+        // Grant %SYS database roles only while /myown/api handles a request.
         Set matchRoles = "MyOwnViewer:" _ ..#SystemReadRole _ ",MyOwnAdministrator:" _ ..#SystemAdminRole
 
         Set exists = ##class(Security.Applications).Exists(application, .applicationObject, .tSC)
@@ -152,7 +139,7 @@ ClassMethod EnsureAccessControl() As %Status [ Private ]
 
         Set tSC = ..EnsureRole("MyOwnViewer", "Read-only access to MyOwn Portal.", "MyOwn.View:U")
         $$$ThrowOnError(tSC)
-        Set tSC = ..EnsureRole("MyOwnAdministrator", "Administrative access to MyOwn Portal.", "MyOwn.View:U,MyOwn.Manage:U,%Admin_Secure:U,%Admin_Task:U")
+        Set tSC = ..EnsureRole("MyOwnAdministrator", "Administrative access to MyOwn Portal.", "MyOwn.View:U,MyOwn.Manage:U,%Admin_Operate:U,%Admin_Secure:U,%Admin_Task:U,%Admin_Wallet:U,%Admin_OAuth2_Client:U,%Admin_OAuth2_Server:U,%Admin_OAuth2_Registration:U")
         $$$ThrowOnError(tSC)
 
         // Application roles: granted by MatchRoles on /myown/api (see Setup).
@@ -179,9 +166,7 @@ ClassMethod EnsureRole(name As %String, description As %String, resources As %St
     Quit ##class(Security.Roles).Create(name, description, resources, "")
 }
 
-/// Creates one Task Manager task in the portal namespace so that Run, Suspend and
-/// Resume can be demonstrated on a fresh instance. The task only records a health
-/// score snapshot; it does not change the system.
+/// Creates the demonstration health-snapshot task without changing system state.
 ClassMethod EnsureDemoTask(targetNamespace As %String) As %Status [ Private ]
 {
     Set tSC = $$$OK
@@ -204,12 +189,7 @@ ClassMethod EnsureDemoTask(targetNamespace As %String) As %Status [ Private ]
     Quit tSC
 }
 
-/// Sets the _SYSTEM password from the MYOWN_DEMO_PASSWORD build argument for this
-/// local demo container (see compose.yaml / .env.example). Broken out into a compiled
-/// method -- rather than inline multi-line "If ... { }" blocks in docker/iris.script --
-/// because a script piped into "iris session IRIS < file" runs one line at a time and
-/// does not reliably parse multi-line curly-brace blocks the way compiled code does; a
-/// method call is a single line and cannot hit that problem.
+/// Applies the local-demo _SYSTEM password supplied by the container build.
 ClassMethod SetDemoSystemPassword(password As %String) As %Status
 {
     Set tSC = $$$OK
@@ -231,13 +211,7 @@ ClassMethod SetDemoSystemPassword(password As %String) As %Status
     Quit tSC
 }
 
-/// Prepares this instance to be safely captured into a container image. In particular
-/// it clears the hostname IRIS stamps into the database, so that when the image is
-/// later run under its real container hostname, IRIS does not mistake that for a
-/// failover from the transient build container (e.g. BuildKit's "buildkitsandbox") and
-/// show a "System appears to have failed over from node ..." warning. SYS.Container is
-/// a %SYS-only system class that is not present on every edition or version, so its
-/// absence here is not treated as an error -- this best-effort call is simply skipped.
+/// Clears transient container state before image capture when supported by IRIS.
 ClassMethod PrepareForContainerBundling() As %Status
 {
     Set tSC = $$$OK

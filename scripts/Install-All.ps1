@@ -161,7 +161,14 @@ if ($useDocker) {
         if ($envLine) { $demoPassword = ($envLine -split '=', 2)[1].Trim() }
     }
 
-    Start-Process 'http://localhost:52774/myown/index.html'
+    $dockerWebPort = if ($env:IRIS_WEB_PORT) { $env:IRIS_WEB_PORT } else { '52774' }
+    try {
+        $publishedWebEndpoint = docker compose port iris 52773 2>$null
+        if ($publishedWebEndpoint -match ':(\d+)\s*$') { $dockerWebPort = $Matches[1] }
+    } catch {
+        Write-Warn2 "Could not read the published Docker web port; opening the configured default ($dockerWebPort)."
+    }
+    Start-Process "http://localhost:$dockerWebPort/myown/index.html"
 
     Write-Host ''
     Write-Ok 'Done! MyOwn Portal should now be open in your browser.'
@@ -202,11 +209,7 @@ $namespaceChoice = Read-Host "Type the namespace to install into, or press Enter
 if ($namespaceChoice) { $Namespace = $namespaceChoice.Trim() }
 
 Write-Step "Checking the '$Namespace' namespace"
-# Read iris.cpf directly instead of opening an IRIS terminal for this check -
-# iris.exe's session/console commands always open a real, separately
-# authenticated console on this system (confirmed live), so they cannot be
-# used for a silent pre-check. The .cpf file is plain text and needs no
-# login.
+# Read the namespace list from iris.cpf without opening an authenticated console.
 $cpfPath = Join-Path $IrisInstallDir 'iris.cpf'
 if (Test-Path -LiteralPath $cpfPath) {
     $cpfLines = Get-Content -LiteralPath $cpfPath
@@ -281,9 +284,7 @@ if (Test-Path -LiteralPath $targetAssets) { Remove-Item -LiteralPath $targetAsse
 New-Item -ItemType Directory -Path $targetAssets -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $distDir 'index.html') -Destination $targetDir -Force
 Copy-Item -Path (Join-Path $distDir 'assets\*') -Destination $targetAssets -Force
-# Vite also places public/ assets (logos, favicon) directly at the root of dist/,
-# alongside index.html rather than inside assets/ - copy those too, or the
-# page ends up with broken images.
+# Copy public assets that Vite places beside index.html.
 Get-ChildItem -LiteralPath $distDir -File | Where-Object { $_.Name -ne 'index.html' } | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $targetDir -Force
 }
@@ -314,15 +315,7 @@ if (-not $restarted) {
 Write-Ok 'Frontend deployed and web server restarted.'
 
 Write-Step 'Installing the backend'
-# iris.exe's session/console commands always open a real, separately authenticated
-# console window on this system (confirmed live) that cannot receive piped input, so
-# it cannot be scripted without also handling your password, which this script will
-# not do by typing it into a terminal for you. Instead, this step uses IRIS's own
-# Atelier REST API (already built into the instance, no setup needed - it is the same
-# mechanism the VS Code ObjectScript extension uses) to load and compile the code and
-# run the installer over HTTP. Your IRIS username and password are asked for once,
-# right here, used only for these HTTP calls, and are never written to disk or sent
-# anywhere else.
+# Install through the built-in Atelier API; credentials are kept in memory only.
 $mgmtBaseUrl = 'http://localhost:52773'
 $cred = Get-Credential -Message 'Digite seu usuario e senha do IRIS (usados so para esta instalacao, nunca sao salvos)' -UserName '_SYSTEM'
 $pair = $cred.UserName + ':' + $cred.GetNetworkCredential().Password
@@ -331,22 +324,14 @@ Remove-Variable pair
 
 function Invoke-Atelier {
     param($Method, $Path, $Body, $ContentType)
-    # Using [System.Net.HttpWebRequest] directly instead of Invoke-RestMethod: on
-    # Windows PowerShell 5.1, Invoke-RestMethod silently appends "; charset=utf-8"
-    # to whatever -ContentType is given, and the Atelier API's PUT route matches
-    # Content-Type literally against "text/plain" with no charset suffix - that
-    # mismatch was causing 415s no matter what -ContentType value was passed in.
-    # HttpWebRequest.ContentType is set exactly as assigned, with no rewriting.
+    # HttpWebRequest preserves the exact content type required by Atelier on PS 5.1.
     $uri = "$mgmtBaseUrl/api/atelier$Path"
     $request = [System.Net.HttpWebRequest]::Create($uri)
     $request.Method = $Method
     $request.Headers.Add('Authorization', $authHeader.Authorization)
     $request.Accept = 'application/json'
     $request.Timeout = 60000
-    # The pattern seen live - requests succeed, then the 4th one in a row comes back
-    # with a docname corrupted into a fragment of an earlier request's query string -
-    # matches the IRIS private web server's known keep-alive/connection-reuse bugs.
-    # A fresh TCP connection per call avoids it entirely.
+    # Avoid request corruption caused by connection reuse on some IRIS builds.
     $request.KeepAlive = $false
     if ($null -ne $Body) {
         $request.ContentType = $ContentType
@@ -386,13 +371,7 @@ try {
     Fail "Nao foi possivel falar com a API do IRIS em $mgmtBaseUrl/api/atelier - confirme o usuario e a senha, e que a instancia IRIS esta rodando. Detalhe: $($_.Exception.Message)"
 }
 
-# Uploading every backend file one by one through the Atelier API's doc-put
-# endpoint proved unreliable on this system (a request a few files into the batch
-# would consistently come back with a corrupted document name). So instead, only
-# this single class is uploaded over HTTP; it then tells the IRIS server process
-# to load every other file directly off local disk (via $System.OBJ.LoadDir,
-# exactly like the original, proven terminal-based install script did) - no
-# further HTTP file transfer involved for the rest of the backend.
+# Upload only the installer; it loads the remaining classes from the local source tree.
 Write-Host 'Enviando o instalador para o IRIS...'
 $installerRelativePath = Join-Path 'MyOwn' 'Installer.cls'
 $installerFullPath = Join-Path $sourceDir $installerRelativePath

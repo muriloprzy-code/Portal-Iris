@@ -1,118 +1,125 @@
 Class MyOwn.Service.Tasks
 {
 
-/// Task Manager inventory and bounded actions through the published %SYS.Task API.
-ClassMethod GetTasks(Output response As %DynamicObject) As %Status
+/// Task Manager inventory and bounded actions through SysAdmin API v2.
+ClassMethod GetTasks(authorization As %String, Output response As %DynamicObject, Output source As %String) As %Status
 {
-    Set tSC = $$$OK
+    Set source = "sysadmin-v2"
+    Quit ..GetTasksFromSysAdmin(authorization, .response)
+}
+
+ClassMethod GetTask(id As %Integer, authorization As %String, Output response As %DynamicObject, Output source As %String) As %Status
+{
+    Set source = "sysadmin-v2"
+    Quit ..GetTaskFromSysAdmin(id, authorization, .response)
+}
+
+ClassMethod PerformAction(id As %Integer, action As %String, authorization As %String, Output response As %DynamicObject, Output source As %String) As %Status
+{
+    Set source = "sysadmin-v2"
+    Quit ..PerformActionWithSysAdmin(id, action, authorization, .response)
+}
+
+ClassMethod GetTasksFromSysAdmin(authorization As %String, Output response As %DynamicObject) As %Status [ Private ]
+{
     Set response = {}
     Set items = []
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-
-        Set response.managerStatus = ##class(%SYS.Task).TASKMGRStatus()
-
-        Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%PrepareClassQuery("%SYS.Task", "TaskListDetail")
-        $$$ThrowOnError(tSC)
-        Set result = statement.%Execute().%NextResult()
-
-        While result.%Next() {
-            Set item = {}
-            Set item.id = result.%Get("ID")
-            Set item.name = result.%Get("Task Name")
-            Set item.namespace = result.%Get("Namespace")
-            Set item.taskClass = result.%Get("TaskClass")
-            Set item.suspended = result.%Get("Suspended")
-            Set item.lastStarted = result.%Get("Last Started")
-            Set item.lastFinished = result.%Get("Last Finished")
-            Set item.lastStatus = result.%Get("Last Status")
-            Set item.lastResult = result.%Get("Last Result")
-            Set item.nextScheduledDate = result.%Get("Next Scheduled Date")
-            Set item.nextScheduledTime = result.%Get("Next Scheduled Time")
-            Set item.schedule = result.%Get("Run Task")
-            Set item.interval = result.%Get("Run Interval")
-            Set item.manageable = ($ZConvert(item.namespace, "U") = "MYOWN")
-            Do items.%Push(item)
-        }
-
-        Set response.tasks = items
-    } Catch exception {
-        Set tSC = exception.AsStatus()
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", "/api/admin/v2/tasks?maxRows=1000", authorization, "", .payload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set records = payload.%Get("result")
+    If '$IsObject(records) Quit $$$ERROR($$$GeneralError, "The SysAdmin task response did not include a result array.")
+    For index = 0:1:(records.%Size() - 1) {
+        Set record = records.%Get(index)
+        Set item = {}
+        Set item.id = record.%Get("Id")
+        Set item.name = record.%Get("Name")
+        Set item.namespace = record.%Get("Namespace")
+        Set item.taskClass = ""
+        Set item.suspended = record.%Get("Suspended")
+        Set item.lastStarted = ""
+        Set item.lastFinished = record.%Get("LastFinished")
+        Set item.lastStatus = ""
+        Set item.lastResult = ""
+        Set nextScheduled = record.%Get("NextScheduled")
+        Set item.nextScheduledDate = $Piece(nextScheduled, " ", 1)
+        Set item.nextScheduledTime = $Piece(nextScheduled, " ", 2, *)
+        Set item.schedule = record.%Get("Type")
+        Set item.interval = ""
+        Set item.manageable = ($ZConvert(item.namespace, "U") = "MYOWN")
+        Do items.%Push(item)
     }
-    Quit tSC
+    Set response.managerStatus = -1
+    Set response.tasks = items
+    Quit $$$OK
 }
 
-ClassMethod GetTask(id As %Integer, Output response As %DynamicObject) As %Status
+ClassMethod GetTaskFromSysAdmin(id As %Integer, authorization As %String, Output response As %DynamicObject) As %Status [ Private ]
 {
-    Set tSC = $$$OK
     Set response = {}
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-        Set task = ##class(%SYS.Task).%OpenId(id, 0, .tSC)
-        $$$ThrowOnError(tSC)
-        If '$IsObject(task) Set tSC = $$$ERROR($$$GeneralError, "Task not found")
-        $$$ThrowOnError(tSC)
+    If id < 1 Quit $$$ERROR($$$GeneralError, "A valid task ID is required.")
+    Set path = "/api/admin/v2/task?id=" _ id
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", path, authorization, "", .taskPayload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set task = taskPayload.%Get("result")
+    If '$IsObject(task) Quit $$$ERROR($$$GeneralError, "The SysAdmin task response did not include a result object.")
+    Set infoPath = "/api/admin/v2/task/info?id=" _ id
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", infoPath, authorization, "", .infoPayload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set info = infoPayload.%Get("result")
+    If '$IsObject(info) Quit $$$ERROR($$$GeneralError, "The SysAdmin task information response did not include a result object.")
 
-        Set response.id = id
-        Set response.name = task.Name
-        Set response.description = task.Description
-        Set response.namespace = task.NameSpace
-        Set response.taskClass = task.TaskClass
-        Set response.suspended = task.Suspended
-        Set response.lastStarted = task.DisplayStarted
-        Set response.lastFinished = task.DisplayFinished
-        Set response.lastStatus = task.DisplayStatus
-        Set response.lastResult = task.Error
-        Set response.nextScheduledDate = task.DisplayDayNextScheduled
-        Set response.nextScheduledTime = task.TimeNextScheduled
-        Set response.schedule = task.DisplayRun
-        Set response.interval = task.DisplayInterval
-        Set response.priority = task.Priority
-        Set response.runAsUser = task.RunAsUser
-        Set response.runningJobNumber = task.RunningJobNumber
-        Set response.manageable = ($ZConvert(task.NameSpace, "U") = "MYOWN")
-        Set response.protectionReason = $Select(response.manageable:"", 1:"Only tasks in the MYOWN namespace can be changed here.")
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
+    Set response.id = id
+    Set response.name = task.%Get("Name")
+    Set response.description = task.%Get("Description")
+    Set response.namespace = task.%Get("NameSpace")
+    Set response.taskClass = task.%Get("TaskClass")
+    Set response.suspended = info.%Get("Suspended")
+    Set response.lastStarted = info.%Get("LastStarted")
+    Set response.lastFinished = info.%Get("LastFinished")
+    Set response.lastStatus = info.%Get("Status")
+    Set response.lastResult = info.%Get("Error")
+    Set nextScheduled = info.%Get("NextScheduled")
+    Set response.nextScheduledDate = $Piece(nextScheduled, " ", 1)
+    Set response.nextScheduledTime = $Piece(nextScheduled, " ", 2, *)
+    Set response.schedule = task.%Get("TimePeriod")
+    Set response.interval = task.%Get("TimePeriodEvery")
+    Set response.priority = task.%Get("Priority")
+    Set response.runAsUser = task.%Get("RunAsUser")
+    Set response.runningJobNumber = ""
+    Set response.manageable = ($ZConvert(response.namespace, "U") = "MYOWN")
+    Set response.protectionReason = $Select(response.manageable:"", 1:"Only tasks in the MYOWN namespace can be changed here.")
+    Quit $$$OK
 }
 
-ClassMethod PerformAction(id As %Integer, action As %String, Output response As %DynamicObject) As %Status
+ClassMethod PerformActionWithSysAdmin(id As %Integer, action As %String, authorization As %String, Output response As %DynamicObject) As %Status [ Private ]
 {
-    Set tSC = $$$OK
     Set response = {}
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-        Set task = ##class(%SYS.Task).%OpenId(id, 0, .tSC)
-        $$$ThrowOnError(tSC)
-        If '$IsObject(task) Set tSC = $$$ERROR($$$GeneralError, "Task not found")
-        $$$ThrowOnError(tSC)
-        If $ZConvert(task.NameSpace, "U") '= "MYOWN" Set tSC = $$$ERROR($$$GeneralError, "Protected task")
-        $$$ThrowOnError(tSC)
-
-        Set normalizedAction = $ZConvert(action, "L")
-        If normalizedAction = "run" {
-            Set tSC = ##class(%SYS.Task).RunNow(id)
-        } ElseIf normalizedAction = "suspend" {
-            Set tSC = ##class(%SYS.Task).Suspend(id)
-        } ElseIf normalizedAction = "resume" {
-            Set tSC = ##class(%SYS.Task).Resume(id)
-        } Else {
-            Set tSC = $$$ERROR($$$GeneralError, "Unsupported task action")
-        }
-        $$$ThrowOnError(tSC)
-        Set response.id = id
-        Set response.action = normalizedAction
-        Set response.message = "Task action accepted."
-    } Catch exception {
-        Set tSC = exception.AsStatus()
+    Set tSC = ..GetTaskFromSysAdmin(id, authorization, .task)
+    If $$$ISERR(tSC) Quit tSC
+    If 'task.manageable Quit $$$ERROR($$$GeneralError, "Protected task")
+    Set action = $ZConvert(action, "L")
+    If action = "run" {
+        Set path = "/api/admin/v2/task/run?id=" _ id
+        Set body = {}
+        Set body.RunNow = 1
+        Set requestBody = body.%ToJSON()
+    } ElseIf action = "suspend" {
+        Set path = "/api/admin/v2/task/suspend?id=" _ id
+        Set body = {}
+        Set body.LeaveInQueue = 1
+        Set requestBody = body.%ToJSON()
+    } ElseIf action = "resume" {
+        Set path = "/api/admin/v2/task/resume?id=" _ id
+        Set requestBody = ""
+    } Else {
+        Quit $$$ERROR($$$GeneralError, "Unsupported task action")
     }
-    Quit tSC
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("POST", path, authorization, requestBody, .payload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set response.id = id
+    Set response.action = action
+    Set response.message = "Task action accepted."
+    Quit $$$OK
 }
 
 }

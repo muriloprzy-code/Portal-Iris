@@ -9,6 +9,7 @@ $requiredFiles = @(
     '.dockerignore',
     'docker\merge.cpf',
     'docker\iris.script',
+    'docker\start-iris.sh',
     'module.xml',
     'web\index.html'
 )
@@ -23,6 +24,7 @@ $dockerfile = Get-Content -LiteralPath (Join-Path $projectRoot 'Dockerfile') -Ra
 $compose = Get-Content -LiteralPath (Join-Path $projectRoot 'compose.yaml') -Raw
 $merge = Get-Content -LiteralPath (Join-Path $projectRoot 'docker\merge.cpf') -Raw
 $init = Get-Content -LiteralPath (Join-Path $projectRoot 'docker\iris.script') -Raw
+$start = Get-Content -LiteralPath (Join-Path $projectRoot 'docker\start-iris.sh') -Raw
 [xml]$manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'module.xml')
 
 $checks = [ordered]@{
@@ -31,7 +33,7 @@ $checks = [ordered]@{
     'IPM bootstrap' = $dockerfile -match '/tmp/zpm\.xml'
     'MYOWN namespace' = $merge -match 'CreateNamespace:Name=MYOWN'
     'IPM package load' = $init -match 'zpm "load /home/irisowner/dev -v"'
-    'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($compose -match '--password-file')
+    'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($start -match '--password-file') -and ($start -match 'iris\.cpf') -and ($start -match 'CSPpwd')
     'Web port mapping' = $compose -match '52774.*:52773'
     'Durable IRIS data' = ($compose -match 'ISC_DATA_DIRECTORY: /durable/iris') -and ($compose -match 'myown-portal-data:/durable')
     'Static web application' = $null -ne $manifest.Export.Document.Module.WebApplication

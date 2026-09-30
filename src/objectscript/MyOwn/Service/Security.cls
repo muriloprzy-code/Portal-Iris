@@ -3,40 +3,196 @@ Class MyOwn.Service.Security Extends %RegisteredObject
 
 /// Returns security configuration metadata only. Secret values, passwords,
 /// tokens, certificates, and private keys are intentionally never returned.
-ClassMethod GetInventory(Output inventory As %DynamicObject) As %Status
+ClassMethod GetInventory(authorization As %String, Output inventory As %DynamicObject, Output source As %String) As %Status
 {
-    Set tSC = $$$OK
-    Set inventory = {}
-    Set inventory.errors = []
-    Try {
-        Set tSC = ..GetCertificates(.items)
-        If $$$ISERR(tSC) Do ..RecordError(inventory.errors, "Certificates", tSC) Set items = []
-        Set inventory.certificates = items
-
-        Set tSC = ..GetOAuthConfigurations(.items)
-        If $$$ISERR(tSC) Do ..RecordError(inventory.errors, "OAuth", tSC) Set items = []
-        Set inventory.oauth = items
-
-        Set tSC = ..GetWalletCollections(.items)
-        If $$$ISERR(tSC) Do ..RecordError(inventory.errors, "Wallet collections", tSC) Set items = []
-        Set inventory.walletCollections = items
-
-        Set tSC = ..GetWalletSecrets(.items)
-        If $$$ISERR(tSC) Do ..RecordError(inventory.errors, "Wallet secrets", tSC) Set items = []
-        Set inventory.walletSecrets = items
-
-        Set tSC = ..GetCredentialReferences(.items)
-        If $$$ISERR(tSC) Do ..RecordError(inventory.errors, "Credentials", tSC) Set items = []
-        Set inventory.credentials = items
-        Set tSC = $$$OK
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
+    Set source = "sysadmin-v2"
+    Quit ..GetInventoryFromSysAdmin(authorization, .inventory)
 }
 
-/// Adds a short, single-line explanation for an inventory that could not be read,
-/// so that a failure is shown to the administrator instead of looking like "no data".
+ClassMethod GetInventoryFromSysAdmin(authorization As %String, Output inventory As %DynamicObject) As %Status [ Private ]
+{
+    Set inventory = {}
+    Set inventory.errors = []
+
+    Set tSC = ..GetCertificatesFromSysAdmin(authorization, .items)
+    If $$$ISERR(tSC) Do ..RecordError(inventory.errors, "Certificates", tSC) Set items = []
+    Set inventory.certificates = items
+
+    Set tSC = ..GetOAuthFromSysAdmin(authorization, .items)
+    If $$$ISERR(tSC) Do ..RecordError(inventory.errors, "OAuth", tSC) Set items = []
+    Set inventory.oauth = items
+
+    Set tSC = ..GetWalletFromSysAdmin(authorization, .collections, .secrets)
+    If $$$ISERR(tSC) {
+        Do ..RecordError(inventory.errors, "Wallet", tSC)
+        Set collections = []
+        Set secrets = []
+    }
+    Set inventory.walletCollections = collections
+    Set inventory.walletSecrets = secrets
+
+    // SysAdmin API v2 does not expose Interoperability credential references.
+    Set tSC = ..GetCredentialReferences(.items)
+    If $$$ISERR(tSC) Do ..RecordError(inventory.errors, "Credentials", tSC) Set items = []
+    Set inventory.credentials = items
+    Quit $$$OK
+}
+
+ClassMethod GetCertificatesFromSysAdmin(authorization As %String, Output items As %DynamicArray) As %Status [ Private ]
+{
+    Set items = []
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", "/api/admin/v2/security/x509-credentials?maxRows=1000", authorization, "", .payload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set records = payload.%Get("result")
+    If '$IsObject(records) Quit $$$ERROR($$$GeneralError, "The SysAdmin certificate response did not include a result array.")
+    For index = 0:1:(records.%Size() - 1) {
+        Set record = records.%Get(index)
+        Set alias = record.%Get("Alias")
+        Set detailPath = "/api/admin/v2/security/x509-credential/certificate?alias=" _ ##class(MyOwn.Service.SysAdminClient).EncodeQueryValue(alias)
+        Set detailStatus = ##class(MyOwn.Service.SysAdminClient).Request("GET", detailPath, authorization, "", .detailPayload, .detailHttpStatus)
+        Set certificate = detailPayload.%Get("result")
+        Set item = {}
+        Set item.name = alias
+        Set item.category = "Certificate"
+        Set item.type = "X.509"
+        Set item.status = "Configured"
+        Set item.issuer = $Select($IsObject(certificate):certificate.%Get("IssuerDN"), 1:"")
+        Set item.validFrom = $Select($IsObject(certificate):certificate.%Get("ValidityNotBefore"), 1:"")
+        Set item.expiresAt = $Select($IsObject(certificate):certificate.%Get("ValidityNotAfter"), 1:"")
+        Set item.association = ..JoinDynamicArray(record.%Get("PeerNames"))
+        Set item.detail = $Select($IsObject(certificate):certificate.%Get("SubjectDN"), 1:"Certificate details unavailable")
+        Do items.%Push(item)
+    }
+    Quit $$$OK
+}
+
+ClassMethod GetOAuthFromSysAdmin(authorization As %String, Output items As %DynamicArray) As %Status [ Private ]
+{
+    Set items = []
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", "/api/admin/v2/security/oauth2/client/server-definitions?maxRows=1000", authorization, "", .serverPayload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set servers = serverPayload.%Get("result")
+    If '$IsObject(servers) Quit $$$ERROR($$$GeneralError, "The SysAdmin OAuth server response did not include a result array.")
+    For index = 0:1:(servers.%Size() - 1) {
+        Set server = servers.%Get(index)
+        Set serverId = server.%Get("ID")
+        Set item = {}
+        Set item.name = server.%Get("IssuerEndpoint")
+        If item.name = "" Set item.name = serverId
+        Set item.category = "OAuth"
+        Set item.type = "Authorization server"
+        Set item.status = "Configured"
+        Set item.issuer = server.%Get("IssuerEndpoint")
+        Set item.validFrom = ""
+        Set item.expiresAt = ""
+        Set item.association = server.%Get("ClientCount") _ " clients, " _ server.%Get("ResourceCount") _ " resource servers"
+        Set item.detail = "Server definition"
+        Do items.%Push(item)
+
+        Set clientPath = "/api/admin/v2/security/oauth2/client/client-configurations?serverId=" _ ##class(MyOwn.Service.SysAdminClient).EncodeQueryValue(serverId) _ "&maxRows=1000"
+        Set clientStatus = ##class(MyOwn.Service.SysAdminClient).Request("GET", clientPath, authorization, "", .clientPayload, .clientHttpStatus)
+        If $$$ISOK(clientStatus) {
+            Set clients = clientPayload.%Get("result")
+            If $IsObject(clients) {
+                For clientIndex = 0:1:(clients.%Size() - 1) {
+                    Set client = clients.%Get(clientIndex)
+                    Set item = {}
+                    Set item.name = client.%Get("ApplicationName")
+                    Set item.category = "OAuth"
+                    Set item.type = "Client"
+                    Set item.status = "Configured"
+                    Set item.issuer = server.%Get("IssuerEndpoint")
+                    Set item.validFrom = ""
+                    Set item.expiresAt = ""
+                    Set item.association = client.%Get("DefaultScope")
+                    Set item.detail = client.%Get("ClientType")
+                    Do items.%Push(item)
+                }
+            }
+        }
+    }
+
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", "/api/admin/v2/security/oauth2/resource-servers?maxRows=1000", authorization, "", .resourcePayload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set resources = resourcePayload.%Get("result")
+    If '$IsObject(resources) Quit $$$ERROR($$$GeneralError, "The SysAdmin OAuth resource-server response did not include a result array.")
+    For index = 0:1:(resources.%Size() - 1) {
+        Set resource = resources.%Get(index)
+        Set item = {}
+        Set item.name = resource.%Get("Name")
+        Set item.category = "OAuth"
+        Set item.type = "Resource server"
+        Set item.status = "Configured"
+        Set item.issuer = resource.%Get("ServerDefinition")
+        Set item.validFrom = ""
+        Set item.expiresAt = ""
+        Set item.association = resource.%Get("ServerDefinition")
+        Set item.detail = "Resource server"
+        Do items.%Push(item)
+    }
+    Quit $$$OK
+}
+
+ClassMethod GetWalletFromSysAdmin(authorization As %String, Output collections As %DynamicArray, Output secrets As %DynamicArray) As %Status [ Private ]
+{
+    Set collections = []
+    Set secrets = []
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", "/api/admin/v2/wallet/collections?names=*&maxRows=1000", authorization, "", .payload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set records = payload.%Get("result")
+    If '$IsObject(records) Quit $$$ERROR($$$GeneralError, "The SysAdmin wallet response did not include a result array.")
+    For index = 0:1:(records.%Size() - 1) {
+        Set record = records.%Get(index)
+        Set collectionName = record.%Get("Name")
+        Set item = {}
+        Set item.name = collectionName
+        Set item.category = "Wallet"
+        Set item.type = "Collection"
+        Set item.status = "Protected"
+        Set item.issuer = ""
+        Set item.validFrom = ""
+        Set item.expiresAt = ""
+        Set item.association = record.%Get("UseResource")
+        Set item.detail = record.%Get("EditResource")
+        Do collections.%Push(item)
+
+        Set secretPath = "/api/admin/v2/wallet/secrets?collection=" _ ##class(MyOwn.Service.SysAdminClient).EncodeQueryValue(collectionName) _ "&maxRows=1000"
+        Set secretStatus = ##class(MyOwn.Service.SysAdminClient).Request("GET", secretPath, authorization, "", .secretPayload, .secretHttpStatus)
+        If $$$ISERR(secretStatus) Quit secretStatus
+        Set secretRecords = secretPayload.%Get("result")
+        If $IsObject(secretRecords) {
+            For secretIndex = 0:1:(secretRecords.%Size() - 1) {
+                Set secret = secretRecords.%Get(secretIndex)
+                Set className = secret.%Get("Type")
+                Set item = {}
+                Set item.name = secret.%Get("Name")
+                Set item.category = "Wallet"
+                Set item.type = $Select(className [ "KeyValue":"Key/value secret", className [ "SymmetricKey":"Symmetric key", className [ "RSA":"RSA key", 1:"Secret reference")
+                Set item.status = "Protected"
+                Set item.issuer = ""
+                Set item.validFrom = ""
+                Set item.expiresAt = ""
+                Set item.association = collectionName
+                Set item.detail = "Value hidden"
+                Do secrets.%Push(item)
+            }
+        }
+    }
+    Quit $$$OK
+}
+
+ClassMethod JoinDynamicArray(values As %DynamicAbstractObject) As %String [ Private ]
+{
+    If '$IsObject(values) Quit ""
+    Set text = ""
+    For index = 0:1:(values.%Size() - 1) {
+        If text '= "" Set text = text _ ", "
+        Set text = text _ values.%Get(index)
+    }
+    Quit text
+}
+
+/// Records a short inventory error without exposing implementation details.
 ClassMethod RecordError(errors As %DynamicArray, category As %String, status As %Status) As %Status [ Private ]
 {
     Set text = $System.Status.GetErrorText(status)
@@ -49,9 +205,9 @@ ClassMethod RecordError(errors As %DynamicArray, category As %String, status As 
 }
 
 /// Return category counts and the current user's native security access.
-ClassMethod GetSummary(Output summary As %DynamicObject) As %Status
+ClassMethod GetSummary(authorization As %String, Output summary As %DynamicObject, Output source As %String) As %Status
 {
-    Set tSC = ..GetInventory(.inventory)
+    Set tSC = ..GetInventory(authorization, .inventory, .source)
     If $$$ISERR(tSC) Quit tSC
 
     Set summary = {}
@@ -68,9 +224,9 @@ ClassMethod GetSummary(Output summary As %DynamicObject) As %Status
 }
 
 /// Return one sanitized inventory item without material that could be used as a secret.
-ClassMethod GetDetail(category As %String, name As %String, type As %String, Output detail As %DynamicObject) As %Status
+ClassMethod GetDetail(category As %String, name As %String, type As %String, authorization As %String, Output detail As %DynamicObject, Output source As %String) As %Status
 {
-    Set tSC = ..GetInventory(.inventory)
+    Set tSC = ..GetInventory(authorization, .inventory, .source)
     If $$$ISERR(tSC) Quit tSC
 
     Set detail = {}
@@ -103,13 +259,13 @@ ClassMethod GetDetail(category As %String, name As %String, type As %String, Out
     Quit $$$OK
 }
 
-ClassMethod GetCategory(category As %String, Output items As %DynamicArray) As %Status
+ClassMethod GetCategory(category As %String, authorization As %String, Output items As %DynamicArray, Output source As %String) As %Status
 {
-    If category = "certificates" Quit ..GetCertificates(.items)
-    If category = "oauth" Quit ..GetOAuthConfigurations(.items)
+    Set tSC = ..GetInventory(authorization, .inventory, .source)
+    If $$$ISERR(tSC) Quit tSC
+    If category = "certificates" Set items = inventory.certificates Quit $$$OK
+    If category = "oauth" Set items = inventory.oauth Quit $$$OK
     If category = "credentials" {
-        Set tSC = ..GetInventory(.inventory)
-        If $$$ISERR(tSC) Quit tSC
         Set items = []
         Do ..AppendItems(items, inventory.walletCollections)
         Do ..AppendItems(items, inventory.walletSecrets)
@@ -133,229 +289,13 @@ ClassMethod SafetyNotice(category As %String) As %String [ Private ]
     Quit "Credential reference metadata only. Usernames and passwords are never returned."
 }
 
-ClassMethod GetCertificates(Output items As %DynamicArray) As %Status
-{
-    Set tSC = $$$OK
-    Set items = []
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-        Set alias = ""
-        For  {
-            Set credential = ##class(%SYS.X509Credentials).GetNext(.alias)
-            Quit:credential=""
-            Set item = {}
-            Set item.name = alias
-            Set item.category = "Certificate"
-            Set item.type = "X.509"
-            Set item.status = "Configured"
-            Set item.issuer = credential.IssuerDN
-            Set item.validFrom = credential.ValidityNotBefore
-            Set item.expiresAt = credential.ValidityNotAfter
-            Set item.association = credential.PeerNames
-            Set item.detail = credential.SubjectDN
-            Do items.%Push(item)
-        }
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
-}
-
-ClassMethod GetOAuthConfigurations(Output items As %DynamicArray) As %Status
-{
-    Set tSC = $$$OK
-    Set items = []
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-
-        Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%PrepareClassQuery("OAuth2.ServerDefinition", "List")
-        $$$ThrowOnError(tSC)
-        Set result = statement.%Execute()
-        While result.%Next() {
-            Set item = {}
-            Set item.name = result.%Get("IssuerEndpoint")
-            Set item.category = "OAuth"
-            Set item.type = "Authorization server"
-            Set item.status = "Configured"
-            Set item.issuer = result.%Get("IssuerEndpoint")
-            Set item.validFrom = ""
-            Set item.expiresAt = ""
-            Set item.association = result.%Get("ClientCount") _ " clients, " _ result.%Get("ResourceCount") _ " resource servers"
-            Set item.detail = "Server definition"
-            Do items.%Push(item)
-        }
-
-        Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%PrepareClassQuery("OAuth2.Client", "List")
-        $$$ThrowOnError(tSC)
-        Set result = statement.%Execute()
-        While result.%Next() {
-            Set item = {}
-            Set item.name = result.%Get("ApplicationName")
-            Set item.category = "OAuth"
-            Set item.type = "Client"
-            Set item.status = "Configured"
-            Set item.issuer = ""
-            Set item.validFrom = ""
-            Set item.expiresAt = ""
-            Set item.association = result.%Get("DefaultScope")
-            Set item.detail = result.%Get("ClientType")
-            Do items.%Push(item)
-        }
-
-        Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%PrepareClassQuery("OAuth2.ResourceServer", "List")
-        $$$ThrowOnError(tSC)
-        Set result = statement.%Execute()
-        While result.%Next() {
-            Set item = {}
-            Set item.name = result.%Get("Name")
-            Set item.category = "OAuth"
-            Set item.type = "Resource server"
-            Set item.status = "Configured"
-            Set item.issuer = result.%Get("ServerDefinition")
-            Set item.validFrom = ""
-            Set item.expiresAt = ""
-            Set item.association = result.%Get("ServerDefinition")
-            Set item.detail = "Resource server"
-            Do items.%Push(item)
-        }
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
-}
-
-/// Secure Wallet collections. The current wallet classes are %Wallet.Collection,
-/// which are SQL-projected, so a plain SELECT of names and resources is used. The
-/// older %SYS.Wallet.Collection:List query is kept as a fallback.
-///
-/// The code is intentionally self-contained: after the namespace switch only
-/// system classes are called, because routines of this class may not be mapped
-/// into %SYS.
-ClassMethod GetWalletCollections(Output items As %DynamicArray) As %Status
-{
-    Set tSC = $$$OK
-    Set items = []
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-
-        Set result = ""
-        Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%Prepare("SELECT Name, UseResource, EditResource FROM %Wallet.Collection ORDER BY Name")
-        If $$$ISOK(tSC) {
-            Set candidate = statement.%Execute()
-            If candidate.%SQLCODE < 0 {
-                Set tSC = $$$ERROR($$$GeneralError, candidate.%Message)
-            } Else {
-                Set result = candidate
-            }
-        }
-        If '$IsObject(result) {
-            // Older builds expose the same data through a class query.
-            Set legacy = ##class(%SQL.Statement).%New()
-            If $$$ISOK(legacy.%PrepareClassQuery("%SYS.Wallet.Collection", "List")) {
-                Set result = legacy.%Execute("*")
-                Set tSC = $$$OK
-            }
-        }
-        $$$ThrowOnError(tSC)
-
-        While result.%Next() {
-            Set item = {}
-            Set item.name = result.%Get("Name")
-            Set item.category = "Wallet"
-            Set item.type = "Collection"
-            Set item.status = "Protected"
-            Set item.issuer = ""
-            Set item.validFrom = ""
-            Set item.expiresAt = ""
-            Set item.association = result.%Get("UseResource")
-            Set item.detail = result.%Get("EditResource")
-            Do items.%Push(item)
-        }
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
-}
-
-/// Secure Wallet secrets. Only names and classes are selected; the Secret property
-/// is transient and is never read.
-ClassMethod GetWalletSecrets(Output items As %DynamicArray) As %Status
-{
-    Set tSC = $$$OK
-    Set items = []
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-
-        Set result = ""
-        Set typeColumn = "ClassName"
-        Set candidates = $ListBuild("SELECT Name, %CLASSNAME AS ClassName FROM %Wallet.Secret ORDER BY Name", "SELECT Name, '%Wallet.KeyValue' AS ClassName FROM %Wallet.KeyValue ORDER BY Name")
-        For index = 1:1:$ListLength(candidates) {
-            Set statement = ##class(%SQL.Statement).%New()
-            Set tSC = statement.%Prepare($List(candidates, index))
-            If $$$ISERR(tSC) Continue
-            Set candidate = statement.%Execute()
-            If candidate.%SQLCODE < 0 {
-                Set tSC = $$$ERROR($$$GeneralError, candidate.%Message)
-                Continue
-            }
-            Set result = candidate
-            Quit
-        }
-        If '$IsObject(result) {
-            // Older builds expose the same data through a class query.
-            Set legacy = ##class(%SQL.Statement).%New()
-            If $$$ISOK(legacy.%PrepareClassQuery("%SYS.Wallet.Secret", "List")) {
-                Set result = legacy.%Execute("*", "*")
-                Set typeColumn = "Type"
-                Set tSC = $$$OK
-            }
-        }
-        $$$ThrowOnError(tSC)
-
-        While result.%Next() {
-            Set className = result.%Get(typeColumn)
-            Set item = {}
-            Set item.name = result.%Get("Name")
-            Set item.category = "Wallet"
-            Set item.type = $Select(className [ "KeyValue":"Key/value secret", className [ "SymmetricKey":"Symmetric key", className [ "RSA":"RSA key", 1:"Secret reference")
-            Set item.status = "Protected"
-            Set item.issuer = ""
-            Set item.validFrom = ""
-            Set item.expiresAt = ""
-            Set item.association = $Piece(item.name, ".", 1)
-            Set item.detail = "Value hidden"
-            Do items.%Push(item)
-        }
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
-}
-
 ClassMethod GetCredentialReferences(Output items As %DynamicArray) As %Status
 {
     Set tSC = $$$OK
     Set items = []
 
-    // Ens.Config.Credentials only exists -- and only has a working SQL class
-    // query -- when Interoperability is properly enabled for this namespace.
-    // A plain IRIS Community namespace has no such class at all; a namespace
-    // where the class is merely visible through a database mapping (without
-    // being fully Interoperability-enabled) can have the class compiled but
-    // no matching SQL stored procedure, which fails with SQLCODE -428
-    // ("stored procedure not found"). Both situations mean "no credential
-    // references available here", not an error worth surfacing to the
-    // administrator, so any failure below is treated the same as the class
-    // not existing at all -- consistent with the class-existence check above,
-    // and avoids depending on the wording of a localized error message too.
+    // This query is available only in Interoperability-enabled namespaces.
+    // Missing classes or stored procedures mean no credential references here.
     If '##class(%Dictionary.CompiledClass).%ExistsId("Ens.Config.Credentials") Quit tSC
 
     Try {
@@ -381,14 +321,6 @@ ClassMethod GetCredentialReferences(Output items As %DynamicArray) As %Status
         Set items = []
     }
     Quit tSC
-}
-
-ClassMethod WalletType(className As %String) As %String
-{
-    If className [ "KeyValue" Quit "Key/value secret"
-    If className [ "SymmetricKey" Quit "Symmetric key"
-    If className [ "RSA" Quit "RSA key"
-    Quit "Secret reference"
 }
 
 }

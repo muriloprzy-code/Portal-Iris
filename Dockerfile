@@ -1,4 +1,4 @@
-ARG IMAGE=containers.intersystems.com/intersystems/iris-community:latest-em
+ARG IMAGE=containers.intersystems.com/intersystems/iris-community:2026.2
 FROM ${IMAGE}
 
 USER root
@@ -11,11 +11,7 @@ ADD --chown=${ISC_PACKAGE_MGRUSER}:${ISC_PACKAGE_IRISGROUP} \
     https://pm.community.intersystems.com/packages/zpm/latest/installer \
     /tmp/zpm.xml
 
-# MYOWN_DEMO_PASSWORD sets the initial _SYSTEM password for this local
-# demo container. It is supplied at build time (see compose.yaml and
-# .env.example), never hardcoded in the ObjectScript source, so no
-# credential is committed to the repository. Override it in .env for
-# anything beyond a local, throwaway demo.
+# Public local-demo credential; override it through .env before non-local use.
 ARG MYOWN_DEMO_PASSWORD=change-me-please
 RUN ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
     iris start IRIS && \
@@ -23,22 +19,17 @@ RUN ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
     iris session IRIS < /home/irisowner/dev/docker/finish-build.script && \
     iris stop IRIS quietly
 
-# Durable %SYS (ISC_DATA_DIRECTORY, set in compose.yaml) means %SYS -- including
-# Security.Users and the _SYSTEM account -- is installed FRESH, from scratch, the
-# first time the container actually starts with an empty external volume. Whatever
-# password this Dockerfile's own build-time IRIS instance had is local to that
-# throwaway instance and never carries over, so setting it here via ObjectScript
-# (as this project used to do) has no effect on the real container. A fresh IRIS
-# Community instance's initial _SYSTEM password is always "SYS" and forces a
-# change on first use, which the official iris-main entrypoint's --password-file
-# flag (see compose.yaml's "command") is the supported way to drive non-interactively.
-# The chosen password is written into the image here from the build argument --
-# never hardcoded in source -- so compose.yaml can point --password-file at it.
+# Durable %SYS is created at runtime, so the build-time account database is not
+# retained. The startup wrapper passes this credential to iris-main only on the
+# first start of a local demo volume.
 RUN printf '%s' "${MYOWN_DEMO_PASSWORD}" > /home/irisowner/dev/docker/.runtime-password.txt
 
 USER root
+RUN chmod +x /home/irisowner/dev/docker/start-iris.sh
 RUN mkdir -p /durable && \
     chown ${ISC_PACKAGE_MGRUSER}:${ISC_PACKAGE_IRISGROUP} /durable
 USER ${ISC_PACKAGE_MGRUSER}
+
+ENTRYPOINT ["/tini", "--", "/home/irisowner/dev/docker/start-iris.sh"]
 
 EXPOSE 1972 52773

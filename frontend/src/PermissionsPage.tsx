@@ -17,7 +17,7 @@ import {
 
 type Tab = 'Users' | 'Roles' | 'Resources'
 
-function isEnabled(value: string) {
+function isEnabled(value: unknown) {
   const normalized = String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   return String(value) === '1' || normalized === 'true' || normalized === 'sim' || normalized.includes('yes') || normalized.includes('enabled') || normalized.includes('ativado') || normalized.includes('habilitado') || normalized === 'ativo'
 }

@@ -41,6 +41,7 @@ function taskState(task: TaskItem) {
 }
 
 function managerLabel(status: number) {
+  if (status < 0) return 'Manager status unavailable'
   if (status === 1) return 'Manager running'
   if (status === 2) return 'Manager suspended'
   return 'Manager stopped'

@@ -6,112 +6,114 @@ Parameter ProtectedApplication = "/myown/api";
 Parameter ProtectedRoot = "/myown";
 
 /// Read-only inventory of web applications through the published security API.
-ClassMethod GetApplications(Output items As %DynamicArray) As %Status
+ClassMethod GetApplications(authorization As %String, Output items As %DynamicArray, Output source As %String) As %Status
 {
-    Set tSC = $$$OK
-    Set items = []
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-
-        Set statement = ##class(%SQL.Statement).%New()
-        Set tSC = statement.%PrepareClassQuery("Security.Applications", "List")
-        $$$ThrowOnError(tSC)
-        Set result = statement.%Execute("*", 2, "").%NextResult()
-
-        While result.%Next() {
-            Set item = {}
-            Set item.name = result.%Get("Name")
-            Set item.namespace = result.%Get("Namespace")
-            Set item.namespaceDefault = result.%Get("Namespace Default")
-            Set item.enabled = result.%Get("Enabled")
-            Set item.type = result.%Get("Type")
-            Set item.resource = result.%Get("Resource")
-            Set item.authenticationMethods = result.%Get("Authentication Methods")
-            Set item.systemApplication = result.%Get("IsSystemApp")
-            Set item.dispatchClass = result.%Get("Dispatch Class")
-            Do items.%Push(item)
-        }
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
+    Set source = "sysadmin-v2"
+    Quit ..GetApplicationsFromSysAdmin(authorization, .items)
 }
 
 /// Return the published configuration for one web application.
-ClassMethod GetApplication(application As %String, Output item As %DynamicObject) As %Status
+ClassMethod GetApplication(application As %String, authorization As %String, Output item As %DynamicObject, Output source As %String) As %Status
 {
-    Set tSC = $$$OK
-    Set item = {}
-    Try {
-        New $Namespace
-        Set $Namespace = "%SYS"
-
-        Set tSC = ##class(Security.Applications).Get(application, .properties)
-        $$$ThrowOnError(tSC)
-
-        Set namespace = $Get(properties("NameSpace"))
-        If namespace = "" Set namespace = $Get(properties("Namespace"))
-        Set reason = ..ProtectionReason(application, namespace)
-
-        Set item.name = application
-        Set item.description = $Get(properties("Description"))
-        Set item.namespace = namespace
-        Set item.enabled = +$Get(properties("Enabled"))
-        Set item.dispatchClass = $Get(properties("DispatchClass"))
-        Set item.resource = $Get(properties("Resource"))
-        Set item.authenticationCode = $Get(properties("AutheEnabled"))
-        Set item.cookiePath = $Get(properties("CookiePath"))
-        Set item.sessionUse = $Get(properties("SessionUse"))
-        Set item.namespaceDefault = +$Get(properties("IsNameSpaceDefault"))
-        Set item.canManage = ..CanManage()
-        Set item.manageable = (reason = "")
-        Set item.protectionReason = reason
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
+    Set source = "sysadmin-v2"
+    Quit ..GetApplicationFromSysAdmin(application, authorization, .item)
 }
 
 /// Enable or disable a project-owned application using the published security API.
-ClassMethod SetApplicationEnabled(application As %String, enabled As %Boolean, Output item As %DynamicObject) As %Status
+ClassMethod SetApplicationEnabled(application As %String, enabled As %Boolean, authorization As %String, Output item As %DynamicObject, Output source As %String) As %Status
 {
-    Set tSC = $$$OK
-    Set item = {}
-    Try {
-        If '..CanManage() {
-            Set tSC = $$$ERROR($$$GeneralError, "The current user cannot manage web applications.")
-            $$$ThrowStatus(tSC)
-        }
-
-        New $Namespace
-        Set $Namespace = "%SYS"
-        Set tSC = ##class(Security.Applications).Get(application, .properties)
-        $$$ThrowOnError(tSC)
-
-        Set namespace = $Get(properties("NameSpace"))
-        If namespace = "" Set namespace = $Get(properties("Namespace"))
-        Set reason = ..ProtectionReason(application, namespace)
-        If reason '= "" {
-            Set tSC = $$$ERROR($$$GeneralError, reason)
-            $$$ThrowStatus(tSC)
-        }
-
-        Kill updates
-        Set updates("Enabled") = +enabled
-        Set tSC = ##class(Security.Applications).Modify(application, .updates)
-        $$$ThrowOnError(tSC)
-
-        Set item.name = application
-        Set item.enabled = +enabled
-        Set item.action = $Select(enabled:"enabled", 1:"disabled")
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
+    Set source = "sysadmin-v2"
+    Quit ..SetApplicationEnabledWithSysAdmin(application, enabled, authorization, .item)
 }
 
-/// The native application API requires the %Admin_Secure resource.
+ClassMethod GetApplicationsFromSysAdmin(authorization As %String, Output items As %DynamicArray) As %Status [ Private ]
+{
+    Set items = []
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", "/api/admin/v2/web-apps?maxRows=1000", authorization, "", .payload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set records = payload.%Get("result")
+    If '$IsObject(records) Quit $$$ERROR($$$GeneralError, "The SysAdmin web application response did not include a result array.")
+    For index = 0:1:(records.%Size() - 1) {
+        Set record = records.%Get(index)
+        Set application = record.%Get("Name")
+        Set detailPath = "/api/admin/v2/web-app?name=" _ ##class(MyOwn.Service.SysAdminClient).EncodeQueryValue(application)
+        Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", detailPath, authorization, "", .detailPayload, .detailHttpStatus)
+        If $$$ISERR(tSC) Quit tSC
+        Set applicationData = detailPayload.%Get("result")
+        If '$IsObject(applicationData) Quit $$$ERROR($$$GeneralError, "The SysAdmin web application detail response did not include a result object.")
+
+        Set item = {}
+        Set item.name = application
+        Set item.namespace = applicationData.%Get("NameSpace")
+        Set item.namespaceDefault = +applicationData.%Get("IsNameSpaceDefault")
+        Set item.enabled = +applicationData.%Get("Enabled")
+        Set item.type = record.%Get("Type")
+        Set item.resource = applicationData.%Get("Resource")
+        Set item.authenticationMethods = ..JoinDynamicArray(record.%Get("AuthenticationMethods"))
+        Set item.systemApplication = record.%Get("IsSystemApp")
+        Set item.dispatchClass = applicationData.%Get("DispatchClass")
+        Do items.%Push(item)
+    }
+    Quit $$$OK
+}
+
+ClassMethod GetApplicationFromSysAdmin(application As %String, authorization As %String, Output item As %DynamicObject) As %Status [ Private ]
+{
+    Set item = {}
+    If application = "" Quit $$$ERROR($$$GeneralError, "The application name is required.")
+    Set path = "/api/admin/v2/web-app?name=" _ ##class(MyOwn.Service.SysAdminClient).EncodeQueryValue(application)
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("GET", path, authorization, "", .payload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set applicationData = payload.%Get("result")
+    If '$IsObject(applicationData) Quit $$$ERROR($$$GeneralError, "The SysAdmin web application response did not include a result object.")
+    Set namespace = applicationData.%Get("NameSpace")
+    Set reason = ..ProtectionReason(application, namespace)
+    Set item.name = application
+    Set item.description = applicationData.%Get("Description")
+    Set item.namespace = namespace
+    Set item.enabled = applicationData.%Get("Enabled")
+    Set item.dispatchClass = applicationData.%Get("DispatchClass")
+    Set item.resource = applicationData.%Get("Resource")
+    Set item.authenticationCode = applicationData.%Get("AutheEnabled")
+    Set item.cookiePath = applicationData.%Get("CookiePath")
+    Set item.sessionUse = applicationData.%Get("UseCookies")
+    Set item.namespaceDefault = applicationData.%Get("IsNameSpaceDefault")
+    Set item.canManage = ..CanManage()
+    Set item.manageable = (reason = "")
+    Set item.protectionReason = reason
+    Quit $$$OK
+}
+
+ClassMethod SetApplicationEnabledWithSysAdmin(application As %String, enabled As %Boolean, authorization As %String, Output item As %DynamicObject) As %Status [ Private ]
+{
+    Set item = {}
+    If '..CanManage() Quit $$$ERROR($$$GeneralError, "The current user cannot manage web applications.")
+    Set tSC = ..GetApplicationFromSysAdmin(application, authorization, .detail)
+    If $$$ISERR(tSC) Quit tSC
+    If 'detail.manageable Quit $$$ERROR($$$GeneralError, detail.protectionReason)
+    Set update = {}
+    Set update.Enabled = +enabled
+    Set path = "/api/admin/v2/web-app?name=" _ ##class(MyOwn.Service.SysAdminClient).EncodeQueryValue(application)
+    Set tSC = ##class(MyOwn.Service.SysAdminClient).Request("PUT", path, authorization, update.%ToJSON(), .payload, .httpStatus)
+    If $$$ISERR(tSC) Quit tSC
+    Set item.name = application
+    Set item.enabled = +enabled
+    Set item.action = $Select(enabled:"enabled", 1:"disabled")
+    Quit $$$OK
+}
+
+ClassMethod JoinDynamicArray(values As %DynamicAbstractObject) As %String [ Private ]
+{
+    If '$IsObject(values) Quit ""
+    Set text = ""
+    For index = 0:1:(values.%Size() - 1) {
+        If text '= "" Set text = text _ ", "
+        Set text = text _ values.%Get(index)
+    }
+    Quit text
+}
+
+/// Application management requires the %Admin_Secure resource.
 ClassMethod CanManage() As %Boolean
 {
     Quit $System.Security.Check("%Admin_Secure", "USE")

@@ -48,8 +48,8 @@ export default function SecurityPage() {
   useEffect(() => {
     async function loadSecurity() {
       try {
-        // Some native security queries use namespace-scoped cursors. Keep the
-        // inventory and summary calls sequential to avoid competing cursors.
+        // Keep the inventory and summary calls sequential so a refresh cannot
+        // mix responses from the security categories.
         const response = await getSecurityInventory()
         const summaryResponse = await getSecuritySummary()
         setItems([
@@ -107,7 +107,7 @@ export default function SecurityPage() {
         <div className="permission-stats"><span><strong>{summary?.certificates ?? certificateCount}</strong>Certificates</span><span><strong>{summary?.oauth ?? oauthCount}</strong>OAuth items</span><span><strong>{summary?.protectedItems ?? protectedCount}</strong>Protected items</span></div>
       </section>
 
-      {summary && <section className="security-posture" aria-label="Security access posture"><span><small>NATIVE SECURITY API</small><strong>{Boolean(Number(summary.canReadSecurity)) ? 'Available' : 'Restricted'}</strong></span><span><small>SECURE WALLET ACCESS</small><strong>{Boolean(Number(summary.canUseWallet)) ? 'Available' : 'Restricted'}</strong></span><span><small>PORTAL MODE</small><strong>{summary.mode}</strong></span></section>}
+      {summary && <section className="security-posture" aria-label="Security access posture"><span><small>SYSADMIN API V2</small><strong>{Boolean(Number(summary.canReadSecurity)) ? 'Available' : 'Restricted'}</strong></span><span><small>SECURE WALLET ACCESS</small><strong>{Boolean(Number(summary.canUseWallet)) ? 'Available' : 'Restricted'}</strong></span><span><small>PORTAL MODE</small><strong>{summary.mode}</strong></span></section>}
 
       <section className="data-panel">
         <div className="data-toolbar">

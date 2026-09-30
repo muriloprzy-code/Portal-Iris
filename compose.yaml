@@ -4,21 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        IMAGE: ${IRIS_IMAGE:-containers.intersystems.com/intersystems/iris-community:latest-em}
+        IMAGE: ${IRIS_IMAGE:-containers.intersystems.com/intersystems/iris-community:2026.2}
         MYOWN_DEMO_PASSWORD: ${MYOWN_DEMO_PASSWORD:-ChangeMe2026!}
     container_name: myown-portal-iris
     hostname: myown-portal-iris
     restart: unless-stopped
-    # A fresh IRIS Community instance's initial _SYSTEM password is always "SYS"
-    # and forces a change on first use. With Durable %SYS (ISC_DATA_DIRECTORY,
-    # below), that account is created fresh the first time this container starts
-    # against an empty volume, so setting the password during "docker build" (as
-    # this project used to do) has no effect at runtime. --password-file is the
-    # iris-main entrypoint's supported, non-interactive way to drive that required
-    # change; it points at a file the Dockerfile writes into the image from the
-    # MYOWN_DEMO_PASSWORD build argument, and iris-main deletes that file once
-    # the password has been applied.
-    command: ["--password-file", "/home/irisowner/dev/docker/.runtime-password.txt"]
+    # docker/start-iris.sh applies the initial password only for a new durable
+    # volume. Existing volumes keep their configured accounts during upgrades.
     ports:
       - "${IRIS_SUPERSERVER_PORT:-1973}:1972"
       - "${IRIS_WEB_PORT:-52774}:52773"
@@ -35,3 +27,4 @@ services:
 
 volumes:
   myown-portal-data:
+    name: ${MYOWN_DATA_VOLUME:-myown-portal-data}
