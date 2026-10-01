@@ -85,6 +85,7 @@ Everything else — architecture, every install detail, the API reference, and t
 - **Vector Search:** health patterns are stored in a `%Vector` property and matched with `VECTOR_COSINE`.
 - **Docker:** `Dockerfile` and `compose.yaml` build and run the portal on IRIS Community Edition.
 - **IPM package:** `module.xml` defines the `myown-portal` module.
+- **Online demo (temporary, for contest evaluation):** [https://163-176-71-47.sslip.io/myown/index.html](https://163-176-71-47.sslip.io/myown/index.html) — sign in with `_SYSTEM` / `ChangeMe2026!`.
 - **Embedded Python bug report:** found and reported an upstream Embedded Python bug — a `[Language = python]` ClassMethod declared to return `%BigInt` silently returns `-1` for any Python `int` of `2**63` or greater (the same value returned as `%String` round-trips correctly), instead of the correct value or an error. See [python-bugreports issue #19](https://github.com/intersystems-community/python-bugreports/issues/19) for the full report and a minimal reproduction.
 
 ## License
