@@ -331,6 +331,10 @@ This statistical approach (not a trained ML model) was a deliberate choice: it i
 
 **Surfacing.** `report.anomalies` is included in the `/myown/api` health response (`frontend/src/api/client.ts` types it as `Array<{ metric, label, current, baseline, zScore, severity }>`) and rendered on the Overview page's "Embedded Python Analysis" card as colored badges — amber for `warning`, red for `critical` — each showing the metric's current value against its own recent baseline. With no anomalies, the card shows "✓ AI Instance Monitor: no unusual patterns in recent history" instead; that quiet state is the expected, correct result on a healthy instance. Source: `MyOwn.Service.HealthAnalysis` (`DetectAnomalies`, `DetectAnomaliesWithPython`) and `MyOwn.Task.HealthSnapshot`.
 
+| No anomalies | Anomaly detected |
+|---|---|
+| ![AI Instance Monitor — no anomalies](images/instance-monitor-healthy.png) | ![AI Instance Monitor — anomaly detected](images/instance-monitor-anomaly.png) |
+
 ## Design note
 
 MyOwn Portal calls the official `/api/admin/v2/...` endpoints from its ObjectScript REST layer and reports `meta.source` as `sysadmin-v2`. Host metrics, `messages.log`, Embedded Python, Vector Search, auditing, and interoperability credential references remain native because the SysAdmin specification has no equivalent general endpoint for those features.
