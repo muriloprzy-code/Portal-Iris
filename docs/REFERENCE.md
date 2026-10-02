@@ -313,6 +313,24 @@ The Overview page sends live disk, database, lock, alert, and process metrics to
 
 The same normalized metrics form a six-dimensional vector. IRIS stores baseline vectors in `MyOwn.HealthPattern` and compares them with `VECTOR_COSINE`. The closest pattern supplies the diagnosis, similarity percentage, and recommended action. The installer seeds healthy, disk-pressure, database-capacity, lock-contention, serious-alert, and process-pressure patterns automatically.
 
+## AI-Powered Instance Monitor (Community Opportunity idea DPI-I-512)
+
+This implements [DPI-I-512, "add AI to Instance Monitor to prevent major incident"](https://ideas.intersystems.com/ideas/DPI-I-512) from the InterSystems Ideas portal's Community Opportunity list: train on the instance's own recent history and warn when current load looks statistically unusual, before it turns into an incident.
+
+**History collection.** The demonstration task `MyOwn.Task.HealthSnapshot` (visible and runnable from the Tasks page) calls `HealthAnalysis.GetReport()` on every run and appends one pipe-delimited entry to `^MyOwn.HealthSnapshot($ZDateTime(...))`:
+
+```text
+score|status|diskUsedPercent|databaseSpacePercent|lockTablePercent|seriousAlerts|processes
+```
+
+Only the newest 100 entries are kept; older ones are trimmed on each run.
+
+**Detection.** `HealthAnalysis.GetReport()` calls `DetectAnomalies()` right after computing the live metrics for the current request. `DetectAnomalies()` walks `^MyOwn.HealthSnapshot` backward with `$Order`, reading up to the 50 most recent entries that carry the extended metric format, and builds one array per tracked metric (disk usage, database capacity, lock table usage, process count). That history, plus the live current metrics, is handed as JSON to `DetectAnomaliesWithPython` — a `[Language = python]` method that, for each metric with at least 5 historical points, computes the mean (`statistics.fmean`) and population standard deviation (`statistics.pstdev`) of its history, then the z-score of the current live reading against that baseline. A metric is flagged once its z-score passes 2 (`"warning"`, or `"critical"` above 3); metrics with fewer than 5 snapshots or zero historical variance are skipped, which is what keeps a freshly installed instance quiet instead of flagging everything against an empty baseline. Flagged metrics are returned sorted by z-score, most unusual first.
+
+This statistical approach (not a trained ML model) was a deliberate choice: it is fully explainable, needs no model file to ship or version, has no extra dependency beyond Python's standard library, and runs natively wherever Embedded Python already runs in this project.
+
+**Surfacing.** `report.anomalies` is included in the `/myown/api` health response (`frontend/src/api/client.ts` types it as `Array<{ metric, label, current, baseline, zScore, severity }>`) and rendered on the Overview page's "Embedded Python Analysis" card as colored badges — amber for `warning`, red for `critical` — each showing the metric's current value against its own recent baseline. With no anomalies, the card shows "✓ AI Instance Monitor: no unusual patterns in recent history" instead; that quiet state is the expected, correct result on a healthy instance. Source: `MyOwn.Service.HealthAnalysis` (`DetectAnomalies`, `DetectAnomaliesWithPython`) and `MyOwn.Task.HealthSnapshot`.
+
 ## Design note
 
 MyOwn Portal calls the official `/api/admin/v2/...` endpoints from its ObjectScript REST layer and reports `meta.source` as `sysadmin-v2`. Host metrics, `messages.log`, Embedded Python, Vector Search, auditing, and interoperability credential references remain native because the SysAdmin specification has no equivalent general endpoint for those features.
