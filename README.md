@@ -67,6 +67,7 @@ Everything else — architecture, every install detail, the API reference, and t
 
 - System overview, operating-system metrics, and active IRIS processes.
 - Embedded Python health scoring with a concise instance-health summary.
+- AI-Powered Instance Monitor: flags any CPU, memory, disk, lock, or process metric that is statistically unusual compared to its own recent history.
 - Native IRIS Vector Search against stored health patterns and recommendations.
 - Users, roles, resources, effective permissions, and controlled role assignment.
 - Web application and REST API inventory with protected enable/disable actions.
@@ -85,6 +86,7 @@ Everything else — architecture, every install detail, the API reference, and t
 - **Vector Search:** health patterns are stored in a `%Vector` property and matched with `VECTOR_COSINE`.
 - **Docker:** `Dockerfile` and `compose.yaml` build and run the portal on IRIS Community Edition.
 - **IPM package:** `module.xml` defines the `myown-portal` module.
+- **Implement Community Opportunity idea:** implemented [DPI-I-512, "add AI to Instance Monitor to prevent major incident"](https://ideas.intersystems.com/ideas/DPI-I-512) as the AI Instance Monitor on the Overview page. `MyOwn.Task.HealthSnapshot` now records CPU, memory, disk, lock, and process metrics on every run; `MyOwn.Service.HealthAnalysis.DetectAnomalies` (Embedded Python) flags a metric once it sits more than two standard deviations from its own recent average, and needs at least 5 recorded snapshots before it evaluates anything. On a fresh instance, open the Tasks page and click Run on the demonstration task (`MyOwn Portal health snapshot`) a handful of times to build that history. With no anomaly, the Overview page shows "✓ AI Instance Monitor: no unusual patterns in recent history" — that quiet state is the expected, correct result on a healthy instance, not a missing feature.
 - **Online demo (temporary, for contest evaluation):** [https://163-176-71-47.sslip.io/myown/index.html](https://163-176-71-47.sslip.io/myown/index.html) — sign in with `_SYSTEM` / `ChangeMe2026!`.
 - **Embedded Python bug report:** found and reported an upstream Embedded Python bug — a `[Language = python]` ClassMethod declared to return `%BigInt` silently returns `-1` for any Python `int` of `2**63` or greater (the same value returned as `%String` round-trips correctly), instead of the correct value or an error. See [python-bugreports issue #19](https://github.com/intersystems-community/python-bugreports/issues/19) for the full report and a minimal reproduction.
 
