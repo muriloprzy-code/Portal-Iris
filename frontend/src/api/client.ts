@@ -59,6 +59,14 @@ export type HealthReportResponse = {
       recommendation: string
       similarity: number
     }
+    anomalies: Array<{
+      metric: string
+      label: string
+      current: number
+      baseline: number
+      zScore: number
+      severity: 'warning' | 'critical'
+    }>
   }
   meta: { timestamp: string }
 }

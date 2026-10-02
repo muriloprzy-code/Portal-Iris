@@ -194,6 +194,13 @@ export default function App() {
             <p className="eyebrow">EMBEDDED PYTHON ANALYSIS</p>
             <div className="health-heading"><h3>Instance health</h3><span className="status-pill">● {healthReport?.data.status ?? 'Analyzing'}</span></div>
             <p>{healthReport?.data.summary ?? 'Collecting live IRIS metrics for the health report.'}</p>
+            {healthReport && (healthReport.data.anomalies.length
+              ? <div className="anomaly-list" aria-label="Instance monitor anomalies">
+                  {healthReport.data.anomalies.map((item) => (
+                    <span key={item.metric} className={`anomaly-badge ${item.severity}`}>⚠ {item.label}: {item.current} vs {item.baseline} baseline</span>
+                  ))}
+                </div>
+              : <p className="anomaly-ok">✓ AI Instance Monitor: no unusual patterns in recent history.</p>)}
           </div>
           <div className="vector-result">
             <p className="eyebrow">IRIS VECTOR SEARCH</p>

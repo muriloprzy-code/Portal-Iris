@@ -30,6 +30,10 @@ ClassMethod GetReport(Output report As %DynamicObject) As %Status
         Set report.metrics.seriousAlerts = +summary.seriousAlerts
         Set report.metrics.processes = +summary.processes
 
+        Set tSC = ..DetectAnomalies(report.metrics, .anomalies)
+        If $$$ISERR(tSC) Set anomalies = []
+        Set report.anomalies = anomalies
+
         Set healthyReserve = 1 - ..MaxRisk(diskRisk, databaseRisk, lockRisk, alertRisk, processRisk)
         Set vectorText = diskRisk _ "," _ databaseRisk _ "," _ lockRisk _ "," _ alertRisk _ "," _ processRisk _ "," _ healthyReserve
         Set tSC = ..FindClosestPattern(vectorText, .match)
@@ -123,6 +127,90 @@ ClassMethod MaxRisk(a As %Double, b As %Double, c As %Double, d As %Double, e As
     If d > maximum Set maximum = d
     If e > maximum Set maximum = e
     Quit maximum
+}
+
+/// AI-Powered Instance Monitor (implements InterSystems Community Idea DPI-I-512,
+/// "add AI to Instance Monitor to prevent major incident"). Reads the metric history
+/// collected by MyOwn.Task.HealthSnapshot and flags any current metric whose value is
+/// statistically unusual (z-score beyond 2) compared to its own recent baseline.
+ClassMethod DetectAnomalies(currentMetrics As %DynamicObject, Output anomalies As %DynamicArray) As %Status [ Private ]
+{
+    Set tSC = $$$OK
+    Set anomalies = []
+    Try {
+        Set history = {}
+        Set history.diskUsedPercent = []
+        Set history.databaseSpacePercent = []
+        Set history.lockTablePercent = []
+        Set history.processes = []
+
+        Set key = ""
+        Set count = 0
+        For {
+            Set key = $Order(^MyOwn.HealthSnapshot(key), -1)
+            If (key = "") || (count >= 50) Quit
+            Set entry = ^MyOwn.HealthSnapshot(key)
+            // Only the extended format carries the raw metrics needed for statistics.
+            If $Length(entry, "|") >= 7 {
+                Do history.diskUsedPercent.%Push(+$Piece(entry, "|", 3))
+                Do history.databaseSpacePercent.%Push(+$Piece(entry, "|", 4))
+                Do history.lockTablePercent.%Push(+$Piece(entry, "|", 5))
+                Do history.processes.%Push(+$Piece(entry, "|", 7))
+                Set count = count + 1
+            }
+        }
+
+        Set anomaliesJSON = ..DetectAnomaliesWithPython(history.%ToJSON(), currentMetrics.%ToJSON())
+        Set anomalies = [].%FromJSON(anomaliesJSON)
+    } Catch exception {
+        Set tSC = exception.AsStatus()
+        Set anomalies = []
+    }
+    Quit tSC
+}
+
+/// Deliberately simple and explainable: a metric is "unusual" when it sits more than
+/// two standard deviations away from its own recent average. Needs at least 5 historical
+/// snapshots per metric before it will flag anything, to avoid false positives on a fresh
+/// instance that has not collected history yet.
+ClassMethod DetectAnomaliesWithPython(historyJSON As %String, currentJSON As %String) As %String [ Language = python ]
+{
+    import json
+    import statistics
+
+    history = json.loads(historyJSON)
+    current = json.loads(currentJSON)
+
+    labels = {
+        "diskUsedPercent": "disk usage",
+        "databaseSpacePercent": "database capacity",
+        "lockTablePercent": "lock table usage",
+        "processes": "process load",
+    }
+
+    anomalies = []
+    for metric, label in labels.items():
+        series = history.get(metric, [])
+        if len(series) < 5:
+            continue
+        mean = statistics.fmean(series)
+        stdev = statistics.pstdev(series)
+        if stdev == 0:
+            continue
+        value = float(current.get(metric, 0))
+        z_score = (value - mean) / stdev
+        if z_score > 2:
+            anomalies.append({
+                "metric": metric,
+                "label": label,
+                "current": round(value, 1),
+                "baseline": round(mean, 1),
+                "zScore": round(z_score, 2),
+                "severity": "critical" if z_score > 3 else "warning",
+            })
+
+    anomalies.sort(key=lambda item: item["zScore"], reverse=True)
+    return json.dumps(anomalies)
 }
 
 }
