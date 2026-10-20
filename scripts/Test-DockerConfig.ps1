@@ -6,6 +6,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $requiredFiles = @(
     'Dockerfile',
     'compose.yaml',
+    'compose.aihub.yaml',
     '.dockerignore',
     'docker\merge.cpf',
     'docker\iris.script',
@@ -28,7 +29,7 @@ $start = Get-Content -LiteralPath (Join-Path $projectRoot 'docker\start-iris.sh'
 [xml]$manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'module.xml')
 
 $checks = [ordered]@{
-    'Community IRIS image' = $dockerfile -match 'intersystems/iris-community'
+    'AI Hub Community build 154' = ($dockerfile -match '2026\.3\.0AI\.154\.0') -and ($compose -match '2026\.3\.0AI\.154\.0')
     'CPF initialization' = $dockerfile -match 'ISC_CPF_MERGE_FILE'
     'IPM bootstrap' = $dockerfile -match '/tmp/zpm\.xml'
     'MYOWN namespace' = $merge -match 'CreateNamespace:Name=MYOWN'
@@ -36,6 +37,7 @@ $checks = [ordered]@{
     'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($start -match '--password-file') -and ($start -match 'iris\.cpf') -and ($start -match 'CSPpwd')
     'Web port mapping' = $compose -match '52774.*:52773'
     'Durable IRIS data' = ($compose -match 'ISC_DATA_DIRECTORY: /durable/iris') -and ($compose -match 'myown-portal-data:/durable')
+    'AI provider environment' = ($compose -match 'MYOWN_AI_API_KEY') -and ($compose -match 'MYOWN_AI_PROVIDER') -and ($compose -match 'MYOWN_AI_MODEL')
     'Static web application' = $null -ne $manifest.Export.Document.Module.WebApplication
 }
 

@@ -150,7 +150,7 @@ This imports and compiles all `MyOwn.*` classes, copies the compiled React appli
 
 ## A tour of the app
 
-Once signed in, everything lives behind a single sidebar with up to six tabs. A `MyOwnViewer` account sees Overview and Logs. A `MyOwnAdministrator` account (or `_SYSTEM`) sees all six tabs and the process inventory. This separation prevents read-only accounts from invoking SysAdmin endpoints guarded by native `%Admin_*` privileges.
+Once signed in, everything lives behind a single sidebar with up to seven tabs. A `MyOwnViewer` account sees Overview, Logs, and the read-only parts of Agents. A `MyOwnAdministrator` account (or `_SYSTEM`) sees all seven tabs and the process inventory. This separation prevents read-only accounts from invoking SysAdmin endpoints guarded by native `%Admin_*` privileges.
 
 - **Overview** — the landing page. Four summary cards (CPU, memory, disk usage, running processes), instance information, shortcuts, and the Embedded Python + Vector Search health report. Administrators also see a live SysAdmin API process table that refreshes every 15 seconds.
 - **Permissions** *(administrators only)* — Users, Roles, and Resources, each as a searchable table. Clicking a user or role opens its directly assigned and effective roles and permissions. An administrator can assign or remove a role from a user, with a confirmation step before the change is applied.
@@ -158,6 +158,7 @@ Once signed in, everything lives behind a single sidebar with up to six tabs. A 
 - **Security** *(administrators only)* — a read-only inventory of certificates (with expiration warnings), OAuth configurations, Secure Wallet items, and credential references. Actual secret values, passwords, tokens, and private keys are never exposed — only metadata.
 - **Tasks** *(administrators only)* — the native IRIS Task Manager's scheduled tasks, searchable and filterable, with status, next run time, and last result. An administrator can run a task immediately, or suspend and resume it, each with a confirmation step.
 - **Logs** — a sanitized, paginated view of the IRIS system log (`messages.log`), searchable and filterable by severity, source, and time range, with a note that potentially sensitive log content is withheld by the backend before it ever reaches the browser.
+- **Agents** — decisions, access requests, token/cost observability, traces and guardrails for every account. Administrators also receive proposal approval, production control, deterministic demo scenarios, budgets, provider settings, and the kill switch.
 
 ## Architecture
 
@@ -170,7 +171,11 @@ Browser
                               ├─ Embedded Python scoring
                               ├─ VECTOR(DOUBLE,6) health patterns
                               ├─ native Security.* APIs
-                              └─ native IRIS system APIs
+                              ├─ native IRIS system APIs
+                              └─ MyOwn.Agent.*
+                                      │
+                                      └─ Interoperability production
+                                          BS → BP → BO → Rules/AI Hub engine
 ```
 
 The frontend never connects directly to system globals or databases. Administrative data and actions pass through the ObjectScript service layer. API responses do not expose passwords, tokens, private keys, wallet values, or ObjectScript stack traces.
@@ -216,6 +221,8 @@ Running `MyOwn.Installer.Setup()` (directly, through IPM, or inside the Docker b
 - the `MyOwn/Administration/Change` audit event;
 - six initial health patterns stored as native IRIS vectors;
 - the `MyOwn Portal health snapshot` demonstration task in the `MYOWN` namespace.
+- the `MyOwn.Production.Main` Interoperability production and its event, decision, proposal, ledger and notification stores;
+- agent audit events, the `MyOwnAgentRunner` role, deterministic scenarios and the agent-retention task.
 
 Most administration data lives in the `%SYS` namespace, which ordinary users cannot enter. The installer sets `MatchRoles` on the `/myown/api` web application so that:
 
@@ -284,6 +291,17 @@ $credential = Get-Credential
 
 Use `-ExpectedProduct irisforhealth` when validating an IRIS for Health instance. The same read and controlled-mutation suites are designed to run against both products; use an isolated test instance for the mutation suite.
 
+The agent suite changes the demo configuration temporarily, restores it in `finally`, runs events through the live Interoperability production, and writes a machine-readable report:
+
+```powershell
+$credential = Get-Credential
+.\scripts\Test-Agents.ps1 -BaseUrl http://localhost:52774 -Credential $credential -IrisImage irishealth-community:2026.3.0AI.154.0 -Edition irisforhealth
+.\scripts\Test-AgentSecretScan.ps1
+.\scripts\Test-Agents-AIHub.ps1 -BaseUrl http://localhost:52774 -Credential $credential
+```
+
+The core suite exercises S1–S10, confirms real task suspension and resumption with state restoration, and checks DemoMode, read-only mode, cooldown, budget fallback, protected targets, separation of duties, kill switch behavior, response sanitization, guardrails and ledger coherence. Pass `-ViewerCredential` to enable the separate Viewer authorization check. The core Rules test does not require an LLM key. The secret scan checks project files and recent Git history without printing detected values. The real-AI-Hub suite remains optional and uses `MYOWN_AI_API_KEY` only when explicitly supplied.
+
 ## Main API endpoints
 
 | Method | Endpoint | Purpose |
@@ -304,6 +322,20 @@ Use `-ExpectedProduct irisforhealth` when validating an IRIS for Health instance
 | GET | `/tasks` | Task Manager inventory |
 | POST | `/tasks/action` | Run, suspend, or resume an allowed task |
 | GET | `/logs` | Sanitized recent IRIS log entries |
+| GET | `/agent/status` | Active engine, budget, kill switch and production state |
+| GET | `/agent/decisions` | Validated agent decisions and trace identifiers |
+| GET | `/agent/proposals` | State-change proposals awaiting human review |
+| POST | `/agent/proposals/:id/confirm` | Revalidate, execute and read back a confirmed change |
+| POST | `/agent/proposals/:id/reject` | Reject a proposal without a state change |
+| GET/POST | `/agent/access-requests` | List or submit an access request |
+| GET | `/agent/ledger/summary` | Decision, token, cost and latency totals |
+| GET | `/agent/traces/:traceId` | Event-to-ledger trace timeline |
+| GET | `/agent/production/status` | Production and configured-item state |
+| POST | `/agent/production/start` or `/stop` | Administrator production control |
+| GET | `/agent/guardrails` | Effective safety rules and data boundaries |
+| GET/PUT | `/agent/config` | Secret-free agent configuration |
+| POST | `/agent/killswitch` | Immediately force the deterministic safe path |
+| POST | `/agent/simulate` | Run S1–S10 through the production when DemoMode is enabled |
 
 All endpoints are below `/myown/api`.
 
@@ -348,6 +380,11 @@ MyOwn Portal calls the official `/api/admin/v2/...` endpoints from its ObjectScr
 - Mutating operations require `MyOwn.Manage` plus the relevant native IRIS resource.
 - Application and task changes are restricted to the project's allowed scope.
 - Administrative changes create native IRIS audit entries.
+- AI tools are read-only; the agent never receives a mutation tool.
+- Model output is treated as untrusted data and must pass schema, allow-list, candidate-target and size validation.
+- Mutations are expiring proposals. Confirmation repeats authorization, protected-target, separation-of-duties and current-state checks before execution, then performs read-back verification.
+- Provider keys come only from the server environment. The REST API and UI expose only whether a key is configured.
+- Agent budgets, hourly call limits, cooldown, deterministic fallback and an administrator kill switch bound cost and failure behavior.
 - API Explorer destinations, methods, headers, body size, redirects, and response size are bounded.
 - The repository intentionally includes `ChangeMe2026!` as the well-known password for a fresh local demonstration container. It is not a production secret and must be overridden through the git-ignored `.env` file before the container is exposed beyond the local computer. Credentials entered in the portal itself are never stored by MyOwn Portal.
 - Production deployments should enable HTTPS before accepting credentials over a network.

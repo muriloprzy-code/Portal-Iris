@@ -16,6 +16,38 @@ Read the write-up on the InterSystems Developer Community: [English](https://com
 
 MyOwn Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. See [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#how-it-works-in-plain-terms) for the full explanation.
 
+### Run the AI Hub build
+
+The AI-agent workflow targets **InterSystems IRIS AI Hub Community build `2026.3.0AI.154.0`**. Both the IRIS and IRIS for Health editions are accepted; this repository defaults to IRIS for Health. Download the x64 or ARM64 Community container image from the [InterSystems AI Hub Early Access portal](https://evaluation.intersystems.com/Eval/early-access/AIHub), then load and give it the short local tag expected by Compose:
+
+```shell
+docker image load -i irishealth-community-2026.3.0AI.154.0-docker.tar.gz
+docker images
+docker tag <loaded-image-name> irishealth-community:2026.3.0AI.154.0
+```
+
+For the IRIS edition, load `iris-community-2026.3.0AI.154.0-docker.tar.gz`, tag it as `iris-community:2026.3.0AI.154.0`, and set that value as `IRIS_IMAGE` in `.env`.
+
+Copy `.env.example` to the git-ignored `.env`. The expected official provider is **OpenAI**, the default model is **`gpt-4.1-mini`**, and the key belongs in `MYOWN_AI_API_KEY`. You may change `MYOWN_AI_PROVIDER` and `MYOWN_AI_MODEL`. When no key is provided, the portal still starts and uses its deterministic Rules engine.
+
+Start the app and open `http://localhost:52774/myown/index.html`:
+
+```shell
+docker compose -f compose.yaml -f compose.aihub.yaml up --build -d
+```
+
+Verify the deployment with the health and agent-status endpoints, then run the reproducible agent suite:
+
+```powershell
+Invoke-RestMethod http://localhost:52774/myown/api/health -Credential (Get-Credential)
+Invoke-RestMethod http://localhost:52774/myown/api/agent/status -Credential (Get-Credential)
+.\scripts\Test-Agents.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential) -IrisImage irishealth-community:2026.3.0AI.154.0 -Edition irisforhealth
+.\scripts\Test-AgentSecretScan.ps1
+.\scripts\Test-Agents-AIHub.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential)
+```
+
+> **Do not push the AI Hub image or images built on it to a public registry.** The Early Access image must be loaded locally on each machine. Commit only this repository's Dockerfile and Compose files.
+
 ### The easy way: one double-click
 
 Double-click **`Instalar.bat`** at the project root. It figures out the rest on its own:
@@ -76,6 +108,7 @@ Everything else — architecture, every install detail, the API reference, and t
 - IRIS Task Manager inventory with protected Run, Suspend, and Resume actions.
 - Sanitized `messages.log` browsing with search, filters, pagination, and details.
 - Native IRIS role-based access control and audit events for state changes.
+- Interoperability agent workflows for incident triage and access requests, with deterministic fallback, human approvals, budgets, traces, guardrails, and a kill switch.
 - Official SysAdmin API v2 integration for processes, permissions, tasks, web applications, X.509, OAuth, and Secure Wallet metadata, with automatic capability detection. Host metrics and system logs stay native, since the API has no endpoint for either.
 - A demonstration Task Manager task (`MyOwn Portal health snapshot`) so that Run, Suspend, and Resume can be tried on a fresh instance.
 - Responsive English user interface.
