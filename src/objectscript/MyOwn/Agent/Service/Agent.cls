@@ -152,6 +152,8 @@ ClassMethod ApplyGate(workflow As %String, eventId As %Integer, engine As %Strin
     Set decision = ..PublicDecision(decision)
     Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate.downgradedBy, config, traceId, .decisionId)
     If $$$ISERR(tSC) Quit tSC
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("Decision", decisionId, workflow _ "/" _ gate.finalAction, 1, engine _ "/" _ validationStatus _ "/" _ $Select(gate.downgradedBy'="":gate.downgradedBy, 1:"none"))
+    If $$$ISERR(tSC) Quit tSC
     Set result.decisionId = decisionId
     Set result.decision = decision
     Set result.gate = gate
@@ -177,7 +179,9 @@ ClassMethod StoreProposal(decisionId As %Integer, decisionJSON As %String, conte
     Set tSC = ##class(MyOwn.Agent.Policy.Gate).Evaluate(decision, context, config, "", .gate)
     If $$$ISERR(tSC) Quit tSC
     If 'gate.allowed || 'gate.createProposal || (gate.finalAction '= decision.%Get("action")) Quit $$$ERROR($$$GeneralError, "PROHIBITED_TARGET")
-    Quit ..CreateProposal(decisionId, decision, context, config, .proposalId)
+    Set tSC = ..CreateProposal(decisionId, decision, context, config, .proposalId)
+    If $$$ISERR(tSC) Quit tSC
+    Quit ##class(MyOwn.Service.Audit).RecordAgent("ProposalCreated", decisionId, "proposal " _ proposalId, 1, decision.%Get("action"))
 }
 
 ClassMethod SubmitAccessRequest(role As %String, justification As %String, authorization As %String, requester As %String, Output response As %DynamicObject) As %Status
@@ -594,7 +598,8 @@ ClassMethod RejectProposalLocked(id As %Integer, actor As %String, reason As %St
     Set reason = ##class(MyOwn.Agent.Sanitize).Text(reason, 500)
     Set tSC = proposal.Resolve("rejected", actor, reason)
     If $$$ISERR(tSC) Quit tSC
-    Set tSC = ##class(MyOwn.Service.Audit).Record("AgentProposalReject", id, 1)
+    ; The free-text reason stays in the proposal; the audit event carries ids only.
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ProposalRejected", proposal.DecisionId, "proposal " _ id, 1, proposal.Kind)
     If $$$ISERR(tSC) Quit tSC
     Set data = ..ProposalView(proposal)
     Quit $$$OK
@@ -624,6 +629,8 @@ ClassMethod ConfirmProposalLocked(id As %Integer, actor As %String, authorizatio
         Set proposal.ResolvedAt = $ZDateTime($Horolog, 3, 1)
         Set proposal.ResultMessage = "The proposal expired before confirmation."
         Set tSC = proposal.%Save()
+        If $$$ISERR(tSC) Quit tSC
+        Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ProposalExpired", proposal.DecisionId, "proposal " _ id, 1, "ttl")
         If $$$ISERR(tSC) Quit tSC
         Quit $$$ERROR($$$GeneralError, "PROPOSAL_EXPIRED")
     }
@@ -658,6 +665,8 @@ ClassMethod ConfirmProposalLocked(id As %Integer, actor As %String, authorizatio
         Set proposal.ResultMessage = "The target changed after the proposal was created."
         Set tSC = proposal.%Save()
         If $$$ISERR(tSC) Quit tSC
+        Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ProposalExpired", proposal.DecisionId, "proposal " _ id, 1, "target-changed")
+        If $$$ISERR(tSC) Quit tSC
         Quit $$$ERROR($$$GeneralError, "TARGET_CHANGED")
     }
     Set prohibited = ##class(MyOwn.Agent.Policy.Prohibited).Check(proposal.Kind, targetType, targetId, requester, actor, manageable, .prohibitedReason)
@@ -668,12 +677,15 @@ ClassMethod ConfirmProposalLocked(id As %Integer, actor As %String, authorizatio
     Set proposal.ResolvedAt = $ZDateTime($Horolog, 3, 1)
     Set tSC = proposal.%Save()
     If $$$ISERR(tSC) Quit tSC
+    ; No execution happens unless the human confirmation itself was audited.
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ProposalConfirmed", proposal.DecisionId, "proposal " _ id, 1, proposal.Kind)
+    If $$$ISERR(tSC) Quit tSC
     Set tSC = ..ExecuteProposal(proposal, authorization, .execution)
     If $$$ISERR(tSC) {
         Set proposal.State = "failed"
         Set proposal.ResultMessage = "The confirmed action could not be completed."
         Set saveStatus = proposal.%Save()
-        Set auditStatus = ##class(MyOwn.Service.Audit).Record("AgentProposalConfirm", id, 0)
+        Set auditStatus = ##class(MyOwn.Service.Audit).RecordAgent("ExecutionResult", proposal.DecisionId, "proposal " _ id, 0, "execution-failed")
         Set feedbackStatus = ..PublishExecutionFeedback(proposal, "failed", proposal.ResultMessage)
         Quit tSC
     }
@@ -682,7 +694,7 @@ ClassMethod ConfirmProposalLocked(id As %Integer, actor As %String, authorizatio
         Set proposal.State = "failed"
         Set proposal.ResultMessage = "The action completed, but the expected state could not be verified."
         Set saveStatus = proposal.%Save()
-        Set auditStatus = ##class(MyOwn.Service.Audit).Record("AgentProposalConfirm", id, 0)
+        Set auditStatus = ##class(MyOwn.Service.Audit).RecordAgent("ExecutionResult", proposal.DecisionId, "proposal " _ id, 0, "readback-failed")
         Set feedbackStatus = ..PublishExecutionFeedback(proposal, "failed", proposal.ResultMessage)
         Quit tSC
     }
@@ -690,7 +702,7 @@ ClassMethod ConfirmProposalLocked(id As %Integer, actor As %String, authorizatio
     Set proposal.ResultMessage = execution.%Get("message", "The confirmed action was executed.")
     Set tSC = proposal.%Save()
     If $$$ISERR(tSC) Quit tSC
-    Set tSC = ##class(MyOwn.Service.Audit).Record("AgentProposalConfirm", id, 1)
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ExecutionResult", proposal.DecisionId, "proposal " _ id, 1, "executed")
     If $$$ISERR(tSC) Quit tSC
     Set feedbackStatus = ..PublishExecutionFeedback(proposal, "executed", proposal.ResultMessage)
     Set data = ..ProposalView(proposal)
@@ -837,7 +849,7 @@ ClassMethod UpdateConfig(input As %DynamicObject, actor As %String, Output data 
     If input.%IsDefined("demoMode") Set config.DemoMode = +input.demoMode
     Set tSC = config.%Save()
     If $$$ISERR(tSC) Quit tSC
-    Set tSC = ##class(MyOwn.Service.Audit).Record("AgentConfigChange", actor, 1)
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ConfigChange", 0, "agent-config", 1, "", 0)
     If $$$ISERR(tSC) Quit tSC
     Quit ##class(MyOwn.Agent.Config).PublicView(.data)
 }
@@ -849,7 +861,7 @@ ClassMethod SetKillSwitch(enabled As %Boolean, actor As %String, Output data As 
     Set config.KillSwitch = +enabled
     Set tSC = config.%Save()
     If $$$ISERR(tSC) Quit tSC
-    Set tSC = ##class(MyOwn.Service.Audit).Record("AgentKillSwitch", $Select(enabled:"enabled", 1:"disabled") _ " by " _ actor, 1)
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("KillSwitch", 0, "kill-switch", 1, $Select(enabled:"enabled", 1:"disabled"), 0)
     If $$$ISERR(tSC) Quit tSC
     Quit ##class(MyOwn.Agent.Config).PublicView(.data)
 }
@@ -967,7 +979,7 @@ ClassMethod SavePricing(input As %DynamicObject, actor As %String, Output data A
     Set pricing.UpdatedAt = $ZDateTime($Horolog, 3, 1)
     Set tSC = pricing.%Save()
     If $$$ISERR(tSC) Quit tSC
-    Set tSC = ##class(MyOwn.Service.Audit).Record("AgentPricingChange", model _ " by " _ actor, 1)
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ConfigChange", 0, "pricing", 1, model, 0)
     If $$$ISERR(tSC) Quit tSC
     Set data = {}
     Set data.id = pricing.%Id()

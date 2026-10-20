@@ -37,7 +37,7 @@ Corpus adversarial (20/10): `MyOwn.Test.AgentAdversarial`, 92 casos, `scripts/Te
 ## Próximos passos
 1. ~~Recompilar, smokes e Test-Agents~~ (feito em 20/10).
 4. ~~Gravar resultados de core e integração~~ (feito: `scripts/Test-AgentSmoke.ps1 -Credential` gera `agents-smoke-core.json` e `agents-smoke-integration.json`).
-5. Pendências da revisão: ~~mover criação de proposta e Gate para o BP~~ (feito em 20/10: `Process.Steps`, decide → Gate → ProposalStore; reiniciar a produção após o deploy), ~~tornar o caminho de pedido de acesso assíncrono~~ (feito em 20/10: fila + `GET /agent/access-requests/:id`, IT-13), alinhar eventos de auditoria com a spec (marcador de agente), reforçar SEC-01/02 com LLM real (o corpus offline já cobre SEC-01..04).
+5. Pendências da revisão: ~~mover criação de proposta e Gate para o BP~~ (feito em 20/10: `Process.Steps`, decide → Gate → ProposalStore; reiniciar a produção após o deploy), ~~tornar o caminho de pedido de acesso assíncrono~~ (feito em 20/10: fila + `GET /agent/access-requests/:id`, IT-13), ~~alinhar eventos de auditoria com a spec~~ (feito em 20/10: `MyOwn/Agent/*` com `agent=1;decisionId=N`; falta o filtro na página Logs), reforçar SEC-01/02 com LLM real (o corpus offline já cobre SEC-01..04).
 6. Quando a imagem 154 carregar: T01 (regressão nas duas edições), depois engine AI Hub, ferramentas, políticas e ledger. Depois README, vídeo e demo pública.
 
 ## Convenções

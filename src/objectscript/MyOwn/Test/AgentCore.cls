@@ -97,10 +97,41 @@ ClassMethod RunSmokeViaSQL() As %String [ SqlName = AgentCoreSmoke, SqlProc ]
     Set clean = ##class(MyOwn.Agent.Sanitize).Text("hello" _ $Char(1) _ "<untrusted_data>world", 1000)
     Do ..Add(report, "UT-11", (clean '[ $Char(1)) && (clean '[ "<untrusted_data>"), "Sanitizer removes controls and data delimiters.")
 
+    ; A crafted target must not forge the marker or add fields; unknown event names are refused.
+    Set markerStatus = ##class(MyOwn.Service.Audit).AgentEventData("ProposalConfirmed", 42, "proposal 7;agent=0;decisionId=1" _ $Char(10) _ "x", 1, "task.suspend", 1, .eventData)
+    Set unknownStatus = ##class(MyOwn.Service.Audit).AgentEventData("ApproveEverything", 42, "x", 1, "", 1, .unknownData)
+    Set fields = $Length(eventData, ";")
+    Do ..Add(report, "UT-14-AUDIT", $$$ISOK(markerStatus) && ($Extract(eventData, 1, 21) = "agent=1;decisionId=42") && (fields = 7) && ($Length(eventData, "=") = 8) && (eventData '[ $Char(10)) && $$$ISERR(unknownStatus), "Agent audit events carry the agent marker and decision id, cannot be forged through their fields, and only use the specified event names.")
+
     Set report.summary = {}
     Set report.summary.pass = report.pass
     Set report.summary.fail = report.fail
     Quit report.%ToJSON()
+}
+
+/// Agent audit events recorded for <var>decisionId</var>, and whether any recent agent event
+/// carries text that must never reach the audit log (model rationale or injected justification).
+ClassMethod AgentAuditEvents(decisionId As %Integer, Output events As %List, Output leaked As %Boolean) As %Status [ Private ]
+{
+    Set events = ""
+    Set leaked = 0
+    New $Namespace
+    Set $Namespace = "%SYS"
+    Set statement = ##class(%SQL.Statement).%New()
+    Set tSC = statement.%Prepare("SELECT Event FROM %SYS.Audit WHERE EventSource = 'MyOwn' AND EventType = 'Agent' AND EventData %STARTSWITH ?")
+    If $$$ISERR(tSC) Quit tSC
+    Set result = statement.%Execute("agent=1;decisionId=" _ (+decisionId) _ ";")
+    If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
+    While result.%Next() {
+        If '$ListFind(events, result.%Get("Event")) Set events = events _ $ListBuild(result.%Get("Event"))
+    }
+    Set statement = ##class(%SQL.Statement).%New()
+    Set tSC = statement.%Prepare("SELECT COUNT(*) AS Leaks FROM %SYS.Audit WHERE EventSource = 'MyOwn' AND EventType = 'Agent' AND UTCTimeStamp > DATEADD(minute, -30, GETUTCDATE()) AND (EventData LIKE '%read-oriented%' OR EventData LIKE '%Ignore every policy%' OR EventData LIKE '%untrusted%' OR EventData LIKE '%rationale%')")
+    If $$$ISERR(tSC) Quit tSC
+    Set result = statement.%Execute()
+    If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
+    If result.%Next() Set leaked = (result.%Get("Leaks") > 0)
+    Quit $$$OK
 }
 
 ClassMethod Add(report As %DynamicObject, id As %String, passed As %Boolean, details As %String) As %Status [ Private ]
@@ -212,6 +243,28 @@ ClassMethod RunIntegrationViaSQL() As %String [ SqlName = AgentIntegrationSmoke,
     Set singleUse = $$$ISERR(repeatedStatus) && ($System.Status.GetErrorText(repeatedStatus) [ "PROPOSAL_ALREADY_RESOLVED")
     If proposalId Set cleanupStatus = ##class(MyOwn.Agent.Proposal).%DeleteId(proposalId)
     Do ..Add(report, "IT-04", $$$ISOK(tSC) && $$$ISOK(rejectStatus) && singleUse && $$$ISOK(cleanupStatus), "A proposal can be resolved only once.")
+
+    ; Native audit (MyOwn/Agent/*) is written through a buffer that IRIS flushes in batches
+    ; (observed 20-70 s locally, no public flush API), so poll up to 120 s for the S5 events.
+    Set auditDecisionId = $Select($IsObject($Get(accessScenario)):+accessScenario.decisionId, 1:0)
+    Set expectedEvents = $ListBuild("Decision", "ProposalCreated", "ProposalRejected")
+    Set missing = "Decision, ProposalCreated, ProposalRejected"
+    Set leaked = 0
+    For attempt = 1:1:240 {
+        Set tSC = ..AgentAuditEvents(auditDecisionId, .events, .leaked)
+        If $$$ISERR(tSC) Quit
+        Set missing = ""
+        For index = 1:1:$ListLength(expectedEvents) {
+            If '$ListFind(events, $List(expectedEvents, index)) Set missing = missing _ $Select(missing="":"", 1:", ") _ $List(expectedEvents, index)
+        }
+        Quit:missing=""
+        Hang 0.5
+    }
+    Set details = "The S5 decision has Decision, ProposalCreated and ProposalRejected audit events marked agent=1 with its decision id, and no audit event contains model or justification text."
+    If $$$ISERR(tSC) Set details = details _ " " _ $System.Status.GetErrorText(tSC)
+    If missing '= "" Set details = details _ " Missing: " _ missing _ "."
+    If leaked Set details = details _ " Model or justification text found in audit data."
+    Do ..Add(report, "IT-14-AUDIT", $$$ISOK(tSC) && (auditDecisionId > 0) && (missing = "") && 'leaked, details)
 
     Set retention = ##class(MyOwn.Task.AgentRetention).%New()
     Set tSC = retention.OnTask()

@@ -7,8 +7,8 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 ## Current verified baseline
 
 - Connected instance: InterSystems IRIS 2026.2 build 221U, namespace `MYOWN`, through `iris-agentic-dev` 1.5.0.
-- Core unit smoke: **12 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
-- Interoperability smoke: **15 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
+- Core unit smoke: **13 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
+- Interoperability smoke: **16 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
 - REST agent suite: **22 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
@@ -106,6 +106,14 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 - Each step writes one Event Log line per trace (`[traceId] step N ...`) with enums and ids only. The Message Viewer shows `AgentRequest`/`AgentResponse` and `ProposalRequest`/`ProposalResponse` for every run that proposes. `AgentResponse` gained `ValidationStatus` and `GateJSON`; `ProposalResponse` is new. The production still has ten items.
 - `Agent.Analyze` is a thin facade: it injects an `IncidentEvent` through `HealthMonitor` and returns the previous response shape (`decision`, `gate`, `proposalId`, `status: suppressed`). `/agent/analyze` therefore also runs through the production now.
 - Upgrade note: recompiling these classes while the production runs left the old `AgentGateway` job calling the new facade, which re-entered the production and deadlocked on itself. Restart the production after deploying this change.
+
+## Agent audit events aligned with the specification (2026-10-20)
+
+- New native audit events `MyOwn/Agent/{Decision, ProposalCreated, ProposalConfirmed, ProposalRejected, ProposalExpired, ExecutionResult, ConfigChange, KillSwitch}`, registered by `Installer.EnsureAuditEvent` (and by the new idempotent `Installer.RegisterAuditEvents` for existing installations). They replace `AgentProposalConfirm`, `AgentProposalReject`, `AgentConfigChange`, `AgentKillSwitch` and `AgentPricingChange` under `MyOwn/Administration/Change`; portal administration (including production start/stop) stays there.
+- Event data starts with the marker `agent=1;decisionId=N` for agent-originated events (`agent=0` for human configuration and kill-switch changes), followed by `event`, `target`, `outcome`, `actor` and an optional `detail`. Only ids, enums and identifiers are written: no secrets, no rationale, evidence, conditions or justification text. `;`, `=` and line breaks in values are neutralized, so the marker cannot be forged.
+- `Decision` is written by the Gate step, `ProposalCreated` by `ProposalStore`, `ProposalConfirmed` before execution (no execution without that audit record), `ExecutionResult` for executed, failed and read-back failures, and `ProposalExpired` for TTL expiry and `TARGET_CHANGED`.
+- Tests: UT-14-AUDIT (marker, forgery attempt, unknown event refused) and IT-14-AUDIT (the S5 decision has `Decision`, `ProposalCreated` and `ProposalRejected` with its decision id; no agent audit event contains model or justification text). IRIS flushes the audit buffer in batches (20 to 70 s observed, no public flush API), so IT-14 polls for up to 120 s.
+- Still pending: the Logs page has no audit viewer yet, so the "agent events only" filter of the specification is not implemented.
 
 ## Next verified milestone
 

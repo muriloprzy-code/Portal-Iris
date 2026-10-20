@@ -309,24 +309,49 @@ ClassMethod PrepareForContainerBundling() As %Status
     Quit tSC
 }
 
+/// Copied at compile time from MyOwn.Service.Audit: that class is not visible from %SYS,
+/// where the events are registered.
+Parameter AgentAuditType = {##class(MyOwn.Service.Audit).#AgentType};
+
+Parameter AgentAuditEvents = {##class(MyOwn.Service.Audit).#AgentEvents};
+
+/// Registers the audit events outside a full Setup (idempotent). Switches to %SYS itself.
+ClassMethod RegisterAuditEvents() As %Status
+{
+    New $Namespace
+    Set $Namespace = "%SYS"
+    Quit ..EnsureAuditEvent()
+}
+
+/// MyOwn/Administration/Change for portal administration, plus the agent events of the
+/// specification (MyOwn/Agent/*). Must run in %SYS.
 ClassMethod EnsureAuditEvent() As %Status [ Private ]
 {
     Set tSC = $$$OK
     Try {
-        Set exists = ##class(Security.Events).Exists("MyOwn", "Administration", "Change", .event, .checkStatus)
-        If exists {
-            Kill eventProperties
-            Set eventProperties("Description") = "Administrative changes performed through MyOwn Portal."
-            Set eventProperties("Enabled") = 1
-            Set tSC = ##class(Security.Events).Modify("MyOwn", "Administration", "Change", .eventProperties)
-        } Else {
-            Set tSC = ##class(Security.Events).Create("MyOwn", "Administration", "Change", "Administrative changes performed through MyOwn Portal.", 1)
-        }
+        Set tSC = ..EnsureEvent("Administration", "Change", "Administrative changes performed through MyOwn Portal.")
         $$$ThrowOnError(tSC)
+        Set events = ..#AgentAuditEvents
+        For index = 1:1:$Length(events, ",") {
+            Set name = $Piece(events, ",", index)
+            Set tSC = ..EnsureEvent(..#AgentAuditType, name, "MyOwn Portal agent event " _ name _ " (agent marker and decision id in the event data).")
+            $$$ThrowOnError(tSC)
+        }
     } Catch exception {
         Set tSC = exception.AsStatus()
     }
     Quit tSC
+}
+
+ClassMethod EnsureEvent(type As %String, name As %String, description As %String) As %Status [ Private ]
+{
+    If ##class(Security.Events).Exists("MyOwn", type, name, .event, .checkStatus) {
+        Kill eventProperties
+        Set eventProperties("Description") = description
+        Set eventProperties("Enabled") = 1
+        Quit ##class(Security.Events).Modify("MyOwn", type, name, .eventProperties)
+    }
+    Quit ##class(Security.Events).Create("MyOwn", type, name, description, 1)
 }
 
 }
