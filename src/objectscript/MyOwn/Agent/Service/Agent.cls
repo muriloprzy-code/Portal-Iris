@@ -119,37 +119,114 @@ ClassMethod SubmitAccessRequest(role As %String, justification As %String, autho
     Set role = ##class(MyOwn.Agent.Sanitize).Identifier(role)
     Set justification = ##class(MyOwn.Agent.Sanitize).Text(justification, 500)
     If (role = "") || (justification = "") Quit $$$ERROR($$$GeneralError, "INVALID_REQUEST")
+    ; The privilege delta is computed here, with the requester's own forwarded credentials,
+    ; so no credential ever enters a production message.
+    Set tSC = ##class(MyOwn.Agent.Context.Access).ComparePrivileges(requester, role, authorization, .context)
+    If $$$ISERR(tSC) Quit tSC
+    Set context.untrustedData.justification = justification
+    Set tSC = ..EnqueueAccessRequest(requester, role, justification, context, .requestId)
+    If $$$ISERR(tSC) Quit tSC
+    Set tSC = ..AccessRequestDetail(requestId, requester, 0, .response)
+    Quit tSC
+}
+
+/// Persists the request as queued and hands it to the production asynchronously.
+/// The decision is recorded later by AccessProcess through CompleteAccessRequest.
+ClassMethod EnqueueAccessRequest(requester As %String, role As %String, justification As %String, context As %DynamicObject, Output requestId As %Integer) As %Status
+{
     Set request = ##class(MyOwn.Agent.AccessRequest).%New()
     Set request.Requester = requester
     Set request.RoleRequested = role
     Set request.Justification = justification
-    Set request.Status = "new"
+    Set request.Status = "queued"
+    Set request.TraceId = $System.Util.CreateGUID()
     Set request.CreatedAt = $ZDateTime($Horolog, 3, 1)
     Set tSC = request.%Save()
     If $$$ISERR(tSC) Quit tSC
     Set requestId = request.%Id()
-    Set tSC = ##class(MyOwn.Agent.Context.Access).ComparePrivileges(requester, role, authorization, .context)
-    If $$$ISERR(tSC) Quit tSC
     Set context.requestId = requestId
-    Set context.untrustedData.justification = justification
     Set accessEvent = ##class(MyOwn.Production.Msg.AccessRequestEvent).%New()
     Set accessEvent.RequestId = requestId
     Set accessEvent.Requester = requester
     Set accessEvent.RoleRequested = role
     Set accessEvent.ContextJSON = context.%ToJSON()
-    Set accessEvent.TraceId = $System.Util.CreateGUID()
+    Set accessEvent.TraceId = request.TraceId
     Set tSC = ##class(Ens.Director).CreateBusinessService("AccessRequestService", .service)
-    If $$$ISERR(tSC) Quit tSC
-    Set tSC = service.ProcessInput(accessEvent, .agentResponse)
-    If $$$ISERR(tSC) Quit tSC
-    If '$IsObject(agentResponse) Quit $$$ERROR($$$GeneralError, "AGENT_RESPONSE_MISSING")
-    Set request.DecisionId = agentResponse.DecisionId
-    Set request.Status = "decided"
-    Set tSC = request.%Save()
-    If $$$ISERR(tSC) Quit tSC
-    Set response = ..ResponseFromMessage(agentResponse)
-    Set response.requestId = requestId
+    If $$$ISERR(tSC) Quit ..FailAccessRequest(request, tSC)
+    Set tSC = service.ProcessInput(accessEvent)
+    If $$$ISERR(tSC) Quit ..FailAccessRequest(request, tSC)
     Quit $$$OK
+}
+
+ClassMethod FailAccessRequest(request As MyOwn.Agent.AccessRequest, failure As %Status) As %Status [ Private ]
+{
+    Set request.Status = "failed"
+    Set request.Outcome = "error"
+    Set request.DecidedAt = $ZDateTime($Horolog, 3, 1)
+    Do request.%Save()
+    Quit failure
+}
+
+/// Called by AccessProcess when the decision for <var>requestId</var> is ready (or failed).
+ClassMethod CompleteAccessRequest(requestId As %Integer, agentResponse As MyOwn.Production.Msg.AgentResponse, failure As %Status = {$$$OK}) As %Status
+{
+    Set request = ##class(MyOwn.Agent.AccessRequest).%OpenId(requestId, 4)
+    If '$IsObject(request) Quit $$$ERROR($$$GeneralError, "ACCESS_REQUEST_NOT_FOUND")
+    If $$$ISERR(failure) || '$IsObject(agentResponse) Quit ..FailAccessRequest(request, failure)
+    Set request.DecisionId = agentResponse.DecisionId
+    Set request.ProposalId = agentResponse.ProposalId
+    Set request.Engine = agentResponse.Engine
+    Set request.Outcome = agentResponse.Outcome
+    Set request.Status = $Select(agentResponse.Outcome="suppressed":"suppressed", 1:"decided")
+    Set request.DecidedAt = $ZDateTime($Horolog, 3, 1)
+    Quit request.%Save()
+}
+
+/// Waits (polling, at most <var>timeoutSeconds</var>) until the production has finished
+/// the request. Used only by the demo simulation; the REST submission never waits.
+ClassMethod WaitForAccessRequest(requestId As %Integer, timeoutSeconds As %Integer = 15, Output finished As %Boolean) As %Status
+{
+    Set finished = 0
+    For attempt = 1:1:(timeoutSeconds * 10) {
+        Set status = ##class(MyOwn.Agent.AccessRequest).StatusGetStored(requestId)
+        If (status '= "queued") && (status '= "") Set finished = 1  Quit
+        Hang 0.1
+    }
+    Quit $$$OK
+}
+
+/// Request plus its decision. Requesters see only their own requests unless <var>includeAll</var>.
+ClassMethod AccessRequestDetail(requestId As %Integer, actor As %String, includeAll As %Boolean, Output data As %DynamicObject) As %Status
+{
+    Set request = ##class(MyOwn.Agent.AccessRequest).%OpenId(+requestId)
+    If '$IsObject(request) Quit $$$ERROR($$$GeneralError, "ACCESS_REQUEST_NOT_FOUND")
+    If 'includeAll && ($ZConvert(request.Requester, "U") '= $ZConvert(actor, "U")) Quit $$$ERROR($$$GeneralError, "ACCESS_REQUEST_NOT_FOUND")
+    Set data = ..AccessRequestView(request, 1)
+    Quit $$$OK
+}
+
+ClassMethod AccessRequestView(request As MyOwn.Agent.AccessRequest, detail As %Boolean = 0) As %DynamicObject [ Private ]
+{
+    Set item = {}
+    Set item.id = request.%Id()
+    Set item.requester = request.Requester
+    Set item.roleRequested = request.RoleRequested
+    Set item.justification = ##class(MyOwn.Agent.Sanitize).Text(request.Justification, 500)
+    Set item.status = request.Status
+    Set item.traceId = request.TraceId
+    Set item.decisionId = request.DecisionId
+    Set item.proposalId = request.ProposalId
+    Set item.engine = request.Engine
+    Set item.outcome = request.Outcome
+    Set item.createdAt = request.CreatedAt
+    Set item.decidedAt = request.DecidedAt
+    Set decision = $Select(request.DecisionId:##class(MyOwn.Agent.Decision).%OpenId(request.DecisionId), 1:"")
+    If $IsObject(decision) {
+        Set item.recommendation = decision.Action
+        Set item.riskLevel = decision.RiskLevel
+        If detail Set item.decision = ..DecisionView(decision, 1)
+    }
+    Quit item
 }
 
 ClassMethod SaveEvent(workflow As %String, source As %String, fingerprint As %String, contextJSON As %String, traceId As %String, status As %String, Output id As %Integer) As %Status [ Private ]
@@ -573,17 +650,7 @@ ClassMethod ListAccessRequests(actor As %String, includeAll As %Boolean, Output 
     If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
     While result.%Next() {
         Set request = ##class(MyOwn.Agent.AccessRequest).%OpenId(result.%Get("ID"))
-        If $IsObject(request) {
-            Set item = {}
-            Set item.id = request.%Id()
-            Set item.requester = request.Requester
-            Set item.roleRequested = request.RoleRequested
-            Set item.justification = request.Justification
-            Set item.status = request.Status
-            Set item.decisionId = request.DecisionId
-            Set item.createdAt = request.CreatedAt
-            Do items.%Push(item)
-        }
+        If $IsObject(request) Do items.%Push(..AccessRequestView(request))
     }
     Quit $$$OK
 }

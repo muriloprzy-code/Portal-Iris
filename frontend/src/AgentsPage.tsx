@@ -90,6 +90,21 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
     return () => window.clearInterval(interval)
   }, [refresh])
 
+  // Access requests are decided asynchronously by the production; poll briefly while any is queued.
+  const hasQueuedRequest = requests.some((item) => item.status === 'queued')
+  useEffect(() => {
+    if (!hasQueuedRequest) return
+    const interval = window.setInterval(async () => {
+      try {
+        const response = await getAgentAccessRequests()
+        setRequests(response.data)
+      } catch {
+        // The 15-second refresh reports errors; a failed poll is retried on the next tick.
+      }
+    }, 2_000)
+    return () => window.clearInterval(interval)
+  }, [hasQueuedRequest])
+
   async function runAction(name: string, action: () => Promise<void>, success: string) {
     setBusy(name)
     setError('')
@@ -114,7 +129,7 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
 
   function handleAccessRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    return runAction('access', async () => { await submitAgentAccessRequest(role, justification) }, 'The access request was submitted for agent analysis.')
+    return runAction('access', async () => { await submitAgentAccessRequest(role, justification) }, 'The access request was queued. The agent decision appears here when the production finishes.')
   }
 
   function handleSaveConfig(event: FormEvent<HTMLFormElement>) {
@@ -178,7 +193,7 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
 
         {activeTab === 'Approvals' && canManage && <div className="agent-card-list">{proposals.map((item) => <article key={item.id}><div className="agent-card-heading"><div><small>PROPOSAL #{item.id}</small><h3>{item.kind}</h3></div><span className={`status-chip ${item.state === 'pending' ? 'warning' : item.state === 'executed' ? 'enabled' : ''}`}>{item.state}</span></div><dl><div><dt>Target</dt><dd>{item.targetType}: {item.targetId}</dd></div><div><dt>Expires</dt><dd>{item.expiresAt}</dd></div><div><dt>Required privilege</dt><dd>{item.requiredPrivilege || '—'}</dd></div><div><dt>Undo</dt><dd>{item.undoHint || '—'}</dd></div></dl>{item.resultMessage && <p>{item.resultMessage}</p>}{item.state === 'pending' && <div className="agent-card-actions"><button type="button" onClick={() => runAction(`confirm-${item.id}`, async () => { await confirmAgentProposal(item.id) }, `Proposal #${item.id} was confirmed and verified.`)} disabled={Boolean(busy)}>Confirm</button><button className="danger" type="button" onClick={() => runAction(`reject-${item.id}`, async () => { await rejectAgentProposal(item.id, 'Rejected by the administrator in MyOwn Portal.') }, `Proposal #${item.id} was rejected.`)} disabled={Boolean(busy)}>Reject</button></div>}</article>)}{!proposals.length && <div className="data-state">No proposals have been created.</div>}</div>}
 
-        {activeTab === 'Access' && <div className="agent-content two-column-agent"><form className="agent-form" onSubmit={handleAccessRequest}><p className="eyebrow">NEW REQUEST</p><h3>Request an IRIS role</h3><label>Role<input value={role} onChange={(event) => setRole(event.target.value)} maxLength={160} required /></label><label>Business justification<textarea value={justification} onChange={(event) => setJustification(event.target.value)} maxLength={500} required /></label><button type="submit" disabled={busy === 'access'}>{busy === 'access' ? 'Submitting…' : 'Submit for analysis'}</button><small>{justification.length}/500 characters</small></form><div className="agent-card-list compact">{requests.map((item) => <article key={item.id}><div className="agent-card-heading"><div><small>REQUEST #{item.id}</small><h3>{item.roleRequested}</h3></div><span className="status-chip enabled">{item.status}</span></div><p>{item.justification}</p><small>{item.requester} · {item.createdAt}</small></article>)}{!requests.length && <div className="data-state">No access requests are visible to this account.</div>}</div></div>}
+        {activeTab === 'Access' && <div className="agent-content two-column-agent"><form className="agent-form" onSubmit={handleAccessRequest}><p className="eyebrow">NEW REQUEST</p><h3>Request an IRIS role</h3><label>Role<input value={role} onChange={(event) => setRole(event.target.value)} maxLength={160} required /></label><label>Business justification<textarea value={justification} onChange={(event) => setJustification(event.target.value)} maxLength={500} required /></label><button type="submit" disabled={busy === 'access'}>{busy === 'access' ? 'Submitting…' : 'Submit for analysis'}</button><small>{justification.length}/500 characters</small></form><div className="agent-card-list compact">{requests.map((item) => <article key={item.id}><div className="agent-card-heading"><div><small>REQUEST #{item.id}</small><h3>{item.roleRequested}</h3></div><span className={`status-chip ${item.status === 'decided' ? 'enabled' : item.status === 'queued' ? 'warning' : ''}`}>{item.status}</span></div><p>{item.justification}</p>{item.recommendation && <p>Agent recommendation: <b>{item.recommendation}</b>{item.riskLevel ? ` · risk ${item.riskLevel}` : ''}{item.proposalId ? ` · proposal #${item.proposalId}` : ''}</p>}<small>{item.requester} · {item.createdAt}</small></article>)}{!requests.length && <div className="data-state">No access requests are visible to this account.</div>}</div></div>}
 
         {activeTab === 'Observability' && <div className="agent-content"><div className="agent-stat-grid"><article><small>DECISIONS</small><strong>{ledger?.decisions ?? 0}</strong><p>Total recorded calls</p></article><article><small>TOKENS</small><strong>{ledger?.totalTokens ?? 0}</strong><p>Prompt and completion tokens</p></article><article><small>ESTIMATED COST</small><strong>${Number(ledger?.costEstimateUSD ?? 0).toFixed(4)}</strong><p>Based on the pricing table</p></article><article><small>AVG. LATENCY</small><strong>{Math.round(Number(ledger?.averageDurationMs ?? 0))} ms</strong><p>End-to-end decision time</p></article></div>{trace && <TracePanel trace={trace} onClose={() => setTrace(null)} />}{!trace && <div className="agent-empty"><span>◎</span><h3>Select “View” on a decision</h3><p>The complete event, decision and ledger timeline will appear here.</p></div>}</div>}
 

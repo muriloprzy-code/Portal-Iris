@@ -43,13 +43,14 @@ ClassMethod IsHighRisk(resource As %String) As %Boolean [ Private ]
 {
     Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
     If $$$ISERR(tSC) Quit 1
+    ; HighRiskResources is a %ListOfDataTypes, not a dynamic array. Any failure counts as high risk.
     Set found = 0
-    Set iterator = config.HighRiskResources.GetIterator()
-    While iterator.%GetNext(.key, .value) {
-        If $ZConvert(value, "U") = $ZConvert(resource, "U") {
-            Set found = 1
-            Quit
+    Try {
+        For index = 1:1:config.HighRiskResources.Count() {
+            If $ZConvert(config.HighRiskResources.GetAt(index), "U") = $ZConvert(resource, "U") Set found = 1  Quit
         }
+    } Catch exception {
+        Set found = 1
     }
     Quit found
 }

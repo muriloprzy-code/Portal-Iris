@@ -251,6 +251,22 @@ try {
         $blocked
     }
 
+    Add-Check -Id 'IT-13' -Details 'An access request is queued at once and its decision is readable later through REST.' -Action {
+        $submitted = Invoke-PortalJson -Method POST -Path '/agent/access-requests' -Body @{ role = '%Operator'; justification = 'Automated test: asynchronous access request.' }
+        $queued = $submitted.data.status -eq 'queued' -and [bool]$submitted.data.id -and [bool]$submitted.data.traceId
+        $detail = $null
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            $detail = Invoke-PortalJson -Method GET -Path "/agent/access-requests/$($submitted.data.id)"
+            if ($detail.data.status -ne 'queued') { break }
+            Start-Sleep -Milliseconds 500
+        }
+        if ($detail.data.proposalId) {
+            Invoke-PortalJson -Method POST -Path "/agent/proposals/$($detail.data.proposalId)/reject" -Body @{ reason = 'Automated test cleanup' } | Out-Null
+        }
+        $finished = $detail.data.status -eq 'suppressed' -or ($detail.data.status -eq 'decided' -and [bool]$detail.data.decision.action -and $detail.data.traceId -eq $submitted.data.traceId)
+        $queued -and $finished
+    }
+
     Add-Check -Id 'IT-10' -Details 'Read-only mode allows analysis but does not create a proposal.' -Action {
         Invoke-PortalJson -Method PUT -Path '/agent/config' -Body @{ readOnly = $true } | Out-Null
         $readOnlyResult = Invoke-PortalJson -Method POST -Path '/agent/simulate' -Body @{ scenario = 'S2'; taskId = $demoTaskId }

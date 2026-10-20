@@ -62,42 +62,17 @@ ClassMethod Run(name As %String, authorization As %String, taskId As %Integer, r
     }
     Set traceId = $System.Util.CreateGUID()
     Set context.simulationRunId = traceId
-    Set accessRequest = ""
-    If workflow = "access-request" {
-        Set accessRequest = ##class(MyOwn.Agent.AccessRequest).%New()
-        Set accessRequest.Requester = requester
-        Set accessRequest.RoleRequested = context.roleRequested
-        Set accessRequest.Justification = "Demonstration scenario " _ name
-        Set accessRequest.Status = "new"
-        Set accessRequest.CreatedAt = $ZDateTime($Horolog, 3, 1)
-        Set tSC = accessRequest.%Save()
-        If $$$ISERR(tSC) Quit tSC
-        Set request = ##class(MyOwn.Production.Msg.AccessRequestEvent).%New()
-        Set request.RequestId = accessRequest.%Id()
-        Set request.Requester = requester
-        Set request.RoleRequested = context.roleRequested
-        Set request.ContextJSON = context.%ToJSON()
-        Set request.TraceId = traceId
-        Set serviceName = "AccessRequestService"
-    } Else {
-        Set request = ##class(MyOwn.Production.Msg.IncidentEvent).%New()
-        Set request.Source = "simulate"
-        Set request.ContextJSON = context.%ToJSON()
-        Set request.TraceId = traceId
-        Set request.Fingerprint = $ZCRC(request.ContextJSON, 7) _ ":" _ $Length(request.ContextJSON)
-        Set serviceName = "HealthMonitor"
-    }
-    Set tSC = ##class(Ens.Director).CreateBusinessService(serviceName, .service)
+    If workflow = "access-request" Quit ..RunAccess(name, requester, context, .response)
+    Set request = ##class(MyOwn.Production.Msg.IncidentEvent).%New()
+    Set request.Source = "simulate"
+    Set request.ContextJSON = context.%ToJSON()
+    Set request.TraceId = traceId
+    Set request.Fingerprint = $ZCRC(request.ContextJSON, 7) _ ":" _ $Length(request.ContextJSON)
+    Set tSC = ##class(Ens.Director).CreateBusinessService("HealthMonitor", .service)
     If $$$ISERR(tSC) Quit tSC
     Set tSC = service.ProcessInput(request, .agentResponse)
     If $$$ISERR(tSC) Quit tSC
     If '$IsObject(agentResponse) Quit $$$ERROR($$$GeneralError, "AGENT_RESPONSE_MISSING")
-    If $IsObject(accessRequest) {
-        Set accessRequest.DecisionId = agentResponse.DecisionId
-        Set accessRequest.Status = "decided"
-        Set tSC = accessRequest.%Save()
-        If $$$ISERR(tSC) Quit tSC
-    }
     Set response = {}
     Set response.traceId = agentResponse.TraceId
     Set response.eventId = agentResponse.EventId
@@ -107,7 +82,37 @@ ClassMethod Run(name As %String, authorization As %String, taskId As %Integer, r
     Set response.outcome = agentResponse.Outcome
     Set response.decision = ##class(MyOwn.Agent.Service.Agent).PublicDecision({}.%FromJSON(agentResponse.DecisionJSON))
     Set response.scenario = name
-    If $IsObject(accessRequest) Set response.requestId = accessRequest.%Id()
+    Set response.integrationSource = "interoperability"
+    Quit $$$OK
+}
+
+/// Access scenarios use the same asynchronous path as a real request. For the demo the
+/// simulation waits briefly for the production to finish and then reads the stored result.
+ClassMethod RunAccess(name As %String, requester As %String, context As %DynamicObject, Output response As %DynamicObject) As %Status [ Private ]
+{
+    Set service = "MyOwn.Agent.Service.Agent"
+    Set justification = "Demonstration scenario " _ name
+    Set tSC = $ClassMethod(service, "EnqueueAccessRequest", requester, context.roleRequested, justification, context, .requestId)
+    If $$$ISERR(tSC) Quit tSC
+    Set tSC = $ClassMethod(service, "WaitForAccessRequest", requestId, 15, .finished)
+    If $$$ISERR(tSC) Quit tSC
+    Set tSC = $ClassMethod(service, "AccessRequestDetail", requestId, requester, 1, .request)
+    If $$$ISERR(tSC) Quit tSC
+    Set response = {}
+    Set response.requestId = requestId
+    Set response.status = request.status
+    Set response.traceId = request.traceId
+    Set response.decisionId = request.decisionId
+    Set response.proposalId = request.proposalId
+    Set response.engine = request.engine
+    Set response.outcome = $Select(finished:request.outcome, 1:"pending")
+    If request.%IsDefined("decision") {
+        Set response.eventId = request.decision.eventId
+        Set response.decision = request.decision
+    } Else {
+        Set response.decision = {}
+    }
+    Set response.scenario = name
     Set response.integrationSource = "interoperability"
     Quit $$$OK
 }

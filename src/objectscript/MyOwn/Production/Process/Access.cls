@@ -12,6 +12,11 @@ Method OnRequest(request As MyOwn.Production.Msg.AccessRequestEvent, Output resp
     ; Separation of duties is enforced later when a proposal is confirmed.
     Set agentRequest.Actor = ""
     Set tSC = ..SendRequestSync("AgentGateway", agentRequest, .response)
+    If $$$ISERR(tSC) {
+        Do ##class(MyOwn.Agent.Service.Agent).CompleteAccessRequest(request.RequestId, "", tSC)
+        Quit tSC
+    }
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).CompleteAccessRequest(request.RequestId, response)
     If $$$ISERR(tSC) Quit tSC
     If response.ProposalId {
         Set proposalRequest = ##class(MyOwn.Production.Msg.ProposalRequest).%New()

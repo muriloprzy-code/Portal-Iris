@@ -324,9 +324,18 @@ export type AgentAccessRequest = {
   requester: string
   roleRequested: string
   justification: string
-  status: string
+  /** queued while the production is still deciding; then decided, suppressed or failed. */
+  status: 'queued' | 'decided' | 'suppressed' | 'failed' | string
+  traceId: string
   decisionId: number | string
+  proposalId: number | string
+  engine: string
+  outcome: string
+  recommendation?: string
+  riskLevel?: string
   createdAt: string
+  decidedAt: string
+  decision?: AgentDecision
 }
 
 export type AgentSimulation = {
@@ -573,7 +582,7 @@ export async function rejectAgentProposal(id: number, reason: string) {
 }
 
 export async function submitAgentAccessRequest(role: string, justification: string) {
-  return apiRequest<{ data: AgentSimulation & { requestId: number } }>('/agent/access-requests', undefined, { method: 'POST', body: JSON.stringify({ role, justification }) })
+  return apiRequest<{ data: AgentAccessRequest }>('/agent/access-requests', undefined, { method: 'POST', body: JSON.stringify({ role, justification }) })
 }
 
 export async function getAgentAccessRequests() {

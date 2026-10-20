@@ -9,7 +9,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - Connected instance: InterSystems IRIS 2026.2 build 221U, namespace `MYOWN`, through `iris-agentic-dev` 1.5.0.
 - Core unit smoke: **12 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
 - Interoperability smoke: **15 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
-- REST agent suite: **21 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
+- REST agent suite: **22 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
 - AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
@@ -91,6 +91,14 @@ Baseline before fixes: 69 pass / 20 fail. Real defects found and fixed:
 Evidence persistence (follow-up): `Agent.SaveDecision` now stores evidence through `Agent.SanitizeEvidence`, which keeps only `source` (identifier) and `ref` (`Sanitize.Text`, ≤ 200). Case ADV-E01 (category `persist`) proves the validated input is unsafe verbatim and clean after sanitizing.
 
 REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of a decision (rationale, recommendedFollowUp, conditions, evidence; idempotent). `Analyze` applies it before `SaveDecision`, so the stored row, the `AgentResponse`/`ProposalRequest` messages and the REST response carry the same text; `ResponseFromMessage`, `Scenarios.Run` and `DecisionView` apply it again on read to cover rows and messages written earlier. Cases ADV-E02 (triage) and ADV-E03 (access) prove all three outputs are clean and identical to storage. Proposals and the trace timeline carry no model text. Frontend audit: `frontend/src` has no `dangerouslySetInnerHTML`, `innerHTML` or dynamic `href`; all API values render as escaped JSX text. Rationale, evidence and conditions are not yet shown in the UI (the spec's Decisions page calls for a drawer with rationale and evidence).
+
+## Asynchronous access requests (2026-10-20)
+
+- `POST /agent/access-requests` now computes the privilege delta with the requester's own credentials, stores the request as `queued` with a `TraceId`, and hands an `AccessRequestEvent` to `AccessRequestService`, which forwards it to `AccessProcess` with `SendRequestAsync`. The call returns at once (about 40 ms locally); no credential enters a production message.
+- `AccessProcess` records the outcome on the request through `Agent.CompleteAccessRequest` (`decided`, `suppressed` or `failed`, plus decision, proposal, engine and outcome). New route `GET /agent/access-requests/:id` (owner or administrator) returns the request and its sanitized decision; the list now includes the agent recommendation and risk.
+- Demo scenarios S5, S6, S7 and S9 use the same asynchronous path and wait at most 15 s for the result (`Agent.WaitForAccessRequest`).
+- The Access tab shows queued requests and polls every 2 s until each is decided.
+- New REST check IT-13 proves the request is queued at once and decided later. It exposed a pre-existing defect: `Context.Access.IsHighRisk` called `%GetIterator` on a `%ListOfDataTypes`, so a real access request from the portal had always failed with HTTP 500 and an internal error location in the body. Fixed (iterates the list and fails closed as high risk), and the REST handler now converts unexpected exceptions into the standard error.
 
 ## Next verified milestone
 

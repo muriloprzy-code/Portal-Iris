@@ -52,6 +52,7 @@ XData UrlMap
   <Route Url="/agent/proposals/:id/reject" Method="POST" Call="RejectAgentProposal" />
   <Route Url="/agent/access-requests" Method="POST" Call="SubmitAgentAccessRequest" />
   <Route Url="/agent/access-requests" Method="GET" Call="AgentAccessRequests" />
+  <Route Url="/agent/access-requests/:id" Method="GET" Call="AgentAccessRequestDetail" />
   <Route Url="/agent/ledger/summary" Method="GET" Call="AgentLedgerSummary" />
   <Route Url="/agent/ledger" Method="GET" Call="AgentLedger" />
   <Route Url="/agent/traces/:traceId" Method="GET" Call="AgentTrace" />
@@ -407,7 +408,8 @@ ClassMethod OpenAPI() As %Status
     Do ..AddOpenAPIPath(spec.paths, "/agent/proposals/{id}/confirm", "post", "Confirm a pending proposal")
     Do ..AddOpenAPIPath(spec.paths, "/agent/proposals/{id}/reject", "post", "Reject a pending proposal")
     Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests", "get", "List access requests visible to the current user")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests", "post", "Submit an access request")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests", "post", "Queue an access request for asynchronous agent analysis")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests/{id}", "get", "Read an access request and its decision")
     Do ..AddOpenAPIPath(spec.paths, "/agent/ledger/summary", "get", "Read agent observability totals")
     Do ..AddOpenAPIPath(spec.paths, "/agent/ledger", "get", "List agent execution ledger entries")
     Do ..AddOpenAPIPath(spec.paths, "/agent/traces/{traceId}", "get", "Read an end-to-end agent trace")
@@ -720,7 +722,12 @@ ClassMethod SubmitAgentAccessRequest() As %Status
         Set parseError = 1
     }
     If parseError Quit ..WriteError(400, "INVALID_REQUEST", "A valid JSON body is required.")
-    Set tSC = ##class(MyOwn.Agent.Service.Agent).SubmitAccessRequest(role, justification, ..GetForwardedAuthorization(), $Username, .data)
+    Try {
+        Set tSC = ##class(MyOwn.Agent.Service.Agent).SubmitAccessRequest(role, justification, ..GetForwardedAuthorization(), $Username, .data)
+    } Catch exception {
+        ; Never let an internal error location reach the client.
+        Set tSC = $$$ERROR($$$GeneralError, "ACCESS_REQUEST_FAILED")
+    }
     If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "ACCESS_REQUEST_FAILED", "The access request could not be submitted.")
     Quit ..WriteSuccess(data)
 }
@@ -730,6 +737,14 @@ ClassMethod AgentAccessRequests() As %Status
     Set includeAll = ##class(MyOwn.Service.Access).CanManage()
     Set tSC = ##class(MyOwn.Agent.Service.Agent).ListAccessRequests($Username, includeAll, .data)
     If $$$ISERR(tSC) Quit ..WriteError(500, "ACCESS_REQUESTS_UNAVAILABLE", "Access requests are temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentAccessRequestDetail(id As %Integer) As %Status
+{
+    Set includeAll = ##class(MyOwn.Service.Access).CanManage()
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).AccessRequestDetail(id, $Username, includeAll, .data)
+    If $$$ISERR(tSC) Quit ..WriteError(404, "ACCESS_REQUEST_NOT_FOUND", "The requested access request was not found.")
     Quit ..WriteSuccess(data)
 }
 

@@ -5,7 +5,8 @@ Parameter ADAPTER = "";
 
 Method OnProcessInput(pInput As MyOwn.Production.Msg.AccessRequestEvent, Output pOutput As %RegisteredObject) As %Status
 {
-    Set tSC = ..SendRequestSync("AccessProcess", pInput, .pOutput)
+    ; Asynchronous: the portal returns at once and reads the decision later from MyOwn.Agent.AccessRequest.
+    Set tSC = ..SendRequestAsync("AccessProcess", pInput)
     Quit tSC
 }
 
