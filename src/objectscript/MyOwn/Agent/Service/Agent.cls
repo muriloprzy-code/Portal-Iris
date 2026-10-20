@@ -20,9 +20,39 @@ ClassMethod Status(Output data As %DynamicObject) As %Status
     Quit $$$OK
 }
 
+/// Thin facade for a manual incident analysis. The work happens in the production:
+/// HealthMonitor → TriageProcess → AgentGateway (decide) → Gate → ProposalStore.
+/// The response keeps its previous shape (decision, gate, proposalId, status when suppressed).
 ClassMethod Analyze(workflow As %String, contextJSON As %String, source As %String = "manual", traceId As %String = "", actor As %String = "", Output response As %DynamicObject) As %Status
 {
     Set response = {}
+    If workflow '= "incident-triage" Quit $$$ERROR($$$GeneralError, "INVALID_REQUEST")
+    Set parseStatus = $$$OK
+    Try {
+        Set context = {}.%FromJSON(contextJSON)
+    } Catch exception {
+        Set parseStatus = exception.AsStatus()
+    }
+    If $$$ISERR(parseStatus) Quit $$$ERROR($$$GeneralError, "INVALID_REQUEST")
+    Set event = ##class(MyOwn.Production.Msg.IncidentEvent).%New()
+    Set event.Source = source
+    Set event.ContextJSON = contextJSON
+    Set event.TraceId = $Select(traceId'="":traceId, 1:$System.Util.CreateGUID())
+    Set event.Fingerprint = ..Fingerprint(..StableKey(workflow, context))
+    Set tSC = ##class(Ens.Director).CreateBusinessService("HealthMonitor", .service)
+    If $$$ISERR(tSC) Quit tSC
+    Set tSC = service.ProcessInput(event, .message)
+    If $$$ISERR(tSC) Quit tSC
+    If '$IsObject(message) Quit $$$ERROR($$$GeneralError, "AGENT_RESPONSE_MISSING")
+    Set response = ..ResponseFromMessage(message)
+    Quit $$$OK
+}
+
+/// Production step 1 (AgentGateway): cooldown, event, engine selection, Validator and ledger.
+/// Returns the validated, sanitized decision before the Gate; nothing is proposed here.
+ClassMethod Decide(workflow As %String, contextJSON As %String, source As %String, traceId As %String, Output result As %DynamicObject) As %Status
+{
+    Set result = {}
     Set started = $ZDateTime($Horolog, 3, 1)
     Set startSeconds = $Piece($Horolog, ",", 2)
     If traceId = "" Set traceId = $System.Util.CreateGUID()
@@ -41,9 +71,9 @@ ClassMethod Analyze(workflow As %String, contextJSON As %String, source As %Stri
     Set tSC = ..SaveEvent(workflow, source, fingerprint, contextJSON, traceId, $Select(suppressed:"suppressed", 1:"new"), .eventId)
     If $$$ISERR(tSC) Quit tSC
     If suppressed {
-        Set response.traceId = traceId
-        Set response.eventId = eventId
-        Set response.status = "suppressed"
+        Set result.traceId = traceId
+        Set result.eventId = eventId
+        Set result.status = "suppressed"
         Quit $$$OK
     }
 
@@ -86,32 +116,68 @@ ClassMethod Analyze(workflow As %String, contextJSON As %String, source As %Stri
     } Else {
         Set validationStatus = "valid"
     }
-    Set tSC = ##class(MyOwn.Agent.Policy.Gate).Evaluate(decision, context, config, actor, .gate)
-    If $$$ISERR(tSC) Quit tSC
-    Set decision.action = gate.finalAction
     // From here on only the sanitized form is used: stored, sent through the production and returned.
     Set decision = ..PublicDecision(decision)
-    Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate.downgradedBy, config, traceId, .decisionId)
-    If $$$ISERR(tSC) Quit tSC
-
-    Set proposalId = ""
-    If gate.allowed, gate.createProposal {
-        Set tSC = ..CreateProposal(decisionId, decision, context, config, .proposalId)
-        If $$$ISERR(tSC) Quit tSC
-    }
     Set duration = ($Piece($Horolog, ",", 2) - startSeconds) * 1000
     If duration < 0 Set duration = duration + 86400000
     Set tSC = ..SaveLedger(traceId, workflow, engine, engineResult, started, duration, outcome, .ledgerId)
     If $$$ISERR(tSC) Quit tSC
-    Set response.traceId = traceId
-    Set response.eventId = eventId
-    Set response.decisionId = decisionId
-    Set response.proposalId = proposalId
-    Set response.engine = engine
-    Set response.outcome = outcome
-    Set response.decision = decision
-    Set response.gate = gate
+    Set result.traceId = traceId
+    Set result.eventId = eventId
+    Set result.engine = engine
+    Set result.outcome = outcome
+    Set result.validationStatus = validationStatus
+    Set result.decision = decision
     Quit $$$OK
+}
+
+/// Production step 2 (business process): the deterministic Gate on the validated decision,
+/// then the decision record with the final action and the downgrade reason.
+ClassMethod ApplyGate(workflow As %String, eventId As %Integer, engine As %String, validationStatus As %String, decisionJSON As %String, contextJSON As %String, traceId As %String, actor As %String, Output result As %DynamicObject) As %Status
+{
+    Set result = {}
+    Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
+    If $$$ISERR(tSC) Quit tSC
+    Set parseStatus = $$$OK
+    Try {
+        Set decision = {}.%FromJSON(decisionJSON)
+        Set context = {}.%FromJSON(contextJSON)
+    } Catch exception {
+        Set parseStatus = exception.AsStatus()
+    }
+    If $$$ISERR(parseStatus) Quit $$$ERROR($$$GeneralError, "INVALID_REQUEST")
+    Set tSC = ##class(MyOwn.Agent.Policy.Gate).Evaluate(decision, context, config, actor, .gate)
+    If $$$ISERR(tSC) Quit tSC
+    Set decision.action = gate.finalAction
+    Set decision = ..PublicDecision(decision)
+    Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate.downgradedBy, config, traceId, .decisionId)
+    If $$$ISERR(tSC) Quit tSC
+    Set result.decisionId = decisionId
+    Set result.decision = decision
+    Set result.gate = gate
+    Quit $$$OK
+}
+
+/// Production step 3 (ProposalStore): creates the proposal for a gated decision. The Gate is
+/// evaluated again on the final decision, so a message can never create what the Gate refuses.
+ClassMethod StoreProposal(decisionId As %Integer, decisionJSON As %String, contextJSON As %String, Output proposalId As %Integer) As %Status
+{
+    Set proposalId = 0
+    If '##class(MyOwn.Agent.Decision).%ExistsId(decisionId) Quit $$$ERROR($$$GeneralError, "DECISION_NOT_FOUND")
+    Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
+    If $$$ISERR(tSC) Quit tSC
+    Set parseStatus = $$$OK
+    Try {
+        Set decision = {}.%FromJSON(decisionJSON)
+        Set context = {}.%FromJSON(contextJSON)
+    } Catch exception {
+        Set parseStatus = exception.AsStatus()
+    }
+    If $$$ISERR(parseStatus) Quit $$$ERROR($$$GeneralError, "INVALID_REQUEST")
+    Set tSC = ##class(MyOwn.Agent.Policy.Gate).Evaluate(decision, context, config, "", .gate)
+    If $$$ISERR(tSC) Quit tSC
+    If 'gate.allowed || 'gate.createProposal || (gate.finalAction '= decision.%Get("action")) Quit $$$ERROR($$$GeneralError, "PROHIBITED_TARGET")
+    Quit ..CreateProposal(decisionId, decision, context, config, .proposalId)
 }
 
 ClassMethod SubmitAccessRequest(role As %String, justification As %String, authorization As %String, requester As %String, Output response As %DynamicObject) As %Status
@@ -1001,6 +1067,8 @@ ClassMethod ResponseFromMessage(message As MyOwn.Production.Msg.AgentResponse) A
     Set data.engine = message.Engine
     Set data.outcome = message.Outcome
     Set data.decision = ..PublicDecision(..JSONValue(message.DecisionJSON))
+    If message.GateJSON '= "" Set data.gate = ..JSONValue(message.GateJSON)
+    If message.Outcome = "suppressed" Set data.status = "suppressed"
     Set data.integrationSource = "interoperability"
     Quit data
 }

@@ -100,6 +100,13 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 - The Access tab shows queued requests and polls every 2 s until each is decided.
 - New REST check IT-13 proves the request is queued at once and decided later. It exposed a pre-existing defect: `Context.Access.IsHighRisk` called `%GetIterator` on a `%ListOfDataTypes`, so a real access request from the portal had always failed with HTTP 500 and an internal error location in the body. Fixed (iterates the list and fails closed as high risk), and the REST handler now converts unexpected exceptions into the standard error.
 
+## Gate and proposal in the business processes (2026-10-20)
+
+- The decision pipeline now runs as three separate production steps, shared by `TriageProcess` and `AccessProcess` through `MyOwn.Production.Process.Steps`: (1) **decide**: `AgentGateway` calls `Agent.Decide` (cooldown, event, engine, Validator, ledger) and returns the validated decision before the Gate; (2) **Gate**: the process calls `Agent.ApplyGate` (deterministic Gate, then the decision record with final action and downgrade reason); (3) **proposal**: `ProposalStore` now creates the proposal through `Agent.StoreProposal`, which re-evaluates the Gate on the final decision before creating anything.
+- Each step writes one Event Log line per trace (`[traceId] step N ...`) with enums and ids only. The Message Viewer shows `AgentRequest`/`AgentResponse` and `ProposalRequest`/`ProposalResponse` for every run that proposes. `AgentResponse` gained `ValidationStatus` and `GateJSON`; `ProposalResponse` is new. The production still has ten items.
+- `Agent.Analyze` is a thin facade: it injects an `IncidentEvent` through `HealthMonitor` and returns the previous response shape (`decision`, `gate`, `proposalId`, `status: suppressed`). `/agent/analyze` therefore also runs through the production now.
+- Upgrade note: recompiling these classes while the production runs left the old `AgentGateway` job calling the new facade, which re-entered the production and deadlocked on itself. Restart the production after deploying this change.
+
 ## Next verified milestone
 
 Load `iris-community:2026.3.0AI.154.0` and `irishealth-community:2026.3.0AI.154.0`, point `iris-agentic-dev` to that container, introspect `%AI.*`, and implement T02 plus T12–T14 against the signatures actually present in build 154.

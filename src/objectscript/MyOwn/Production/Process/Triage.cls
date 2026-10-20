@@ -13,12 +13,8 @@ Method OnRequest(request As MyOwn.Production.Msg.IncidentEvent, Output response 
         Set response.DecisionJSON = "{}"
         Quit $$$OK
     }
-    Set agentRequest = ##class(MyOwn.Production.Msg.AgentRequest).%New()
-    Set agentRequest.Workflow = route
-    Set agentRequest.Source = request.Source
-    Set agentRequest.ContextJSON = request.ContextJSON
-    Set agentRequest.TraceId = request.TraceId
-    Set tSC = ..SendRequestSync("AgentGateway", agentRequest, .response)
+    ; decide (AgentGateway) → Gate → proposal (ProposalStore), each a visible step
+    Set tSC = ##class(MyOwn.Production.Process.Steps).Run($this, route, request.Source, request.ContextJSON, request.TraceId, "", .response)
     If $$$ISERR(tSC) Quit tSC
     If response.Outcome = "budget_blocked" {
         Set feedback = ##class(MyOwn.Production.Msg.ExecutionFeedback).%New()
@@ -27,15 +23,6 @@ Method OnRequest(request As MyOwn.Production.Msg.IncidentEvent, Output response 
         Set feedback.Message = "The AI budget was exhausted. The deterministic Rules engine handled the event."
         Set feedback.TraceId = response.TraceId
         Set tSC = ..SendRequestSync("Notifier", feedback, .notificationResponse)
-        If $$$ISERR(tSC) Quit tSC
-    }
-    If response.ProposalId {
-        Set proposalRequest = ##class(MyOwn.Production.Msg.ProposalRequest).%New()
-        Set proposalRequest.DecisionId = response.DecisionId
-        Set proposalRequest.DecisionJSON = response.DecisionJSON
-        Set proposalRequest.ContextJSON = request.ContextJSON
-        Set proposalRequest.TraceId = response.TraceId
-        Set tSC = ..SendRequestAsync("ProposalStore", proposalRequest, 0)
         If $$$ISERR(tSC) Quit tSC
     }
     Quit $$$OK

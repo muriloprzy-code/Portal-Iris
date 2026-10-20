@@ -9,6 +9,12 @@ Property EventId As %Integer;
 Property DecisionId As %Integer;
 Property ProposalId As %Integer;
 
+/// valid | rejected (the Validator result for the engine output).
+Property ValidationStatus As %String(MAXLEN = 20);
+
+/// Deterministic Gate result {allowed, finalAction, downgradedBy, createProposal}; empty before the Gate step.
+Property GateJSON As %String(MAXLEN = 2000);
+
 Storage Default
 {
 <Data name="AgentResponseDefaultData">
@@ -33,6 +39,12 @@ Storage Default
 </Value>
 <Value name="7">
 <Value>ProposalId</Value>
+</Value>
+<Value name="8">
+<Value>ValidationStatus</Value>
+</Value>
+<Value name="9">
+<Value>GateJSON</Value>
 </Value>
 </Data>
 <DefaultData>AgentResponseDefaultData</DefaultData>

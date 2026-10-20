@@ -73,16 +73,8 @@ ClassMethod Run(name As %String, authorization As %String, taskId As %Integer, r
     Set tSC = service.ProcessInput(request, .agentResponse)
     If $$$ISERR(tSC) Quit tSC
     If '$IsObject(agentResponse) Quit $$$ERROR($$$GeneralError, "AGENT_RESPONSE_MISSING")
-    Set response = {}
-    Set response.traceId = agentResponse.TraceId
-    Set response.eventId = agentResponse.EventId
-    Set response.decisionId = agentResponse.DecisionId
-    Set response.proposalId = agentResponse.ProposalId
-    Set response.engine = agentResponse.Engine
-    Set response.outcome = agentResponse.Outcome
-    Set response.decision = ##class(MyOwn.Agent.Service.Agent).PublicDecision({}.%FromJSON(agentResponse.DecisionJSON))
+    Set response = ##class(MyOwn.Agent.Service.Agent).ResponseFromMessage(agentResponse)
     Set response.scenario = name
-    Set response.integrationSource = "interoperability"
     Quit $$$OK
 }
 
