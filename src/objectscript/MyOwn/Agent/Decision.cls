@@ -20,6 +20,12 @@ Property AppliedAutomatically As %Boolean [ InitialExpression = 0 ];
 Property TraceId As %String(MAXLEN = 128) [ Required ];
 Property DecidedAt As %TimeStamp [ Required ];
 
+/// Sanitized access-request conditions (JSON array of at most three short strings).
+Property ConditionsJSON As %String(MAXLEN = 1000);
+
+/// Deterministic Gate result {allowed, finalAction, downgradedBy, createProposal, reason}.
+Property GateJSON As %String(MAXLEN = 2000);
+
 Index EventIndex On EventId;
 Index TraceIdIndex On TraceId;
 Index DecidedAtIndex On DecidedAt;
@@ -84,6 +90,12 @@ Storage Default
 </Value>
 <Value name="19">
 <Value>DecidedAt</Value>
+</Value>
+<Value name="20">
+<Value>ConditionsJSON</Value>
+</Value>
+<Value name="21">
+<Value>GateJSON</Value>
 </Value>
 </Data>
 <DataLocation>^MyOwn.Agent.DecisionD</DataLocation>

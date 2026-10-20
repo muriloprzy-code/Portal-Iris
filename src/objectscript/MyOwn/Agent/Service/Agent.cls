@@ -150,7 +150,7 @@ ClassMethod ApplyGate(workflow As %String, eventId As %Integer, engine As %Strin
     If $$$ISERR(tSC) Quit tSC
     Set decision.action = gate.finalAction
     Set decision = ..PublicDecision(decision)
-    Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate.downgradedBy, config, traceId, .decisionId)
+    Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate, config, traceId, .decisionId)
     If $$$ISERR(tSC) Quit tSC
     Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("Decision", decisionId, workflow _ "/" _ gate.finalAction, 1, engine _ "/" _ validationStatus _ "/" _ $Select(gate.downgradedBy'="":gate.downgradedBy, 1:"none"))
     If $$$ISERR(tSC) Quit tSC
@@ -315,7 +315,7 @@ ClassMethod SaveEvent(workflow As %String, source As %String, fingerprint As %St
     Quit tSC
 }
 
-ClassMethod SaveDecision(eventId As %Integer, workflow As %String, engine As %String, value As %DynamicObject, validationStatus As %String, downgradedBy As %String, config As MyOwn.Agent.Config, traceId As %String, Output id As %Integer) As %Status [ Private ]
+ClassMethod SaveDecision(eventId As %Integer, workflow As %String, engine As %String, value As %DynamicObject, validationStatus As %String, gate As %DynamicObject, config As MyOwn.Agent.Config, traceId As %String, Output id As %Integer) As %Status [ Private ]
 {
     Set decision = ##class(MyOwn.Agent.Decision).%New()
     Set decision.EventId = eventId
@@ -334,8 +334,10 @@ ClassMethod SaveDecision(eventId As %Integer, workflow As %String, engine As %St
     Set decision.Confidence = value.%Get("confidence")
     Set decision.EvidenceJSON = ##class(%Stream.GlobalCharacter).%New()
     If $IsObject(value.%Get("evidence")) Do decision.EvidenceJSON.Write(..SanitizeEvidence(value.evidence).%ToJSON())
+    If value.%IsDefined("conditions") Set decision.ConditionsJSON = ..PublicDecision({"conditions":(value.%Get("conditions"))}).conditions.%ToJSON()
     Set decision.ValidationStatus = validationStatus
-    Set decision.DowngradedBy = downgradedBy
+    Set decision.DowngradedBy = gate.downgradedBy
+    Set decision.GateJSON = gate.%ToJSON()
     Set decision.Autonomy = $Select(workflow="access-request":config.AutonomyAccess, 1:config.AutonomyTriage)
     Set decision.AppliedAutomatically = 0
     Set decision.TraceId = traceId
@@ -1030,7 +1032,23 @@ ClassMethod DecisionView(decision As MyOwn.Agent.Decision, detail As %Boolean) A
     Set data.downgradedBy = decision.DowngradedBy
     Set data.traceId = decision.TraceId
     Set data.decidedAt = decision.DecidedAt
+    Set proposal = ..ProposalForDecision(decision.%Id())
+    Set data.proposalId = $Select($IsObject(proposal):proposal.%Id(), 1:"")
     If detail {
+        Set data.conditions = ..PublicDecision({"conditions":(..JSONArray(decision.ConditionsJSON))}).conditions
+        Set gate = ..JSONValue(decision.GateJSON)
+        Set data.gate = {}
+        Set data.gate.finalAction = decision.Action
+        Set data.gate.downgradedBy = decision.DowngradedBy
+        If gate.%IsDefined("allowed") Set data.gate.allowed = +gate.allowed
+        If gate.%IsDefined("createProposal") Set data.gate.createProposal = +gate.createProposal
+        If gate.%Get("reason") '= "" Set data.gate.reason = ##class(MyOwn.Agent.Sanitize).Text(gate.reason, 200)
+        If $IsObject(proposal) {
+            Set data.proposal = {}
+            Set data.proposal.id = proposal.%Id()
+            Set data.proposal.kind = proposal.Kind
+            Set data.proposal.state = proposal.State
+        }
         Set data.rationale = ##class(MyOwn.Agent.Sanitize).Text(decision.Rationale, 600)
         Set evidenceJSON = ..ReadStream(decision.EvidenceJSON)
         Set data.evidence = []
@@ -1191,6 +1209,22 @@ ClassMethod ReadStream(stream As %Stream.Object) As %String [ Private ]
         Set value = value _ stream.Read(32000)
     }
     Quit value
+}
+
+ClassMethod JSONArray(value As %String) As %DynamicArray [ Private ]
+{
+    Set parsed = ..JSONValue(value)
+    Quit $Select(parsed.%IsA("%DynamicArray"):parsed, 1:[])
+}
+
+ClassMethod ProposalForDecision(decisionId As %Integer) As MyOwn.Agent.Proposal [ Private ]
+{
+    If 'decisionId Quit ""
+    Set statement = ##class(%SQL.Statement).%New()
+    If $$$ISERR(statement.%Prepare("SELECT TOP 1 ID FROM MyOwn_Agent.Proposal WHERE DecisionId = ? ORDER BY ID DESC")) Quit ""
+    Set result = statement.%Execute(decisionId)
+    If (result.%SQLCODE < 0) || 'result.%Next() Quit ""
+    Quit ##class(MyOwn.Agent.Proposal).%OpenId(result.%Get("ID"))
 }
 
 ClassMethod JSONValue(value As %String) As %DynamicAbstractObject [ Private ]

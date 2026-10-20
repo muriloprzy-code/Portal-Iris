@@ -9,7 +9,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - Connected instance: InterSystems IRIS 2026.2 build 221U, namespace `MYOWN`, through `iris-agentic-dev` 1.5.0.
 - Core unit smoke: **13 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
 - Interoperability smoke: **16 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
-- REST agent suite: **22 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
+- REST agent suite: **23 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
 - AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
@@ -35,7 +35,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 | T12–T14 Real AI Hub engine | Pending build 154 | Provider, agents, read-only ToolSets and real token usage must use APIs introspected from build 154. |
 | T15 Adversarial tests | Mostly done | SEC-01..SEC-04 and SEC-06..SEC-11 pass. SEC-01..04 are also covered offline by the 92-case corpus (`MyOwn.Test.AgentAdversarial`). SEC-05 is ready and runs when a separate Viewer credential is supplied. SEC-01/02 still need a run with a real LLM. |
 | T16 Configuration UI/REST | Done (core) | Settings, budgets, kill switch and secret-presence-only display implemented. Provider connection test remains with real AI Hub. |
-| T17 Agent frontend | Done (first complete pass) | Decisions, approvals, access, production, guardrails and settings implemented. |
+| T17 Agent frontend | Done (first complete pass) | Decisions (with detail drawer), approvals, access, production, guardrails and settings implemented. |
 | T18 Observability and trace UI | Done (first complete pass) | Ledger summary and trace timeline consume real backend data. |
 | T19 Test scripts and JSON reports | Done (framework) | Core smoke, integration smoke, REST, secret-scan and AI Hub scripts write JSON reports. AI Hub checks remain skipped until build 154 is connected. |
 | T20 Browser smoke/screenshots | Pending | Add Playwright smoke and contest screenshots after the AI Hub build is available. |
@@ -114,6 +114,13 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 - `Decision` is written by the Gate step, `ProposalCreated` by `ProposalStore`, `ProposalConfirmed` before execution (no execution without that audit record), `ExecutionResult` for executed, failed and read-back failures, and `ProposalExpired` for TTL expiry and `TARGET_CHANGED`.
 - Tests: UT-14-AUDIT (marker, forgery attempt, unknown event refused) and IT-14-AUDIT (the S5 decision has `Decision`, `ProposalCreated` and `ProposalRejected` with its decision id; no agent audit event contains model or justification text). IRIS flushes the audit buffer in batches (20 to 70 s observed, no public flush API), so IT-14 polls for up to 120 s.
 - Still pending: the Logs page has no audit viewer yet, so the "agent events only" filter of the specification is not implemented.
+
+## Decision detail drawer (2026-10-20)
+
+- The Decisions tab adds Risk and Proposal columns and an Open action per row. The drawer shows engine, risk, validation, confidence, the Gate result (final action, downgrade reason, allowed or blocked, prohibited-target reason), the proposal it produced (id, kind, state), and the rationale, evidence and conditions, plus a link to the trace. Esc closes it; focus moves to it only when another decision opens.
+- Model-written text is sanitized by the server and rendered only as React text nodes; `frontend/src` still has no `dangerouslySetInnerHTML` or other HTML sink.
+- `MyOwn.Agent.Decision` stores `ConditionsJSON` (sanitized) and `GateJSON`. `GET /agent/decisions/:id` returns `conditions`, `gate` and `proposal`, sanitized again on read; the list returns `proposalId`. New REST check IT-15 verifies these fields for the S5 decision. Decisions recorded before this change show no conditions and only the downgrade reason of the Gate.
+- Frontend type-check and production build pass; the bundle is regenerated in `web/`. The drawer was not checked in a browser in this session.
 
 ## Next verified milestone
 

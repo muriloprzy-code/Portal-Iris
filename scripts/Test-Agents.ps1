@@ -209,6 +209,15 @@ try {
         $s5.data.decision.action -eq 'approve' -and $s5.data.decision.riskLevel -eq 'low' -and [bool]$s5.data.proposalId
     }
 
+    Add-Check -Id 'IT-15' -Details 'The decision detail exposes rationale, evidence, conditions, engine, risk, Gate result and the resulting proposal for the decisions panel.' -Action {
+        if (-not $s5.data.decisionId) { return $false }
+        $detail = (Invoke-PortalJson -Method GET -Path "/agent/decisions/$($s5.data.decisionId)").data
+        $detail.engine -eq 'rules' -and $detail.riskLevel -eq 'low' -and [bool]$detail.rationale -and
+            $detail.evidence.Count -ge 1 -and $detail.conditions.Count -ge 1 -and
+            $detail.gate.finalAction -eq 'approve' -and $detail.gate.createProposal -eq 1 -and
+            "$($detail.proposal.id)" -eq "$($s5.data.proposalId)"
+    }
+
     Add-Check -Id 'S6' -Details 'Scenario S6 escalates a high-risk access request without creating a proposal.' -Action {
         $script:s6 = Invoke-PortalJson -Method POST -Path '/agent/simulate' -Body @{ scenario = 'S6' }
         $s6.data.decision.action -eq 'escalate' -and $s6.data.decision.riskLevel -eq 'high' -and -not $s6.data.proposalId

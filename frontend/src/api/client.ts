@@ -296,9 +296,23 @@ export type AgentDecision = {
   downgradedBy: string
   traceId: string
   decidedAt: string
-  rationale?: string
-  evidence?: unknown[]
   proposalId?: number | string
+  /** Detail only (GET /agent/decisions/:id). Model-written text is sanitized by the server and must be rendered as text. */
+  rationale?: string
+  evidence?: AgentEvidence[]
+  conditions?: string[]
+  gate?: AgentGateResult
+  proposal?: { id: number; kind: string; state: string }
+}
+
+export type AgentEvidence = { source?: string; ref?: string | number }
+
+export type AgentGateResult = {
+  finalAction: string
+  downgradedBy: string
+  allowed?: number
+  createProposal?: number
+  reason?: string
 }
 
 export type AgentProposal = {

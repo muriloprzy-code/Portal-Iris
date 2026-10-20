@@ -1,9 +1,10 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import {
   confirmAgentProposal,
   controlAgentProduction,
   getAgentAccessRequests,
   getAgentConfig,
+  getAgentDecision,
   getAgentDecisions,
   getAgentGuardrails,
   getAgentLedgerSummary,
@@ -19,6 +20,7 @@ import {
   type AgentAccessRequest,
   type AgentConfig,
   type AgentDecision,
+  type AgentEvidence,
   type AgentGuardrails,
   type AgentLedgerSummary,
   type AgentProduction,
@@ -54,6 +56,7 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
   const [production, setProduction] = useState<AgentProduction | null>(null)
   const [guardrails, setGuardrails] = useState<AgentGuardrails | null>(null)
   const [trace, setTrace] = useState<AgentTrace | null>(null)
+  const [selectedDecision, setSelectedDecision] = useState<AgentDecision | null>(null)
   const [scenario, setScenario] = useState('S1')
   const [simulation, setSimulation] = useState<AgentSimulation | null>(null)
   const [role, setRole] = useState('MyOwnViewer')
@@ -141,6 +144,19 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
     }, 'Agent settings were saved and audited.')
   }
 
+  async function openDecision(id: number) {
+    setBusy(`decision-${id}`)
+    setError('')
+    try {
+      const response = await getAgentDecision(id)
+      setSelectedDecision(response.data)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The decision could not be loaded.')
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function openTrace(traceId: string) {
     setBusy(`trace-${traceId}`)
     setError('')
@@ -189,7 +205,10 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
           </div>}
         </div>}
 
-        {activeTab === 'Decisions' && <div className="table-wrap"><table><thead><tr><th>ID</th><th>Workflow</th><th>Action</th><th>Engine</th><th>Confidence</th><th>Validation</th><th>When</th><th>Trace</th></tr></thead><tbody>{decisions.map((item) => <tr key={item.id}><td className="mono">{item.id}</td><td>{item.workflow}</td><td className="primary-cell">{item.action}</td><td><span className="status-chip enabled">{item.engine}</span></td><td>{Math.round(Number(item.confidence || 0) * 100)}%</td><td>{item.validationStatus}</td><td>{item.decidedAt}</td><td><button className="row-action" type="button" onClick={() => openTrace(item.traceId)} disabled={busy === `trace-${item.traceId}`}>View</button></td></tr>)}{!decisions.length && <tr><td className="empty-row" colSpan={8}>No agent decisions have been recorded yet.</td></tr>}</tbody></table></div>}
+        {activeTab === 'Decisions' && <>
+          <div className="table-wrap"><table><thead><tr><th>ID</th><th>Workflow</th><th>Action</th><th>Engine</th><th>Risk</th><th>Confidence</th><th>Validation</th><th>Proposal</th><th>When</th><th>Details</th></tr></thead><tbody>{decisions.map((item) => <tr key={item.id} className={selectedDecision?.id === item.id ? 'selected-row' : undefined}><td className="mono">{item.id}</td><td>{item.workflow}</td><td className="primary-cell">{item.action}</td><td><span className="status-chip enabled">{item.engine}</span></td><td>{item.riskLevel || item.severity || '—'}</td><td>{Math.round(Number(item.confidence || 0) * 100)}%</td><td>{item.validationStatus}</td><td>{item.proposalId ? `#${item.proposalId}` : '—'}</td><td>{item.decidedAt}</td><td><button className="row-action" type="button" onClick={() => openDecision(item.id)} disabled={busy === `decision-${item.id}`} aria-label={`Open decision ${item.id}`}>Open</button></td></tr>)}{!decisions.length && <tr><td className="empty-row" colSpan={10}>No agent decisions have been recorded yet.</td></tr>}</tbody></table></div>
+          {selectedDecision && <DecisionDrawer decision={selectedDecision} onClose={() => setSelectedDecision(null)} onOpenTrace={(traceId) => { setActiveTab('Observability'); void openTrace(traceId) }} />}
+        </>}
 
         {activeTab === 'Approvals' && canManage && <div className="agent-card-list">{proposals.map((item) => <article key={item.id}><div className="agent-card-heading"><div><small>PROPOSAL #{item.id}</small><h3>{item.kind}</h3></div><span className={`status-chip ${item.state === 'pending' ? 'warning' : item.state === 'executed' ? 'enabled' : ''}`}>{item.state}</span></div><dl><div><dt>Target</dt><dd>{item.targetType}: {item.targetId}</dd></div><div><dt>Expires</dt><dd>{item.expiresAt}</dd></div><div><dt>Required privilege</dt><dd>{item.requiredPrivilege || '—'}</dd></div><div><dt>Undo</dt><dd>{item.undoHint || '—'}</dd></div></dl>{item.resultMessage && <p>{item.resultMessage}</p>}{item.state === 'pending' && <div className="agent-card-actions"><button type="button" onClick={() => runAction(`confirm-${item.id}`, async () => { await confirmAgentProposal(item.id) }, `Proposal #${item.id} was confirmed and verified.`)} disabled={Boolean(busy)}>Confirm</button><button className="danger" type="button" onClick={() => runAction(`reject-${item.id}`, async () => { await rejectAgentProposal(item.id, 'Rejected by the administrator in MyOwn Portal.') }, `Proposal #${item.id} was rejected.`)} disabled={Boolean(busy)}>Reject</button></div>}</article>)}{!proposals.length && <div className="data-state">No proposals have been created.</div>}</div>}
 
@@ -209,6 +228,57 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
 
 function Guardrail({ title, enabled, text }: { title: string; enabled: boolean | number | undefined; text: string }) {
   return <article><span>{yes(enabled) ? '✓' : '!'}</span><div><h3>{title}</h3><p>{text}</p></div></article>
+}
+
+function evidenceLabel(item: AgentEvidence) {
+  return `${item.source || 'evidence'}: ${display(item.ref)}`
+}
+
+function gateSummary(decision: AgentDecision) {
+  const gate = decision.gate
+  if (!gate) return '—'
+  const parts = [`final action ${gate.finalAction || decision.action}`]
+  parts.push(gate.downgradedBy ? `downgraded by ${gate.downgradedBy}` : 'no downgrade')
+  if (gate.allowed !== undefined) parts.push(yes(gate.allowed) ? 'allowed' : 'blocked')
+  return parts.join(' · ')
+}
+
+/**
+ * Decision details. Rationale, evidence and conditions come from the model (sanitized by the
+ * server) and are rendered only as React text nodes, never as HTML.
+ */
+function DecisionDrawer({ decision, onClose, onOpenTrace }: { decision: AgentDecision; onClose: () => void; onOpenTrace: (traceId: string) => void }) {
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const latestOnClose = useRef(onClose)
+  useEffect(() => { latestOnClose.current = onClose }, [onClose])
+  // Focus only when another decision opens; the page refreshes every 15 s and must not steal focus.
+  useEffect(() => { closeButton.current?.focus() }, [decision.id])
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') latestOnClose.current() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const evidence = decision.evidence ?? []
+  const conditions = decision.conditions ?? []
+  return <aside className="decision-drawer" role="dialog" aria-modal="false" aria-labelledby="decision-drawer-title">
+    <div className="agent-card-heading"><div><small>DECISION #{decision.id} · {decision.workflow}</small><h3 id="decision-drawer-title">{decision.action}</h3></div><button ref={closeButton} className="row-action" type="button" onClick={onClose}>Close</button></div>
+    <dl>
+      <div><dt>Engine</dt><dd>{decision.engine}</dd></div>
+      <div><dt>Risk</dt><dd>{decision.riskLevel || decision.severity || '—'}</dd></div>
+      <div><dt>Validation</dt><dd>{decision.validationStatus}</dd></div>
+      <div><dt>Confidence</dt><dd>{Math.round(Number(decision.confidence || 0) * 100)}%</dd></div>
+      <div className="wide"><dt>Gate</dt><dd>{gateSummary(decision)}{decision.gate?.reason ? ` · ${decision.gate.reason}` : ''}</dd></div>
+      <div className="wide"><dt>Proposal</dt><dd>{decision.proposal ? `#${decision.proposal.id} · ${decision.proposal.kind} · ${decision.proposal.state}` : 'No proposal was created.'}</dd></div>
+    </dl>
+    <h4>Rationale</h4>
+    <p className="decision-text">{decision.rationale || '—'}</p>
+    <h4>Evidence</h4>
+    {evidence.length ? <ul>{evidence.map((item, index) => <li key={index}>{evidenceLabel(item)}</li>)}</ul> : <p className="decision-text">—</p>}
+    <h4>Conditions</h4>
+    {conditions.length ? <ul>{conditions.map((item, index) => <li key={index}>{item}</li>)}</ul> : <p className="decision-text">—</p>}
+    <button className="row-action" type="button" onClick={() => onOpenTrace(decision.traceId)}>View trace</button>
+  </aside>
 }
 
 function TracePanel({ trace, onClose }: { trace: AgentTrace; onClose: () => void }) {
