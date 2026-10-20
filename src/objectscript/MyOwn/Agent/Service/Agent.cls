@@ -184,7 +184,7 @@ ClassMethod SaveDecision(eventId As %Integer, workflow As %String, engine As %St
     Set decision.Rationale = ##class(MyOwn.Agent.Sanitize).Text(value.%Get("rationale"), 600)
     Set decision.Confidence = value.%Get("confidence")
     Set decision.EvidenceJSON = ##class(%Stream.GlobalCharacter).%New()
-    If $IsObject(value.%Get("evidence")) Do decision.EvidenceJSON.Write(value.evidence.%ToJSON())
+    If $IsObject(value.%Get("evidence")) Do decision.EvidenceJSON.Write(..SanitizeEvidence(value.evidence).%ToJSON())
     Set decision.ValidationStatus = validationStatus
     Set decision.DowngradedBy = downgradedBy
     Set decision.Autonomy = $Select(workflow="access-request":config.AutonomyAccess, 1:config.AutonomyTriage)
@@ -194,6 +194,22 @@ ClassMethod SaveDecision(eventId As %Integer, workflow As %String, engine As %St
     Set tSC = decision.%Save()
     If $$$ISOK(tSC) Set id = decision.%Id()
     Quit tSC
+}
+
+/// Evidence comes from the model, so only source and ref are kept and both are
+/// sanitized before persistence. No side effects, so the adversarial corpus can test it.
+ClassMethod SanitizeEvidence(evidence As %DynamicArray) As %DynamicArray
+{
+    Set clean = []
+    For index = 0:1:(evidence.%Size() - 1) {
+        Set item = evidence.%Get(index)
+        If '$IsObject(item) Continue
+        Set entry = {}
+        Set entry.source = ##class(MyOwn.Agent.Sanitize).Identifier(item.%Get("source"), 40)
+        Set entry.ref = ##class(MyOwn.Agent.Sanitize).Text(item.%Get("ref"), 200)
+        Do clean.%Push(entry)
+    }
+    Quit clean
 }
 
 ClassMethod CreateProposal(decisionId As %Integer, decision As %DynamicObject, context As %DynamicObject, config As MyOwn.Agent.Config, Output id As %Integer) As %Status [ Private ]
