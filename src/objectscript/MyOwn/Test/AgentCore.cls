@@ -116,6 +116,63 @@ ClassMethod RunSmokeViaSQL() As %String [ SqlName = AgentCoreSmoke, SqlProc ]
     Quit report.%ToJSON()
 }
 
+/// Two expiry shapes: hours earlier in the same year and month (missed when timestamps were compared
+/// numerically, by year) and one year earlier. Fresh proposals for each check, because listing
+/// pending proposals already expires them. All test proposals are deleted at the end.
+ClassMethod ExpiryRegression(Output details As %String) As %Boolean [ Private ]
+{
+    Set details = ""
+    Set passed = 1
+    Set ids = ""
+    Set now = $ZDateTime($Horolog, 3, 1)
+    Set hoursEarlier = ..TimestampHoursAgo(2)
+    ; Near the start of a month two hours earlier is the previous month: use the month's first second.
+    If $Extract(hoursEarlier, 1, 7) '= $Extract(now, 1, 7) Set hoursEarlier = $Extract(now, 1, 7) _ "-01 00:00:00"
+    Set yearEarlier = ($Extract(now, 1, 4) - 1) _ $Extract(now, 5, *)
+    If $Extract(yearEarlier, 6, 10) = "02-29" Set $Extract(yearEarlier, 9, 10) = "28"
+    Set shapes = $ListBuild($ListBuild("same-month", hoursEarlier), $ListBuild("previous-year", yearEarlier))
+    Try {
+        For index = 1:1:$ListLength(shapes) {
+            Set label = $List($List(shapes, index), 1)
+            Set expiresAt = $List($List(shapes, index), 2)
+
+            Set confirmId = ..TestProposal("task.suspend", "99999" _ index, "pending", ..TimestampDaysAgo(400), expiresAt)
+            Set ids = ids _ $ListBuild(confirmId)
+            Set status = ##class(MyOwn.Agent.Service.Agent).ConfirmProposal(confirmId, "expiry.test", "", .confirmation)
+            Set confirmOk = $$$ISERR(status) && ($System.Status.GetErrorText(status) [ "PROPOSAL_EXPIRED") && (##class(MyOwn.Agent.Proposal).StateGetStored(confirmId) = "expired")
+
+            Set listId = ..TestProposal("task.suspend", "99998" _ index, "pending", ..TimestampDaysAgo(400), expiresAt)
+            Set ids = ids _ $ListBuild(listId)
+            $$$ThrowOnError(##class(MyOwn.Agent.Service.Agent).ListProposals("pending", .pendingItems))
+            Set listed = 0
+            For item = 0:1:(pendingItems.%Size() - 1) {
+                If pendingItems.%Get(item).id = listId Set listed = 1
+            }
+            Set listOk = 'listed && (##class(MyOwn.Agent.Proposal).StateGetStored(listId) = "expired")
+
+            Set details = details _ label _ " (" _ expiresAt _ "): confirm " _ $Select(confirmOk:"PROPOSAL_EXPIRED", 1:"WRONG " _ $System.Status.GetErrorText(status)) _ ", pending list " _ $Select(listOk:"excluded", 1:"STILL PENDING") _ "; "
+            Set passed = passed && confirmOk && listOk
+        }
+    } Catch exception {
+        Set passed = 0
+        Set details = details _ exception.DisplayString()
+    }
+    For index = 1:1:$ListLength(ids) Do ##class(MyOwn.Agent.Proposal).%DeleteId($List(ids, index))
+    Quit passed
+}
+
+/// Timestamp <var>hours</var> hours before now.
+ClassMethod TimestampHoursAgo(hours As %Integer) As %TimeStamp [ Private ]
+{
+    Set days = +$Horolog
+    Set seconds = $Piece($Horolog, ",", 2) - (hours * 3600)
+    While seconds < 0 {
+        Set seconds = seconds + 86400
+        Set days = days - 1
+    }
+    Quit $ZDateTime(days _ "," _ seconds, 3, 1)
+}
+
 /// Runs ApplyGate for a task proposal against a fake task id while changing what already exists
 /// for that target. Every proposal and decision it creates is deleted at the end.
 ClassMethod DedupScenario(Output details As %String) As %Boolean [ Private ]
@@ -355,6 +412,10 @@ ClassMethod RunIntegrationViaSQL() As %String [ SqlName = AgentIntegrationSmoke,
     Set overdueState = ##class(MyOwn.Agent.Proposal).StateGetStored(overdue)
     Do ##class(MyOwn.Agent.Proposal).%DeleteId(overdue)
     Do ..Add(report, "IT-17-EXPIRY", $$$ISOK(tSC) && 'listed && (overdueState = "expired"), "A pending proposal past ExpiresAt is not listed as pending and is marked expired when proposals are read.")
+
+    ; Regression: expiry must not depend on the year only (timestamps were compared as numbers).
+    Set expiryOk = ..ExpiryRegression(.expiryDetails)
+    Do ..Add(report, "IT-19-EXPIRY-REGRESSION", expiryOk, "Proposals that expired hours earlier (same year and month) or a year earlier fail confirmation with PROPOSAL_EXPIRED and are not listed as pending. " _ expiryDetails)
 
     ; The Gate step never creates a second proposal for the same task and action.
     Set dedup = ..DedupScenario(.dedupDetails)

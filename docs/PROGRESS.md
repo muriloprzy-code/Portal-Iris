@@ -8,7 +8,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 
 - Connected instance: InterSystems IRIS 2026.2 build 221U, namespace `MYOWN`, through `iris-agentic-dev` 1.5.0.
 - Core unit smoke: **14 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
-- Interoperability smoke: **18 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
+- Interoperability smoke: **19 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
 - REST agent suite: **24 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
 - Agents UI (isolated browser): **14 passed, 0 failed** (`scripts/Test-AgentsUI.ps1`), report in `test-results/agents-ui.json`, screenshots in `test-results/ui/`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
@@ -143,6 +143,7 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 - Deduplication (Gate step and again in `ProposalStore`): `Gate.CheckDuplicate` blocks a second proposal for the same kind and target while one is pending and not expired (`duplicate-proposal`; the decision reuses that proposal id and the drawer shows it as "already pending, not duplicated"), or when the most recent executed proposal for that target is the same kind and was executed within `CooldownMinutes` (`recently-executed`). The opposite action (resume after suspend) is allowed. A pending proposal whose target fingerprint no longer matches is superseded (expired, audited with detail `superseded`) instead of being reused, so a reused proposal can always be confirmed.
 - `StableKey` uses a failure band (`0`, `1-2`, `3+`) instead of the exact count; `TaskWatcher` now includes the task namespace.
 - Tests: UT-15-STABLEKEY, IT-17-EXPIRY, IT-18-DEDUP (stale pending superseded, pending blocked, recently executed blocked, executed long ago allowed, opposite action allowed) and UI-APPROVALS (no pending card past its expiry; badge equals the pending cards). Pending proposals went from 26 to 1 after the change. Not verified end to end: confirming a new watcher proposal, which would suspend a real task.
+- Regression IT-19-EXPIRY-REGRESSION: a proposal that expired hours earlier in the same year and month, and one that expired a year earlier, both fail confirmation with `PROPOSAL_EXPIRED` and are never listed as pending. The same-month case is the one the old numeric comparison missed (checked: old expression 0, new expression 1 for that timestamp).
 
 ## Next verified milestone
 
