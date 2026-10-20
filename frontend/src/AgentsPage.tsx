@@ -12,6 +12,7 @@ import {
   getAgentProposals,
   getAgentStatus,
   getAgentTrace,
+  getTasks,
   rejectAgentProposal,
   setAgentKillSwitch,
   simulateAgentScenario,
@@ -36,6 +37,9 @@ type AgentTab = 'Overview' | 'Decisions' | 'Approvals' | 'Access' | 'Observabili
 const allTabs: AgentTab[] = ['Overview', 'Decisions', 'Approvals', 'Access', 'Observability', 'Production', 'Guardrails', 'Settings']
 const administratorTabs = new Set<AgentTab>(['Approvals', 'Production', 'Settings'])
 const scenarios = Array.from({ length: 10 }, (_, index) => `S${index + 1}`)
+const taskScenarios = new Set(['S2', 'S3'])
+/** Created by MyOwn.Installer (Parameter DemoTaskName). */
+const demoTaskName = 'MyOwn Portal health snapshot'
 const yes = (value: boolean | number | undefined) => Boolean(Number(value))
 
 function display(value: unknown) {
@@ -125,7 +129,15 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
 
   function handleSimulation() {
     return runAction('simulate', async () => {
-      const response = await simulateAgentScenario(scenario)
+      // S2 and S3 act on a real task: use the demonstration task created by the installer.
+      let taskId = 0
+      if (taskScenarios.has(scenario)) {
+        const tasksResponse = await getTasks()
+        const demoTask = tasksResponse.data.tasks.find((task) => task.name === demoTaskName)
+        if (!demoTask) throw new Error(`${scenario} needs the "${demoTaskName}" task. Run the installer again to create it.`)
+        taskId = Number(demoTask.id)
+      }
+      const response = await simulateAgentScenario(scenario, taskId)
       setSimulation(response.data)
     }, `${scenario} completed through the interoperability production.`)
   }

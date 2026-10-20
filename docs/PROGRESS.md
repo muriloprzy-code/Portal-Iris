@@ -10,6 +10,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - Core unit smoke: **13 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
 - Interoperability smoke: **16 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
 - REST agent suite: **24 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
+- Agents UI (isolated browser): **13 passed, 0 failed** (`scripts/Test-AgentsUI.ps1`), report in `test-results/agents-ui.json`, screenshots in `test-results/ui/`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
 - AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
@@ -38,7 +39,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 | T17 Agent frontend | Done (first complete pass) | Decisions (with detail drawer), approvals, access, production, guardrails and settings implemented. |
 | T18 Observability and trace UI | Done (first complete pass) | Ledger summary and trace timeline consume real backend data. |
 | T19 Test scripts and JSON reports | Done (framework) | Core smoke, integration smoke, REST, secret-scan and AI Hub scripts write JSON reports. AI Hub checks remain skipped until build 154 is connected. |
-| T20 Browser smoke/screenshots | Pending | Add Playwright smoke and contest screenshots after the AI Hub build is available. |
+| T20 Browser smoke/screenshots | Done (Rules) | `scripts/Test-AgentsUI.ps1` (Playwright, isolated Chromium) runs S1 to S10 from the screen and checks every decision drawer; screenshots in `test-results/ui/`. Repeat with AI Hub for contest screenshots. |
 | T21 Docker/IPM/installer | In progress | Build 154 image, environment variables and Compose overlay documented; clean-machine and both-edition tests remain. |
 | T22 Submission documentation | In progress | README AI Hub instructions added; final judges section, video and full reference review remain. |
 
@@ -126,7 +127,14 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 
 - Every installer reaches `Installer.Setup`: IPM (`module.xml` Invoke, also used by the Dockerfile through `zpm load`), `Instalar.bat` → `Install-All.ps1` → `MyOwnLoadAndSetup`, and `Install-MyOwn.ps1`. `Setup` calls `EnsureAuditEvent` in `%SYS`, which registers the nine audit events, so no manual step is needed. On a fresh install the production starts after all classes compile. A reinstall over a running production now restarts it; verified by running `MyOwnLoadAndSetup` on the local instance (graceful restart, new jobs) followed by all suites.
 - Screen replay of S1 to S10 (same requests as the Agents page, `taskId` 0) found that S2 and S3 always failed from the screen because no task id is sent. `Scenarios.Run` now uses the installer's demonstration task, read with the caller's credentials. New REST check IT-16. After the fix, every scenario returns a decision whose detail carries engine, risk, Gate result, proposal state, rationale and evidence (S4 has no evidence by design; only S5 has conditions).
-- The screens were not opened in a browser and the browser console was not inspected in this session.
+- Superseded by the isolated browser test below.
+
+## Agents UI test in an isolated browser (2026-10-20)
+
+- `scripts/Test-AgentsUI.ps1` runs `tests/ui/agents-ui.mjs` with Playwright 1.55.0 (pinned, own `package.json` and lockfile) and Playwright's bundled Chromium in a fresh profile, never the user's browser. The credential reaches Node only through process environment variables. The test signs in, enables Demo mode through Settings, runs S1 to S10 from the Overview simulator, opens each decision drawer by the decision id returned to the screen, checks engine, risk, Gate result, proposal, rationale, evidence and conditions, closes the drawer with Esc, rejects the proposals it created, restores the settings, and fails on any browser console error or HTTP 5xx from the API.
+- Fixed: the Overview simulator called `/agent/simulate` without a task id, so S2 and S3 always failed from the screen. The screen now selects the installer's demonstration task (`MyOwn Portal health snapshot`) and the test asserts that the request carries its id; the server-side fallback stays as a safety net.
+- Result: 13 of 13 checks pass, no console errors, no server errors; screenshots `test-results/ui/S1-decision.png` to `S10-decision.png`.
+- Found, not fixed here: 26 `task.suspend` proposals created by `TaskWatcher` since 2026-10-19 are still `pending`, 21 of them past `ExpiresAt`. Expiry is applied only when someone tries to confirm, so the Approvals badge counts expired proposals, and repeated watcher cycles add new proposals for the same task.
 
 ## Next verified milestone
 

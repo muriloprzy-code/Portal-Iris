@@ -1,0 +1,9 @@
+{
+  "name": "myown-portal-ui-tests",
+  "private": true,
+  "type": "module",
+  "description": "Isolated browser test of the Agents screens (Playwright, bundled Chromium).",
+  "devDependencies": {
+    "playwright": "1.55.0"
+  }
+}

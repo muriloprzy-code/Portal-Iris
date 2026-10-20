@@ -30,3 +30,4 @@ test-results/*
 
 # Local scratch material, not part of the portal
 extras/
+tests/ui/node_modules/

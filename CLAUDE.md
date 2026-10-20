@@ -34,7 +34,7 @@ Corrigido na revisão (compilado e testado em 20/10: core 12/12, integração 15
 
 Corpus adversarial (20/10): `MyOwn.Test.AgentAdversarial`, 92 casos, `scripts/Test-AgentAdversarial.ps1` → 92/92. Achou e corrigiu 20 falhas reais (Validator 12, Gate 1, Sanitize 7); detalhes em `docs/PROGRESS.md`. Refs de `evidence` agora passam por `Agent.SanitizeEvidence` antes de gravar (ADV-E01); `Agent.PublicDecision` faz a resposta do REST, a mensagem do trace e o detalhe da decisão saírem iguais ao banco (ADV-E02/E03). Frontend sem `dangerouslySetInnerHTML`; rationale/evidence/conditions ainda não aparecem na UI.
 
-Etapas de 20/10 (commits separados): pedido de acesso assíncrono (IT-13), Gate e proposta como passos do BP (`Process.Steps`), auditoria `MyOwn/Agent/*` com marcador (UT-14, IT-14), painel de detalhes na aba Decisions (IT-15). Resultados: corpus 92/92, core 13/13, integração 16/16, REST 24/0/1. Reinstalação reinicia a produção sozinha; S2/S3 pela tela usam a tarefa de demo (IT-16). Tela e console do navegador ainda não verificados.
+Etapas de 20/10 (commits separados): pedido de acesso assíncrono (IT-13), Gate e proposta como passos do BP (`Process.Steps`), auditoria `MyOwn/Agent/*` com marcador (UT-14, IT-14), painel de detalhes na aba Decisions (IT-15). Resultados: corpus 92/92, core 13/13, integração 16/16, REST 24/0/1. Reinstalação reinicia a produção sozinha; S2/S3 pela tela usam a tarefa de demo (IT-16). Tela verificada por Playwright isolado (`scripts/Test-AgentsUI.ps1`, 13/13, sem erro de console). Pendente: propostas vencidas continuam `pending` (badge de Approvals) e o TaskWatcher repete propostas para a mesma tarefa.
 
 ## Próximos passos
 1. ~~Recompilar, smokes e Test-Agents~~ (feito em 20/10).

@@ -13,3 +13,4 @@ backups/
 .env.*
 !/.env.example
 extras/
+tests/ui/node_modules
