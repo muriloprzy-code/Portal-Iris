@@ -32,10 +32,12 @@ Corrigido na revisão (compilado e testado em 20/10: core 12/12, integração 15
 6. `budgetScenario` só vale com `source = "simulate"`.
 7. Três testes novos em `Test/AgentCore.cls` (esperado: smoke 12/12; eram 9).
 
+Corpus adversarial (20/10): `MyOwn.Test.AgentAdversarial`, 89 casos, `scripts/Test-AgentAdversarial.ps1` → 89/89. Achou e corrigiu 20 falhas reais (Validator 12, Gate 1, Sanitize 7); detalhes em `docs/PROGRESS.md`. Pendente: sanitizar refs de `evidence` em `Agent.SaveDecision`.
+
 ## Próximos passos
 1. ~~Recompilar, smokes e Test-Agents~~ (feito em 20/10).
 4. ~~Gravar resultados de core e integração~~ (feito: `scripts/Test-AgentSmoke.ps1 -Credential` gera `agents-smoke-core.json` e `agents-smoke-integration.json`).
-5. Pendências da revisão: mover criação de proposta e Gate para o BP, tornar o caminho de pedido de acesso assíncrono, alinhar eventos de auditoria com a spec (marcador de agente), reforçar SEC-01/02 com LLM real.
+5. Pendências da revisão: mover criação de proposta e Gate para o BP, tornar o caminho de pedido de acesso assíncrono, alinhar eventos de auditoria com a spec (marcador de agente), reforçar SEC-01/02 com LLM real (o corpus offline já cobre SEC-01..04).
 6. Quando a imagem 154 carregar: T01 (regressão nas duas edições), depois engine AI Hub, ferramentas, políticas e ledger. Depois README, vídeo e demo pública.
 
 ## Convenções

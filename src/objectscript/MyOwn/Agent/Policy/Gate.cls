@@ -23,6 +23,11 @@ ClassMethod Evaluate(decision As %DynamicObject, context As %DynamicObject, conf
         Set result.finalAction = "escalate"
         Set result.downgradedBy = "high-risk-resource"
     }
+    // An approval the model itself rates as high risk is incoherent; never turn it into a proposal.
+    If (decision.%Get("workflow") = "access-request") && (decision.%Get("riskLevel") = "high") && (result.finalAction = "approve") {
+        Set result.finalAction = "escalate"
+        Set result.downgradedBy = "declared-high-risk"
+    }
     Set targetType = decision.%Get("targetType")
     Set targetId = decision.%Get("targetId")
     If decision.%Get("workflow") = "access-request" {

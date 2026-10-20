@@ -22,14 +22,21 @@ ClassMethod Validate(workflow As %String, raw As %String, contextJSON As %String
     If '$IsObject(decision) Do errors.%Push("The decision must be a JSON object.")
     If errors.%Size() > 0 Quit $$$ERROR($$$GeneralError, "INVALID_DECISION")
 
-    If decision.%Get("schemaVersion") '= 1 Do errors.%Push("schemaVersion must be 1.")
+    Do ..ValidateKeys(workflow, decision, errors)
+    If (decision.%GetTypeOf("schemaVersion") '= "number") || (decision.%Get("schemaVersion") '= 1) Do errors.%Push("schemaVersion must be the number 1.")
     If decision.%Get("workflow") '= workflow Do errors.%Push("workflow does not match the request.")
     Set action = decision.%Get("action")
     If '##class(MyOwn.Agent.Decision.Schema).IsAllowedAction(workflow, action) Do errors.%Push("action is not allowed for this workflow.")
     Set confidence = decision.%Get("confidence")
-    If '$IsValidNum(confidence) || (confidence < 0) || (confidence > 1) Do errors.%Push("confidence must be a number between 0 and 1.")
-    If $Length(decision.%Get("rationale")) = 0 Do errors.%Push("rationale is required.")
-    If $Length(decision.%Get("rationale")) > 600 Do errors.%Push("rationale exceeds 600 characters.")
+    If (decision.%GetTypeOf("confidence") '= "number") || (confidence < 0) || (confidence > 1) Do errors.%Push("confidence must be a number between 0 and 1.")
+    If decision.%GetTypeOf("rationale") '= "string" {
+        Do errors.%Push("rationale is required and must be a string.")
+    } ElseIf $ZStrip(decision.%Get("rationale"), "<>W") = "" {
+        Do errors.%Push("rationale is required.")
+    } ElseIf $Length(decision.%Get("rationale")) > 600 {
+        Do errors.%Push("rationale exceeds 600 characters.")
+    }
+    Do ..ValidateEvidence(workflow, decision, errors)
 
     If workflow = "incident-triage" {
         Do ..ValidateTriage(decision, context, errors)
@@ -48,6 +55,8 @@ ClassMethod ValidateTriage(decision As %DynamicObject, context As %DynamicObject
     If $ListFind($ListFromString("info,warning,critical", ","), severity) = 0 Do errors.%Push("severity is invalid.")
     Set targetType = decision.%Get("targetType")
     If $ListFind($ListFromString("none,task", ","), targetType) = 0 Do errors.%Push("targetType is invalid.")
+    Set followUpType = decision.%GetTypeOf("recommendedFollowUp")
+    If (followUpType '= "unassigned") && (followUpType '= "string") Do errors.%Push("recommendedFollowUp must be a string.")
     If $Length(decision.%Get("recommendedFollowUp")) > 300 Do errors.%Push("recommendedFollowUp exceeds 300 characters.")
     Set targetId = decision.%Get("targetId")
     If ($Extract(decision.%Get("action"), 1, 8) = "propose_") && (targetType '= "task") Do errors.%Push("propose_* actions require targetType task.")
@@ -59,10 +68,11 @@ ClassMethod ValidateTriage(decision As %DynamicObject, context As %DynamicObject
         If $IsObject(candidates) {
             For index = 0:1:(candidates.%Size() - 1) {
                 Set candidate = candidates.%Get(index)
-                If $IsObject(candidate), candidate.%Get("id") = targetId Set found = 1
+                If $IsObject(candidate), candidate.%Get("id") = targetId, candidate.%Get("type", targetType) = targetType Set found = 1
             }
         }
-        If 'found Do errors.%Push("targetId is not present in context.candidates.")
+        If '$ListFind($ListBuild("string", "number"), decision.%GetTypeOf("targetId")) Set found = 0
+        If 'found Do errors.%Push("targetId is not a context.candidates entry of the requested targetType.")
     }
     Quit $$$OK
 }
@@ -71,10 +81,53 @@ ClassMethod ValidateAccess(decision As %DynamicObject, context As %DynamicObject
 {
     Set risk = decision.%Get("riskLevel")
     If $ListFind($ListFromString("low,medium,high", ","), risk) = 0 Do errors.%Push("riskLevel is invalid.")
-    If decision.%Get("user") '= context.%Get("requester") Do errors.%Push("user does not match the requester.")
-    If decision.%Get("role") '= context.%Get("roleRequested") Do errors.%Push("role does not match the requested role.")
-    Set conditions = decision.%Get("conditions")
-    If $IsObject(conditions), conditions.%Size() > 3 Do errors.%Push("conditions may contain at most three items.")
+    If (decision.%GetTypeOf("user") '= "string") || (context.%Get("requester") = "") || (decision.%Get("user") '= context.%Get("requester")) Do errors.%Push("user does not match the requester.")
+    If (decision.%GetTypeOf("role") '= "string") || (context.%Get("roleRequested") = "") || (decision.%Get("role") '= context.%Get("roleRequested")) Do errors.%Push("role does not match the requested role.")
+    Set conditionsType = decision.%GetTypeOf("conditions")
+    If conditionsType = "array" {
+        Set conditions = decision.%Get("conditions")
+        If conditions.%Size() > 3 Do errors.%Push("conditions may contain at most three items.")
+        For index = 0:1:(conditions.%Size() - 1) {
+            If (conditions.%GetTypeOf(index) '= "string") || ($Length(conditions.%Get(index)) > 200) Do errors.%Push("each condition must be a string of at most 200 characters.")  Quit
+        }
+    } ElseIf conditionsType '= "unassigned" {
+        Do errors.%Push("conditions must be an array.")
+    }
+    Quit $$$OK
+}
+
+/// Only the fields of the version 1 schema are accepted, so a response cannot
+/// smuggle fields (for example a triage target inside an access decision).
+ClassMethod ValidateKeys(workflow As %String, decision As %DynamicObject, errors As %DynamicArray) As %Status [ Private ]
+{
+    Set common = "schemaVersion,workflow,action,rationale,confidence,evidence"
+    Set allowed = $ListFromString(common _ "," _ $Select(workflow="incident-triage":"severity,targetType,targetId,recommendedFollowUp", workflow="access-request":"riskLevel,user,role,conditions", 1:""), ",")
+    Set iterator = decision.%GetIterator()
+    While iterator.%GetNext(.key, .value) {
+        If '$ListFind(allowed, key) {
+            Do errors.%Push("Unexpected field: " _ ##class(MyOwn.Agent.Sanitize).Identifier(key, 60))
+            Quit
+        }
+    }
+    Quit $$$OK
+}
+
+ClassMethod ValidateEvidence(workflow As %String, decision As %DynamicObject, errors As %DynamicArray) As %Status [ Private ]
+{
+    If decision.%GetTypeOf("evidence") '= "array" {
+        Do errors.%Push("evidence is required and must be an array.")
+        Quit $$$OK
+    }
+    Set evidence = decision.%Get("evidence")
+    If evidence.%Size() > 10 Do errors.%Push("evidence may contain at most ten items.")
+    Set sources = $ListFromString($Select(workflow="access-request":"privilege-delta,audit,profile", 1:"anomaly,log,task,pattern"), ",")
+    For index = 0:1:(evidence.%Size() - 1) {
+        Set item = evidence.%Get(index)
+        If '$IsObject(item) || '$ListFind(sources, item.%Get("source")) || '$ListFind($ListBuild("string", "number"), item.%GetTypeOf("ref")) || ($Length(item.%Get("ref")) > 200) {
+            Do errors.%Push("each evidence item needs a known source and a ref of at most 200 characters.")
+            Quit
+        }
+    }
     Quit $$$OK
 }
 

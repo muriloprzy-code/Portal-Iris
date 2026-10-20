@@ -10,6 +10,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - Core unit smoke: **12 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
 - Interoperability smoke: **15 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
 - REST agent suite: **21 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
+- Adversarial corpus: **89 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
 - AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
 - Frontend TypeScript type-check passed; Vite production bundle generated and served successfully by local IRIS at `/myown/`.
@@ -24,7 +25,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 | T02 AI Hub spike | Blocked by image | Introspect and exercise real `%AI.*` APIs in build 154; record signatures in `AI-HUB-NOTES.md`. |
 | T03 Data model and retention | Done (core) | Persistence classes compile; retention smoke passes. |
 | T04 Rules engine and contexts | Done | Deterministic scenarios and unit tests pass. |
-| T05 Validator and sanitization | Done | Canonical and malicious-output checks pass. |
+| T05 Validator and sanitization | Done | Canonical and malicious-output checks pass; hardened by the adversarial corpus (strict types, field allow-list, evidence/conditions checks, delimiter look-alikes, invisible characters). |
 | T06 Gate, prohibited targets, budget, cooldown | Done (core) | Budget fallback, protected targets and one-use proposals pass. |
 | T07 Interoperability setup and audit | Done on 2026.2 | Production is installed and running; build 154 regression remains. |
 | T08 Production flow | Done (core) | Business Service → Process → Operation is exercised by integration tests. |
@@ -32,7 +33,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 | T10 REST routes | Mostly done | Agent routes exist and are exercised; OpenAPI expansion and complete RBAC matrix remain. |
 | T11 Scenarios S1–S10 | Done (Rules) | REST script exercises all ten scenarios through the production and verifies the expected decisions. |
 | T12–T14 Real AI Hub engine | Pending build 154 | Provider, agents, read-only ToolSets and real token usage must use APIs introspected from build 154. |
-| T15 Adversarial tests | Mostly done | SEC-01..SEC-04 and SEC-06..SEC-11 pass. SEC-05 is ready and runs when a separate Viewer credential is supplied. |
+| T15 Adversarial tests | Mostly done | SEC-01..SEC-04 and SEC-06..SEC-11 pass. SEC-01..04 are also covered offline by the 89-case corpus (`MyOwn.Test.AgentAdversarial`). SEC-05 is ready and runs when a separate Viewer credential is supplied. SEC-01/02 still need a run with a real LLM. |
 | T16 Configuration UI/REST | Done (core) | Settings, budgets, kill switch and secret-presence-only display implemented. Provider connection test remains with real AI Hub. |
 | T17 Agent frontend | Done (first complete pass) | Decisions, approvals, access, production, guardrails and settings implemented. |
 | T18 Observability and trace UI | Done (first complete pass) | Ledger summary and trace timeline consume real backend data. |
@@ -64,6 +65,28 @@ Review fixes (StableKey cooldown, TaskWatcher rewrite, proposal lock, stricter V
 - Integration smoke: 15/15 pass.
 - REST suite against local IRIS (port 52773): 21 pass / 0 fail / 1 skip (SEC-05 needs `-ViewerCredential`).
 - Added `scripts/Test-AgentSmoke.ps1`, which writes the core and integration smoke reports.
+
+## Adversarial corpus (2026-10-20)
+
+`MyOwn.Test.AgentAdversarial` feeds 89 canned model responses through `Validator.Validate` and, when accepted, `Gate.Evaluate`, with in-memory contexts and configs only (no engine, network, or persisted proposal). Every accepted case also checks invariants: no proposal while not allowed, in kill-switch or read-only mode, for a non-proposal action, or for a self-declared high-risk approval; the sanitized rationale holds no control/format characters and no data delimiter.
+
+| Category | Cases | Covers |
+|---|---|---|
+| parse | 12 | empty, prose, truncated, two objects, text around, markdown fence, NaN, duplicate keys, object inside fake delimiters |
+| schema | 21 | schemaVersion, workflow, missing fields, confidence types/range, rationale size/type/blank, enums, extra fields, evidence |
+| action-target | 16 | assign_all, delete_user, run_sql, grant_role, cross-workflow action, propose_* without target, invented/injected targetId, non-task candidate, non-manageable task |
+| access | 17 | role/user mismatch, approve with riskLevel high, riskFloor high, %All/%all, SysAdmin, MyOwn* roles, conditions, self-approval |
+| injection | 12 | "ignore the rules" in rationale/evidence, delimiter variants, zero-width, C0/DEL/C1, bidi/BOM, benign Unicode |
+| sanitize | 5 | nested and split delimiters, attributes, accents/LF preserved, length limit |
+| mode | 6 | kill switch, read-only, both, read-only with non-manageable task |
+
+Baseline before fixes: 69 pass / 20 fail. Real defects found and fixed:
+
+- **Validator (12):** accepted `schemaVersion` and `confidence` as strings or booleans, a non-string or blank `rationale`, missing or malformed `evidence`, unknown fields (including triage target fields inside an access decision), `conditions` as a string, and a task proposal aimed at a candidate of another type. Now: strict JSON types, a per-workflow field allow-list, `evidence` required (≤ 10 items, known source, ref ≤ 200), `conditions` array of ≤ 3 strings (≤ 200), candidate type must match `targetType`.
+- **Gate (1):** an `approve` whose own `riskLevel` is `high` became a proposal. Now escalated with `downgradedBy=declared-high-risk`.
+- **Sanitize (7):** only the exact lower-case delimiters were neutralized, and DEL, C1, zero-width, bidi overrides and BOM survived. Now invisible characters are removed first, then any delimiter variant (case, whitespace, attributes, `&lt;`, full-width brackets) is neutralized.
+
+Known residual: `Agent.SaveDecision` stores `evidence` JSON without passing refs through `Sanitize.Text` (refs are now bounded and typed by the Validator).
 
 ## Next verified milestone
 
