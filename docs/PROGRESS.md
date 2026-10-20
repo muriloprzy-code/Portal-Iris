@@ -10,7 +10,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - Core unit smoke: **12 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
 - Interoperability smoke: **15 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
 - REST agent suite: **21 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
-- Adversarial corpus: **90 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
+- Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
 - AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
 - Frontend TypeScript type-check passed; Vite production bundle generated and served successfully by local IRIS at `/myown/`.
@@ -33,7 +33,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 | T10 REST routes | Mostly done | Agent routes exist and are exercised; OpenAPI expansion and complete RBAC matrix remain. |
 | T11 Scenarios S1–S10 | Done (Rules) | REST script exercises all ten scenarios through the production and verifies the expected decisions. |
 | T12–T14 Real AI Hub engine | Pending build 154 | Provider, agents, read-only ToolSets and real token usage must use APIs introspected from build 154. |
-| T15 Adversarial tests | Mostly done | SEC-01..SEC-04 and SEC-06..SEC-11 pass. SEC-01..04 are also covered offline by the 90-case corpus (`MyOwn.Test.AgentAdversarial`). SEC-05 is ready and runs when a separate Viewer credential is supplied. SEC-01/02 still need a run with a real LLM. |
+| T15 Adversarial tests | Mostly done | SEC-01..SEC-04 and SEC-06..SEC-11 pass. SEC-01..04 are also covered offline by the 92-case corpus (`MyOwn.Test.AgentAdversarial`). SEC-05 is ready and runs when a separate Viewer credential is supplied. SEC-01/02 still need a run with a real LLM. |
 | T16 Configuration UI/REST | Done (core) | Settings, budgets, kill switch and secret-presence-only display implemented. Provider connection test remains with real AI Hub. |
 | T17 Agent frontend | Done (first complete pass) | Decisions, approvals, access, production, guardrails and settings implemented. |
 | T18 Observability and trace UI | Done (first complete pass) | Ledger summary and trace timeline consume real backend data. |
@@ -68,7 +68,7 @@ Review fixes (StableKey cooldown, TaskWatcher rewrite, proposal lock, stricter V
 
 ## Adversarial corpus (2026-10-20)
 
-`MyOwn.Test.AgentAdversarial` feeds 90 canned model responses through `Validator.Validate` and, when accepted, `Gate.Evaluate`, with in-memory contexts and configs only (no engine, network, or persisted proposal). Every accepted case also checks invariants: no proposal while not allowed, in kill-switch or read-only mode, for a non-proposal action, or for a self-declared high-risk approval; the sanitized rationale holds no control/format characters and no data delimiter.
+`MyOwn.Test.AgentAdversarial` feeds 92 canned model responses through `Validator.Validate` and, when accepted, `Gate.Evaluate`, with in-memory contexts and configs only (no engine, network, or persisted proposal). Every accepted case also checks invariants: no proposal while not allowed, in kill-switch or read-only mode, for a non-proposal action, or for a self-declared high-risk approval; the sanitized rationale holds no control/format characters and no data delimiter.
 
 | Category | Cases | Covers |
 |---|---|---|
@@ -80,6 +80,7 @@ Review fixes (StableKey cooldown, TaskWatcher rewrite, proposal lock, stricter V
 | sanitize | 5 | nested and split delimiters, attributes, accents/LF preserved, length limit |
 | mode | 6 | kill switch, read-only, both, read-only with non-manageable task |
 | persist | 1 | evidence refs with delimiters, invisible characters and an extra field are cleaned before storage |
+| rest-output | 2 | analysis response, trace message and decision detail return the stored sanitized rationale, recommendedFollowUp, conditions and evidence |
 
 Baseline before fixes: 69 pass / 20 fail. Real defects found and fixed:
 
@@ -88,6 +89,8 @@ Baseline before fixes: 69 pass / 20 fail. Real defects found and fixed:
 - **Sanitize (7):** only the exact lower-case delimiters were neutralized, and DEL, C1, zero-width, bidi overrides and BOM survived. Now invisible characters are removed first, then any delimiter variant (case, whitespace, attributes, `&lt;`, full-width brackets) is neutralized.
 
 Evidence persistence (follow-up): `Agent.SaveDecision` now stores evidence through `Agent.SanitizeEvidence`, which keeps only `source` (identifier) and `ref` (`Sanitize.Text`, ≤ 200). Case ADV-E01 (category `persist`) proves the validated input is unsafe verbatim and clean after sanitizing.
+
+REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of a decision (rationale, recommendedFollowUp, conditions, evidence; idempotent). `Analyze` applies it before `SaveDecision`, so the stored row, the `AgentResponse`/`ProposalRequest` messages and the REST response carry the same text; `ResponseFromMessage`, `Scenarios.Run` and `DecisionView` apply it again on read to cover rows and messages written earlier. Cases ADV-E02 (triage) and ADV-E03 (access) prove all three outputs are clean and identical to storage. Proposals and the trace timeline carry no model text. Frontend audit: `frontend/src` has no `dangerouslySetInnerHTML`, `innerHTML` or dynamic `href`; all API values render as escaped JSX text. Rationale, evidence and conditions are not yet shown in the UI (the spec's Decisions page calls for a drawer with rationale and evidence).
 
 ## Next verified milestone
 

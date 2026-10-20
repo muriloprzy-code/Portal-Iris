@@ -89,6 +89,8 @@ ClassMethod Analyze(workflow As %String, contextJSON As %String, source As %Stri
     Set tSC = ##class(MyOwn.Agent.Policy.Gate).Evaluate(decision, context, config, actor, .gate)
     If $$$ISERR(tSC) Quit tSC
     Set decision.action = gate.finalAction
+    // From here on only the sanitized form is used: stored, sent through the production and returned.
+    Set decision = ..PublicDecision(decision)
     Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate.downgradedBy, config, traceId, .decisionId)
     If $$$ISERR(tSC) Quit tSC
 
@@ -208,6 +210,28 @@ ClassMethod SanitizeEvidence(evidence As %DynamicArray) As %DynamicArray
         Set entry.source = ##class(MyOwn.Agent.Sanitize).Identifier(item.%Get("source"), 40)
         Set entry.ref = ##class(MyOwn.Agent.Sanitize).Text(item.%Get("ref"), 200)
         Do clean.%Push(entry)
+    }
+    Quit clean
+}
+
+/// Returns a copy of a decision with every model-written text field sanitized exactly as
+/// it is stored (rationale, recommendedFollowUp, conditions, evidence). Fields that are
+/// absent stay absent, and applying it twice changes nothing.
+ClassMethod PublicDecision(decision As %DynamicObject) As %DynamicObject
+{
+    If '$IsObject(decision) || 'decision.%IsA("%DynamicObject") Quit {}
+    Set clean = {}.%FromJSON(decision.%ToJSON())
+    If clean.%IsDefined("rationale") Set clean.rationale = ##class(MyOwn.Agent.Sanitize).Text(clean.%Get("rationale"), 600)
+    If clean.%IsDefined("recommendedFollowUp") Set clean.recommendedFollowUp = ##class(MyOwn.Agent.Sanitize).Text(clean.%Get("recommendedFollowUp"), 300)
+    If clean.%IsDefined("evidence") Set clean.evidence = ..SanitizeEvidence($Select(clean.%GetTypeOf("evidence")="array":clean.evidence, 1:[]))
+    If clean.%IsDefined("conditions") {
+        Set conditions = []
+        If clean.%GetTypeOf("conditions") = "array" {
+            For index = 0:1:(clean.conditions.%Size() - 1) {
+                Do conditions.%Push(##class(MyOwn.Agent.Sanitize).Text(clean.conditions.%Get(index), 200))
+            }
+        }
+        Set clean.conditions = conditions
     }
     Quit clean
 }
@@ -842,7 +866,9 @@ ClassMethod LedgerView(ledger As MyOwn.Agent.Ledger) As %DynamicObject [ Private
     Quit data
 }
 
-ClassMethod DecisionView(decision As MyOwn.Agent.Decision, detail As %Boolean) As %DynamicObject [ Private ]
+/// Public and side-effect free so the adversarial corpus can check it. Text is sanitized
+/// again on read, which also covers rows written before evidence was sanitized on save.
+ClassMethod DecisionView(decision As MyOwn.Agent.Decision, detail As %Boolean) As %DynamicObject
 {
     Set data = {}
     Set data.id = decision.%Id()
@@ -860,16 +886,16 @@ ClassMethod DecisionView(decision As MyOwn.Agent.Decision, detail As %Boolean) A
     Set data.traceId = decision.TraceId
     Set data.decidedAt = decision.DecidedAt
     If detail {
-        Set data.rationale = decision.Rationale
+        Set data.rationale = ##class(MyOwn.Agent.Sanitize).Text(decision.Rationale, 600)
         Set evidenceJSON = ..ReadStream(decision.EvidenceJSON)
+        Set data.evidence = []
         If evidenceJSON '= "" {
             Try {
-                Set data.evidence = [].%FromJSON(evidenceJSON)
+                Set stored = [].%FromJSON(evidenceJSON)
+                If stored.%IsA("%DynamicArray") Set data.evidence = ..SanitizeEvidence(stored)
             } Catch exception {
                 Set data.evidence = []
             }
-        } Else {
-            Set data.evidence = []
         }
     }
     Quit data
@@ -896,7 +922,9 @@ ClassMethod ProposalView(proposal As MyOwn.Agent.Proposal) As %DynamicObject [ P
     Quit data
 }
 
-ClassMethod ResponseFromMessage(message As MyOwn.Production.Msg.AgentResponse) As %DynamicObject [ Private ]
+/// Public and side-effect free so the adversarial corpus can check it. Messages written
+/// before the decision was sanitized at the source are cleaned here as well.
+ClassMethod ResponseFromMessage(message As MyOwn.Production.Msg.AgentResponse) As %DynamicObject
 {
     Set data = {}
     Set data.traceId = message.TraceId
@@ -905,7 +933,7 @@ ClassMethod ResponseFromMessage(message As MyOwn.Production.Msg.AgentResponse) A
     Set data.proposalId = message.ProposalId
     Set data.engine = message.Engine
     Set data.outcome = message.Outcome
-    Set data.decision = ..JSONValue(message.DecisionJSON)
+    Set data.decision = ..PublicDecision(..JSONValue(message.DecisionJSON))
     Set data.integrationSource = "interoperability"
     Quit data
 }

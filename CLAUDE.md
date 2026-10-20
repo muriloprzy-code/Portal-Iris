@@ -32,7 +32,7 @@ Corrigido na revisão (compilado e testado em 20/10: core 12/12, integração 15
 6. `budgetScenario` só vale com `source = "simulate"`.
 7. Três testes novos em `Test/AgentCore.cls` (esperado: smoke 12/12; eram 9).
 
-Corpus adversarial (20/10): `MyOwn.Test.AgentAdversarial`, 90 casos, `scripts/Test-AgentAdversarial.ps1` → 90/90. Achou e corrigiu 20 falhas reais (Validator 12, Gate 1, Sanitize 7); detalhes em `docs/PROGRESS.md`. Refs de `evidence` agora passam por `Agent.SanitizeEvidence` antes de gravar (caso ADV-E01).
+Corpus adversarial (20/10): `MyOwn.Test.AgentAdversarial`, 92 casos, `scripts/Test-AgentAdversarial.ps1` → 92/92. Achou e corrigiu 20 falhas reais (Validator 12, Gate 1, Sanitize 7); detalhes em `docs/PROGRESS.md`. Refs de `evidence` agora passam por `Agent.SanitizeEvidence` antes de gravar (ADV-E01); `Agent.PublicDecision` faz a resposta do REST, a mensagem do trace e o detalhe da decisão saírem iguais ao banco (ADV-E02/E03). Frontend sem `dangerouslySetInnerHTML`; rationale/evidence/conditions ainda não aparecem na UI.
 
 ## Próximos passos
 1. ~~Recompilar, smokes e Test-Agents~~ (feito em 20/10).

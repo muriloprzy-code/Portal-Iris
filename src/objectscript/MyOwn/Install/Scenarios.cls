@@ -105,7 +105,7 @@ ClassMethod Run(name As %String, authorization As %String, taskId As %Integer, r
     Set response.proposalId = agentResponse.ProposalId
     Set response.engine = agentResponse.Engine
     Set response.outcome = agentResponse.Outcome
-    Set response.decision = {}.%FromJSON(agentResponse.DecisionJSON)
+    Set response.decision = ##class(MyOwn.Agent.Service.Agent).PublicDecision({}.%FromJSON(agentResponse.DecisionJSON))
     Set response.scenario = name
     If $IsObject(accessRequest) Set response.requestId = accessRequest.%Id()
     Set response.integrationSource = "interoperability"
