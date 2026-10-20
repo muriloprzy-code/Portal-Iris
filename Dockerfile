@@ -1,4 +1,6 @@
-ARG IMAGE=containers.intersystems.com/intersystems/iris-community:2026.2
+# The contest AI Hub image is loaded and tagged locally by the evaluator.
+# It must never be pushed to a public container registry.
+ARG IMAGE=irishealth-community:2026.3.0AI.154.0
 FROM ${IMAGE}
 
 USER root

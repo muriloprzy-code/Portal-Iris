@@ -8,6 +8,8 @@ Parameter SystemAdminRole = "MyOwnSystemAdmin";
 
 Parameter DemoTaskName = "MyOwn Portal health snapshot";
 
+Parameter AgentRetentionTaskName = "MyOwn Agent retention";
+
 /// SQL wrapper used by the one-click installer. Returns "OK" or an error message.
 ClassMethod SetupViaSQL() As %String [ SqlName = MyOwnSetup, SqlProc ]
 {
@@ -25,6 +27,14 @@ ClassMethod LoadAndSetupViaSQL(dir As %String) As %String [ SqlName = MyOwnLoadA
     Quit ..SetupViaSQL()
 }
 
+/// Returns a compact production status for installation and smoke-test scripts.
+ClassMethod ProductionStatusViaSQL() As %String [ SqlName = MyOwnProductionStatus, SqlProc ]
+{
+    Set tSC = ##class(Ens.Director).GetProductionStatus(.production, .state, 10, 1)
+    If $$$ISERR(tSC) Quit "ERROR: " _ $System.Status.GetErrorText(tSC)
+    Quit production _ "|" _ state
+}
+
 /// Creates or updates the web application that serves the React frontend and REST API.
 ClassMethod Setup() As %Status
 {
@@ -33,7 +43,11 @@ ClassMethod Setup() As %Status
         Set targetNamespace = $Namespace
         Set application = "/myown/api"
 
+        Set tSC = ..EnsureInteroperability(targetNamespace)
+        $$$ThrowOnError(tSC)
         Set tSC = ..EnsureHealthPatterns()
+        $$$ThrowOnError(tSC)
+        Set tSC = ..EnsureAgentDefaults()
         $$$ThrowOnError(tSC)
 
         // Security.Applications is only available from the %SYS namespace.
@@ -76,10 +90,43 @@ ClassMethod Setup() As %Status
         // The demonstration task is optional: a failure must not abort the installation.
         Set taskStatus = ..EnsureDemoTask(targetNamespace)
         If $$$ISERR(taskStatus) Write !, "MyOwn Portal: the demonstration task was not created: ", $System.Status.GetErrorText(taskStatus), !
+        Set taskStatus = ..EnsureAgentRetentionTask(targetNamespace)
+        If $$$ISERR(taskStatus) Write !, "MyOwn Portal: the agent retention task was not created: ", $System.Status.GetErrorText(taskStatus), !
+
+        Set $Namespace = targetNamespace
+        Set productionStatus = ..EnsureAgentProduction()
+        If $$$ISERR(productionStatus) Write !, "MyOwn Portal: the agent production was not started: ", $System.Status.GetErrorText(productionStatus), !
     } Catch exception {
         Set tSC = exception.AsStatus()
     }
     Quit tSC
+}
+
+/// Enables Interoperability for the application namespace when it is not already enabled.
+ClassMethod EnsureInteroperability(targetNamespace As %String) As %Status [ Private ]
+{
+    If ##class(%EnsembleMgr).IsEnsembleNamespace(targetNamespace) Quit $$$OK
+    Set tSC = ##class(%EnsembleMgr).EnableNamespace(targetNamespace, 0, .isPrimary, 0, 0)
+    Quit tSC
+}
+
+/// Creates the safe, rules-first configuration used when AI Hub is not available.
+ClassMethod EnsureAgentDefaults() As %Status [ Private ]
+{
+    Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
+    Quit tSC
+}
+
+/// Starts the agent production when no other production owns this namespace.
+ClassMethod EnsureAgentProduction() As %Status [ Private ]
+{
+    Set production = "MyOwn.Production.Main"
+    Set active = ##class(Ens.Director).GetActiveProductionName()
+    If active = production Quit ##class(Ens.Director).SetAutoStart(production)
+    If active '= "" Quit $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
+    Set tSC = ##class(Ens.Director).StartProduction(production)
+    If $$$ISERR(tSC) Quit tSC
+    Quit ##class(Ens.Director).SetAutoStart(production)
 }
 
 ClassMethod EnsureHealthPatterns() As %Status [ Private ]
@@ -136,6 +183,11 @@ ClassMethod EnsureAccessControl() As %Status [ Private ]
             Set tSC = ##class(Security.Resources).Create("MyOwn.Manage", "Allows administrative actions in MyOwn Portal.", "")
             $$$ThrowOnError(tSC)
         }
+        Set exists = ##class(Security.Resources).Exists("MyOwn.Agent", .resource, .checkStatus)
+        If 'exists {
+            Set tSC = ##class(Security.Resources).Create("MyOwn.Agent", "Allows the MyOwn decision workflows to read operational context.", "")
+            $$$ThrowOnError(tSC)
+        }
 
         Set tSC = ..EnsureRole("MyOwnViewer", "Read-only access to MyOwn Portal.", "MyOwn.View:U")
         $$$ThrowOnError(tSC)
@@ -146,6 +198,8 @@ ClassMethod EnsureAccessControl() As %Status [ Private ]
         Set tSC = ..EnsureRole(..#SystemReadRole, "Read access to the IRIS system database, granted only inside MyOwn Portal.", "%DB_IRISSYS:R")
         $$$ThrowOnError(tSC)
         Set tSC = ..EnsureRole(..#SystemAdminRole, "Read and write access to the IRIS system database, granted only inside MyOwn Portal.", "%DB_IRISSYS:RW")
+        $$$ThrowOnError(tSC)
+        Set tSC = ..EnsureRole("MyOwnAgentRunner", "Runtime identity for MyOwn agent interoperability workflows.", "MyOwn.Agent:U,MyOwn.View:U")
         $$$ThrowOnError(tSC)
     } Catch exception {
         Set tSC = exception.AsStatus()
@@ -180,6 +234,34 @@ ClassMethod EnsureDemoTask(targetNamespace As %String) As %Status [ Private ]
             Set task.NameSpace = targetNamespace
             Set task.TaskClass = "MyOwn.Task.HealthSnapshot"
             Set task.RunAsUser = "_SYSTEM"
+            Set tSC = task.%Save()
+            $$$ThrowOnError(tSC)
+        }
+    } Catch exception {
+        Set tSC = exception.AsStatus()
+    }
+    Quit tSC
+}
+
+/// Creates the daily task that removes transient agent telemetry after thirty days.
+ClassMethod EnsureAgentRetentionTask(targetNamespace As %String) As %Status [ Private ]
+{
+    Set tSC = $$$OK
+    Try {
+        New $Namespace
+        Set $Namespace = "%SYS"
+        If ##class(%SYS.Task).FindId(..#AgentRetentionTaskName) = "" {
+            Set task = ##class(%SYS.Task).%New()
+            Set task.Name = ..#AgentRetentionTaskName
+            Set task.Description = "Removes old MyOwn agent events, tool calls, and ledger entries."
+            Set task.NameSpace = targetNamespace
+            Set task.TaskClass = "MyOwn.Task.AgentRetention"
+            Set task.RunAsUser = "_SYSTEM"
+            Set task.Type = 0
+            Set task.TimePeriod = 0
+            Set task.TimePeriodEvery = 1
+            Set task.DailyStartTime = 7200
+            Set task.RescheduleOnStart = 1
             Set tSC = task.%Save()
             $$$ThrowOnError(tSC)
         }

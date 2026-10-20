@@ -256,6 +256,120 @@ export type SecurityDetail = SecurityItem & {
   safetyNotice: string
 }
 
+export type AgentConfig = {
+  killSwitch: boolean | number
+  readOnly: boolean | number
+  enginePreference: 'auto' | 'rules' | 'aihub'
+  provider: string
+  model: string
+  baseURL: string
+  autonomyTriage: 'advise' | 'assist' | 'auto-safe'
+  autonomyAccess: 'advise' | 'assist' | 'auto-safe'
+  dailyTokenBudget: number
+  perDecisionTokenBudget: number
+  cooldownMinutes: number
+  maxAgentCallsPerHour: number
+  proposalTTLMinutes: number
+  demoMode: boolean | number
+  apiKeyConfigured?: boolean | number
+}
+
+export type AgentStatus = AgentConfig & {
+  aiHubAvailable: boolean | number
+  activeEngine: 'rules' | 'aihub'
+  tokensUsedToday: number
+  production: { name: string; running: boolean | number }
+}
+
+export type AgentDecision = {
+  id: number
+  eventId: number
+  workflow: string
+  engine: string
+  action: string
+  severity: string
+  riskLevel: string
+  targetType: string
+  targetId: string
+  confidence: number
+  validationStatus: string
+  downgradedBy: string
+  traceId: string
+  decidedAt: string
+  rationale?: string
+  evidence?: unknown[]
+  proposalId?: number | string
+}
+
+export type AgentProposal = {
+  id: number
+  decisionId: number
+  kind: string
+  targetType: string
+  targetId: string
+  before: unknown
+  after: unknown
+  requiredPrivilege: string
+  undoHint: string
+  state: string
+  createdAt: string
+  expiresAt: string
+  resolvedBy: string
+  resolvedAt: string
+  resultMessage: string
+}
+
+export type AgentAccessRequest = {
+  id: number
+  requester: string
+  roleRequested: string
+  justification: string
+  status: string
+  decisionId: number | string
+  createdAt: string
+}
+
+export type AgentSimulation = {
+  traceId: string
+  eventId: number
+  decisionId: number
+  proposalId: number | string
+  engine: string
+  outcome: string
+  integrationSource?: string
+  decision: Record<string, unknown>
+  gate?: Record<string, unknown>
+}
+
+export type AgentProduction = {
+  name: string
+  state: number
+  running: boolean | number
+  items: Array<{ name: string; className: string; enabled: boolean | number }>
+}
+
+export type AgentGuardrails = {
+  prohibitedTargets: unknown
+  stateChangesRequireConfirmation: boolean | number
+  agentToolsAreReadOnly: boolean | number
+  modelOutputIsUntrusted: boolean | number
+  separationOfDuties: boolean | number
+  sentToModel: string[]
+  neverSentToModel: string[]
+}
+
+export type AgentLedgerSummary = {
+  decisions: number
+  totalTokens: number
+  costEstimateUSD: number
+  averageDurationMs: number
+}
+
+export type AgentTrace = {
+  traceId: string
+  timeline: Array<Record<string, unknown> & { type: string; at: string }>
+}
+
 let authorizationHeader = import.meta.hot?.data.authorizationHeader ?? ''
 
 if (import.meta.hot) {
@@ -419,4 +533,77 @@ export async function getSecuritySummary() {
 export async function getSecurityDetail(item: Pick<SecurityItem, 'category' | 'name' | 'type'>) {
   const query = new URLSearchParams({ category: item.category, name: item.name, type: item.type })
   return apiRequest<{ data: SecurityDetail }>(`/security/detail?${query}`)
+}
+
+export async function getAgentStatus() {
+  return apiRequest<{ data: AgentStatus }>('/agent/status')
+}
+
+export async function getAgentConfig() {
+  return apiRequest<{ data: AgentConfig }>('/agent/config')
+}
+
+export async function updateAgentConfig(config: Partial<AgentConfig>) {
+  return apiRequest<{ data: AgentConfig }>('/agent/config', undefined, { method: 'PUT', body: JSON.stringify(config) })
+}
+
+export async function setAgentKillSwitch(enabled: boolean) {
+  return apiRequest<{ data: AgentConfig }>('/agent/killswitch', undefined, { method: 'POST', body: JSON.stringify({ enabled }) })
+}
+
+export async function getAgentDecisions() {
+  return apiRequest<{ data: AgentDecision[] }>('/agent/decisions')
+}
+
+export async function getAgentDecision(id: number) {
+  return apiRequest<{ data: AgentDecision }>(`/agent/decisions/${id}`)
+}
+
+export async function getAgentProposals(state = '') {
+  const query = state ? `?state=${encodeURIComponent(state)}` : ''
+  return apiRequest<{ data: AgentProposal[] }>(`/agent/proposals${query}`)
+}
+
+export async function confirmAgentProposal(id: number) {
+  return apiRequest<{ data: AgentProposal }>(`/agent/proposals/${id}/confirm`, undefined, { method: 'POST' })
+}
+
+export async function rejectAgentProposal(id: number, reason: string) {
+  return apiRequest<{ data: AgentProposal }>(`/agent/proposals/${id}/reject`, undefined, { method: 'POST', body: JSON.stringify({ reason }) })
+}
+
+export async function submitAgentAccessRequest(role: string, justification: string) {
+  return apiRequest<{ data: AgentSimulation & { requestId: number } }>('/agent/access-requests', undefined, { method: 'POST', body: JSON.stringify({ role, justification }) })
+}
+
+export async function getAgentAccessRequests() {
+  return apiRequest<{ data: AgentAccessRequest[] }>('/agent/access-requests')
+}
+
+export async function getAgentLedgerSummary() {
+  return apiRequest<{ data: AgentLedgerSummary }>('/agent/ledger/summary')
+}
+
+export async function getAgentTrace(traceId: string) {
+  return apiRequest<{ data: AgentTrace }>(`/agent/traces/${encodeURIComponent(traceId)}`)
+}
+
+export async function getAgentProduction() {
+  return apiRequest<{ data: AgentProduction }>('/agent/production/status')
+}
+
+export async function controlAgentProduction(action: 'start' | 'stop') {
+  return apiRequest<{ data: AgentProduction }>(`/agent/production/${action}`, undefined, { method: 'POST' })
+}
+
+export async function getAgentGuardrails() {
+  return apiRequest<{ data: AgentGuardrails }>('/agent/guardrails')
+}
+
+export async function simulateAgentScenario(scenario: string, taskId = 0) {
+  return apiRequest<{ data: AgentSimulation }>('/agent/simulate', undefined, { method: 'POST', body: JSON.stringify({ scenario, taskId }) })
+}
+
+export async function analyzeCurrentHealth() {
+  return apiRequest<{ data: AgentSimulation }>('/agent/analyze', undefined, { method: 'POST' })
 }

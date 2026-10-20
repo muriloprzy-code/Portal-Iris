@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        IMAGE: ${IRIS_IMAGE:-containers.intersystems.com/intersystems/iris-community:2026.2}
+        IMAGE: ${IRIS_IMAGE:-irishealth-community:2026.3.0AI.154.0}
         MYOWN_DEMO_PASSWORD: ${MYOWN_DEMO_PASSWORD:-ChangeMe2026!}
     container_name: myown-portal-iris
     hostname: myown-portal-iris
@@ -16,6 +16,9 @@ services:
       - "${IRIS_WEB_PORT:-52774}:52773"
     environment:
       ISC_DATA_DIRECTORY: /durable/iris
+      MYOWN_AI_API_KEY: ${MYOWN_AI_API_KEY:-}
+      MYOWN_AI_PROVIDER: ${MYOWN_AI_PROVIDER:-openai}
+      MYOWN_AI_MODEL: ${MYOWN_AI_MODEL:-gpt-4.1-mini}
     volumes:
       - myown-portal-data:/durable
     healthcheck:

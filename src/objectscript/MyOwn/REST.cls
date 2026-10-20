@@ -41,6 +41,28 @@ XData UrlMap
   <Route Url="/tasks/detail" Method="GET" Call="TaskDetail" />
   <Route Url="/tasks/action" Method="POST" Call="TaskAction" />
   <Route Url="/logs" Method="GET" Call="Logs" />
+  <Route Url="/agent/status" Method="GET" Call="AgentStatus" />
+  <Route Url="/agent/config" Method="GET" Call="AgentConfig" />
+  <Route Url="/agent/config" Method="PUT" Call="UpdateAgentConfig" />
+  <Route Url="/agent/killswitch" Method="POST" Call="SetAgentKillSwitch" />
+  <Route Url="/agent/decisions" Method="GET" Call="AgentDecisions" />
+  <Route Url="/agent/decisions/:id" Method="GET" Call="AgentDecisionDetail" />
+  <Route Url="/agent/proposals" Method="GET" Call="AgentProposals" />
+  <Route Url="/agent/proposals/:id/confirm" Method="POST" Call="ConfirmAgentProposal" />
+  <Route Url="/agent/proposals/:id/reject" Method="POST" Call="RejectAgentProposal" />
+  <Route Url="/agent/access-requests" Method="POST" Call="SubmitAgentAccessRequest" />
+  <Route Url="/agent/access-requests" Method="GET" Call="AgentAccessRequests" />
+  <Route Url="/agent/ledger/summary" Method="GET" Call="AgentLedgerSummary" />
+  <Route Url="/agent/ledger" Method="GET" Call="AgentLedger" />
+  <Route Url="/agent/traces/:traceId" Method="GET" Call="AgentTrace" />
+  <Route Url="/agent/pricing" Method="GET" Call="AgentPricing" />
+  <Route Url="/agent/pricing" Method="PUT" Call="UpdateAgentPricing" />
+  <Route Url="/agent/production/status" Method="GET" Call="AgentProductionStatus" />
+  <Route Url="/agent/production/start" Method="POST" Call="StartAgentProduction" />
+  <Route Url="/agent/production/stop" Method="POST" Call="StopAgentProduction" />
+  <Route Url="/agent/guardrails" Method="GET" Call="AgentGuardrails" />
+  <Route Url="/agent/simulate" Method="POST" Call="SimulateAgentScenario" />
+  <Route Url="/agent/analyze" Method="POST" Call="AnalyzeWithAgent" />
 </Routes>
 }
 
@@ -375,6 +397,28 @@ ClassMethod OpenAPI() As %Status
     Do ..AddOpenAPIPath(spec.paths, "/tasks", "get", "List scheduled tasks")
     Do ..AddOpenAPIPath(spec.paths, "/logs", "get", "Read sanitized IRIS log events")
     Do ..AddOpenAPIPath(spec.paths, "/apis/test", "post", "Execute a bounded local API request")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/status", "get", "Read the agent subsystem status")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/config", "get", "Read the sanitized agent configuration")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/config", "put", "Update the agent configuration")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/killswitch", "post", "Enable or disable all agent actions")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/decisions", "get", "List recent agent decisions")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/decisions/{id}", "get", "Read an agent decision")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/proposals", "get", "List state-changing proposals")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/proposals/{id}/confirm", "post", "Confirm a pending proposal")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/proposals/{id}/reject", "post", "Reject a pending proposal")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests", "get", "List access requests visible to the current user")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests", "post", "Submit an access request")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/ledger/summary", "get", "Read agent observability totals")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/ledger", "get", "List agent execution ledger entries")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/traces/{traceId}", "get", "Read an end-to-end agent trace")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/pricing", "get", "List configured model prices")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/pricing", "put", "Create or update a model price")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/production/status", "get", "Read the interoperability production status")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/production/start", "post", "Start the agent production")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/production/stop", "post", "Stop the agent production")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/guardrails", "get", "Read the enforced agent guardrails")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/simulate", "post", "Run a deterministic demonstration scenario")
+    Do ..AddOpenAPIPath(spec.paths, "/agent/analyze", "post", "Analyze the current instance health")
     Set %response.ContentType = "application/vnd.oai.openapi+json;version=3.0"
     Write spec.%ToJSON()
     Quit $$$OK
@@ -382,7 +426,11 @@ ClassMethod OpenAPI() As %Status
 
 ClassMethod AddOpenAPIPath(paths As %DynamicObject, path As %String, method As %String, summary As %String) As %Status [ Private ]
 {
-    Set pathItem = {}
+    If paths.%IsDefined(path) {
+        Set pathItem = paths.%Get(path)
+    } Else {
+        Set pathItem = {}
+    }
     Set operation = {}
     Set operation.summary = summary
     Set operation.responses = {}
@@ -562,6 +610,249 @@ ClassMethod Logs() As %Status
         Write payload.%ToJSON()
     }
     Quit $$$OK
+}
+
+ClassMethod AgentStatus() As %Status
+{
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).Status(.data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_STATUS_UNAVAILABLE", "The agent status is temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentConfig() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Agent.Config).PublicView(.data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_CONFIG_UNAVAILABLE", "The agent configuration is temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod UpdateAgentConfig() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set parseError = 0
+    Try {
+        Set body = {}.%FromJSON(%request.Content)
+    } Catch exception {
+        Set parseError = 1
+    }
+    If parseError Quit ..WriteError(400, "INVALID_REQUEST", "A valid JSON body is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).UpdateConfig(body, $Username, .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "AGENT_CONFIG_UPDATE_FAILED", "The agent configuration could not be updated.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod SetAgentKillSwitch() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set parseError = 0
+    Try {
+        Set body = {}.%FromJSON(%request.Content)
+        If 'body.%IsDefined("enabled") Set parseError = 1
+        If 'parseError Set enabled = +body.%Get("enabled")
+    } Catch exception {
+        Set parseError = 1
+    }
+    If parseError Quit ..WriteError(400, "INVALID_REQUEST", "A JSON body with enabled is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).SetKillSwitch(enabled, $Username, .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "AGENT_KILLSWITCH_FAILED", "The agent kill switch could not be changed.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentDecisions() As %Status
+{
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ListDecisions(.data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_DECISIONS_UNAVAILABLE", "Agent decisions are temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentDecisionDetail(id As %Integer) As %Status
+{
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).DecisionDetail(id, .data)
+    If $$$ISERR(tSC) Quit ..WriteError(404, "DECISION_NOT_FOUND", "The requested decision was not found.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentProposals() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set state = $Get(%request.Data("state", 1))
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ListProposals(state, .data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_PROPOSALS_UNAVAILABLE", "Agent proposals are temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod ConfirmAgentProposal(id As %Integer) As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ConfirmProposal(id, $Username, ..GetForwardedAuthorization(), .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "PROPOSAL_CONFIRM_FAILED", "The proposal could not be confirmed.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod RejectAgentProposal(id As %Integer) As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set parseError = 0
+    Set reason = ""
+    If %request.Content '= "" {
+        Try {
+            Set body = {}.%FromJSON(%request.Content)
+            Set reason = body.%Get("reason")
+        } Catch exception {
+            Set parseError = 1
+        }
+    }
+    If parseError Quit ..WriteError(400, "INVALID_REQUEST", "A valid JSON body is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).RejectProposal(id, $Username, reason, .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "PROPOSAL_REJECT_FAILED", "The proposal could not be rejected.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod SubmitAgentAccessRequest() As %Status
+{
+    Set parseError = 0
+    Try {
+        Set body = {}.%FromJSON(%request.Content)
+        Set role = body.%Get("role")
+        Set justification = body.%Get("justification")
+    } Catch exception {
+        Set parseError = 1
+    }
+    If parseError Quit ..WriteError(400, "INVALID_REQUEST", "A valid JSON body is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).SubmitAccessRequest(role, justification, ..GetForwardedAuthorization(), $Username, .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "ACCESS_REQUEST_FAILED", "The access request could not be submitted.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentAccessRequests() As %Status
+{
+    Set includeAll = ##class(MyOwn.Service.Access).CanManage()
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ListAccessRequests($Username, includeAll, .data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "ACCESS_REQUESTS_UNAVAILABLE", "Access requests are temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentLedgerSummary() As %Status
+{
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).LedgerSummary(.data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_LEDGER_UNAVAILABLE", "Agent observability data is temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentLedger() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ListLedger(.data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_LEDGER_UNAVAILABLE", "Agent observability data is temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentTrace(traceId As %String) As %Status
+{
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).Trace(traceId, .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "AGENT_TRACE_UNAVAILABLE", "The requested trace could not be loaded.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentPricing() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ListPricing(.data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_PRICING_UNAVAILABLE", "Agent pricing is temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod UpdateAgentPricing() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set parseError = 0
+    Try {
+        Set body = {}.%FromJSON(%request.Content)
+    } Catch exception {
+        Set parseError = 1
+    }
+    If parseError Quit ..WriteError(400, "INVALID_REQUEST", "A valid JSON body is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).SavePricing(body, $Username, .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "AGENT_PRICING_UPDATE_FAILED", "Agent pricing could not be updated.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentProductionStatus() As %Status
+{
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ProductionStatus(.data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "PRODUCTION_STATUS_UNAVAILABLE", "The agent production status is temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod StartAgentProduction() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ControlProduction("start", .data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "PRODUCTION_START_FAILED", "The agent production could not be started.")
+    Set auditStatus = ##class(MyOwn.Service.Audit).Record("AgentProductionStart", "MyOwn.Production.Main", 1)
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod StopAgentProduction() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ControlProduction("stop", .data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "PRODUCTION_STOP_FAILED", "The agent production could not be stopped.")
+    Set auditStatus = ##class(MyOwn.Service.Audit).Record("AgentProductionStop", "MyOwn.Production.Main", 1)
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AgentGuardrails() As %Status
+{
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).Guardrails(.data)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "GUARDRAILS_UNAVAILABLE", "Agent guardrails are temporarily unavailable.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod SimulateAgentScenario() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_CONFIG_UNAVAILABLE", "The agent configuration is temporarily unavailable.")
+    If 'config.DemoMode Quit ..WriteError(403, "AGENT_DISABLED", "Demonstration scenarios are disabled.")
+    Set parseError = 0
+    Try {
+        Set body = {}.%FromJSON(%request.Content)
+        Set scenario = body.%Get("scenario")
+        Set taskId = +body.%Get("taskId")
+    } Catch exception {
+        Set parseError = 1
+    }
+    If parseError Quit ..WriteError(400, "INVALID_REQUEST", "A valid JSON body is required.")
+    Set tSC = ##class(MyOwn.Install.Scenarios).Run(scenario, ..GetForwardedAuthorization(), taskId, $Username, .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "SIMULATION_FAILED", "The requested scenario could not be simulated.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod AnalyzeWithAgent() As %Status
+{
+    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set tSC = ##class(MyOwn.Agent.Context.Health).Current(.context)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "HEALTH_REPORT_UNAVAILABLE", "The current health context is temporarily unavailable.")
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).Analyze("incident-triage", context.%ToJSON(), "manual", "", $Username, .data)
+    If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "AGENT_ANALYSIS_FAILED", "The current instance health could not be analyzed.")
+    Quit ..WriteSuccess(data)
+}
+
+ClassMethod WriteAgentError(tSC As %Status, defaultCode As %String, defaultMessage As %String) As %Status [ Private ]
+{
+    Set text = $System.Status.GetErrorText(tSC)
+    If text [ "PROPOSAL_NOT_FOUND" Quit ..WriteError(404, "PROPOSAL_NOT_FOUND", "The requested proposal was not found.")
+    If text [ "PROPOSAL_EXPIRED" Quit ..WriteError(409, "PROPOSAL_EXPIRED", "The proposal has expired.")
+    If text [ "PROPOSAL_ALREADY_RESOLVED" Quit ..WriteError(409, "PROPOSAL_ALREADY_RESOLVED", "The proposal has already been resolved.")
+    If text [ "PROPOSAL_BUSY" Quit ..WriteError(409, "PROPOSAL_BUSY", "The proposal is being processed by another request.")
+    If text [ "TARGET_CHANGED" Quit ..WriteError(409, "TARGET_CHANGED", "The target changed after the proposal was created.")
+    If text [ "EXECUTION_READBACK_FAILED" Quit ..WriteError(500, "EXECUTION_READBACK_FAILED", "The requested change could not be verified after execution.")
+    If text [ "SEPARATION_OF_DUTIES" Quit ..WriteError(403, "SEPARATION_OF_DUTIES", "The requester cannot confirm the same access request.")
+    If text [ "PROHIBITED_TARGET" Quit ..WriteError(403, "PROHIBITED_TARGET", "The requested target is protected by a guardrail.")
+    If text [ "INVALID_REQUEST" Quit ..WriteError(400, "INVALID_REQUEST", "The request is invalid.")
+    Quit ..WriteError(500, defaultCode, defaultMessage)
 }
 
 ClassMethod WritePermissionResponse(kind As %String) As %Status

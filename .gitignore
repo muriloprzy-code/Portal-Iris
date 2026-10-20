@@ -24,3 +24,9 @@ backups/
 .pnpm-store/
 test-myown-output.txt
 users-list-output.json
+test-results/*
+!test-results/.gitkeep
+.iris-agentic-dev.toml
+
+# Local scratch material, not part of the portal
+extras/

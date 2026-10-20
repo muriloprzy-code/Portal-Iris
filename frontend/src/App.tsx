@@ -5,10 +5,12 @@ import ApplicationsPage from './ApplicationsPage'
 import TasksPage from './TasksPage'
 import LogsPage from './LogsPage'
 import SecurityPage from './SecurityPage'
+import AgentsPage from './AgentsPage'
+import AgentOverviewCard from './AgentOverviewCard'
 
-const sections = ['Overview', 'Permissions', 'Applications & APIs', 'Security', 'Tasks', 'Logs']
+const sections = ['Overview', 'Permissions', 'Applications & APIs', 'Security', 'Tasks', 'Logs', 'Agents']
 
-const icons = ['⌂', '♙', '⌘', '◇', '◷', '≡']
+const icons = ['⌂', '♙', '⌘', '◇', '◷', '≡', '✦']
 
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
@@ -24,8 +26,9 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeSection, setActiveSection] = useState('Overview')
   const [accessLevel, setAccessLevel] = useState<'Administrator' | 'Viewer' | 'None'>('None')
+  const [pendingApprovals, setPendingApprovals] = useState(0)
   const canManage = accessLevel === 'Administrator'
-  const visibleSections = canManage ? sections : sections.filter((section) => section === 'Overview' || section === 'Logs')
+  const visibleSections = canManage ? sections : sections.filter((section) => section === 'Overview' || section === 'Logs' || section === 'Agents')
 
   useEffect(() => {
     const handleUnauthorized = () => {
@@ -40,6 +43,7 @@ export default function App() {
       setPassword('')
       setError('Your session has expired. Please sign in again.')
       setAccessLevel('None')
+      setPendingApprovals(0)
     }
 
     window.addEventListener('myown:unauthorized', handleUnauthorized)
@@ -108,6 +112,7 @@ export default function App() {
     setPassword('')
     setError('')
     setAccessLevel('None')
+    setPendingApprovals(0)
   }
 
   if (!currentUser) {
@@ -141,6 +146,7 @@ export default function App() {
           {visibleSections.map((item) => (
             <button className={activeSection === item ? 'active' : ''} onClick={() => setActiveSection(item)} key={item} type="button">
               <span aria-hidden="true">{icons[sections.indexOf(item)]}</span>{item}
+              {item === 'Agents' && pendingApprovals > 0 && <b className="nav-badge" aria-label={`${pendingApprovals} pending approvals`}>{pendingApprovals}</b>}
             </button>
           ))}
         </nav>
@@ -210,6 +216,8 @@ export default function App() {
           </div>
         </section>
 
+        <AgentOverviewCard canManage={canManage} onPendingChange={setPendingApprovals} onOpenAgents={() => setActiveSection('Agents')} />
+
         {canManage && <section className="process-panel">
           <div className="section-title"><div><p className="eyebrow">LIVE ACTIVITY</p><h3>IRIS processes</h3></div><span className="table-count">{processes.length} shown · {integrationSource === 'sysadmin-v2' ? 'SysAdmin API v2' : 'Integration unavailable'}</span></div>
           <div className="table-wrap">
@@ -239,6 +247,7 @@ export default function App() {
         {activeSection === 'Security' && <SecurityPage />}
         {activeSection === 'Tasks' && <TasksPage />}
         {activeSection === 'Logs' && <LogsPage />}
+        {activeSection === 'Agents' && <AgentsPage canManage={canManage} />}
       </main>
     </div>
   )

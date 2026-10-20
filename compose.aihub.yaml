@@ -1,0 +1,11 @@
+# Explicit AI Hub overlay used by the contest verification commands.
+# Load and tag the build 154 image locally before starting Compose.
+services:
+  iris:
+    build:
+      args:
+        IMAGE: ${IRIS_IMAGE:-irishealth-community:2026.3.0AI.154.0}
+    environment:
+      MYOWN_AI_API_KEY: ${MYOWN_AI_API_KEY:-}
+      MYOWN_AI_PROVIDER: ${MYOWN_AI_PROVIDER:-openai}
+      MYOWN_AI_MODEL: ${MYOWN_AI_MODEL:-gpt-4.1-mini}

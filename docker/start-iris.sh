@@ -9,7 +9,7 @@ if [[ -f "${data_directory}/iris.cpf" ]]; then
     exec /iris-main "$@"
 fi
 
-# IRIS for Health 2026.2 lacks CSPpwd and may exit after updating IRIS accounts.
+# Some IRIS for Health images lack CSPpwd and may exit after updating accounts.
 # Complete the first-start sentinel cleanup only for that image shape.
 if [[ ! -x /usr/irissys/bin/CSPpwd ]]; then
     set +e

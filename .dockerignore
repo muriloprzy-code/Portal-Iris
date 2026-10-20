@@ -12,3 +12,4 @@ backups/
 .env
 .env.*
 !/.env.example
+extras/
