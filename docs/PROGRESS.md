@@ -9,7 +9,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - Connected instance: InterSystems IRIS 2026.2 build 221U, namespace `MYOWN`, through `iris-agentic-dev` 1.5.0.
 - Core unit smoke: **13 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
 - Interoperability smoke: **16 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
-- REST agent suite: **23 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
+- REST agent suite: **24 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
 - AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
@@ -105,7 +105,7 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 - The decision pipeline now runs as three separate production steps, shared by `TriageProcess` and `AccessProcess` through `MyOwn.Production.Process.Steps`: (1) **decide**: `AgentGateway` calls `Agent.Decide` (cooldown, event, engine, Validator, ledger) and returns the validated decision before the Gate; (2) **Gate**: the process calls `Agent.ApplyGate` (deterministic Gate, then the decision record with final action and downgrade reason); (3) **proposal**: `ProposalStore` now creates the proposal through `Agent.StoreProposal`, which re-evaluates the Gate on the final decision before creating anything.
 - Each step writes one Event Log line per trace (`[traceId] step N ...`) with enums and ids only. The Message Viewer shows `AgentRequest`/`AgentResponse` and `ProposalRequest`/`ProposalResponse` for every run that proposes. `AgentResponse` gained `ValidationStatus` and `GateJSON`; `ProposalResponse` is new. The production still has ten items.
 - `Agent.Analyze` is a thin facade: it injects an `IncidentEvent` through `HealthMonitor` and returns the previous response shape (`decision`, `gate`, `proposalId`, `status: suppressed`). `/agent/analyze` therefore also runs through the production now.
-- Upgrade note: recompiling these classes while the production runs left the old `AgentGateway` job calling the new facade, which re-entered the production and deadlocked on itself. Restart the production after deploying this change.
+- Upgrade note: recompiling these classes while the production runs left the old `AgentGateway` job calling the new facade, which re-entered the production and deadlocked on itself. `Installer.EnsureAgentProduction` now restarts the production when it is already running (graceful stop, forced after 30 s), so a reinstall through IPM, `Instalar.bat` or `Install-MyOwn.ps1` never mixes old and new code.
 
 ## Agent audit events aligned with the specification (2026-10-20)
 
@@ -121,6 +121,12 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 - Model-written text is sanitized by the server and rendered only as React text nodes; `frontend/src` still has no `dangerouslySetInnerHTML` or other HTML sink.
 - `MyOwn.Agent.Decision` stores `ConditionsJSON` (sanitized) and `GateJSON`. `GET /agent/decisions/:id` returns `conditions`, `gate` and `proposal`, sanitized again on read; the list returns `proposalId`. New REST check IT-15 verifies these fields for the S5 decision. Decisions recorded before this change show no conditions and only the downgrade reason of the Gate.
 - Frontend type-check and production build pass; the bundle is regenerated in `web/`. The drawer was not checked in a browser in this session.
+
+## Installation path and screen verification (2026-10-20)
+
+- Every installer reaches `Installer.Setup`: IPM (`module.xml` Invoke, also used by the Dockerfile through `zpm load`), `Instalar.bat` → `Install-All.ps1` → `MyOwnLoadAndSetup`, and `Install-MyOwn.ps1`. `Setup` calls `EnsureAuditEvent` in `%SYS`, which registers the nine audit events, so no manual step is needed. On a fresh install the production starts after all classes compile. A reinstall over a running production now restarts it; verified by running `MyOwnLoadAndSetup` on the local instance (graceful restart, new jobs) followed by all suites.
+- Screen replay of S1 to S10 (same requests as the Agents page, `taskId` 0) found that S2 and S3 always failed from the screen because no task id is sent. `Scenarios.Run` now uses the installer's demonstration task, read with the caller's credentials. New REST check IT-16. After the fix, every scenario returns a decision whose detail carries engine, risk, Gate result, proposal state, rationale and evidence (S4 has no evidence by design; only S5 has conditions).
+- The screens were not opened in a browser and the browser console was not inspected in this session.
 
 ## Next verified milestone
 

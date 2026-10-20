@@ -17,6 +17,11 @@ ClassMethod Run(name As %String, authorization As %String, taskId As %Integer, r
         Set anomaly.severity = "critical"
         Do context.anomalies.%Push(anomaly)
     } ElseIf (name = "S2") || (name = "S3") {
+        ; The portal screen sends no taskId: use the demonstration task created by the installer.
+        If taskId < 1 {
+            Set tSC = ..DemoTaskId(authorization, .taskId)
+            If $$$ISERR(tSC) Quit tSC
+        }
         If taskId < 1 Quit $$$ERROR($$$GeneralError, "A taskId is required for this scenario.")
         Set tSC = ##class(MyOwn.Service.Tasks).GetTask(taskId, authorization, .task, .source)
         If $$$ISERR(tSC) Quit tSC
@@ -106,6 +111,21 @@ ClassMethod RunAccess(name As %String, requester As %String, context As %Dynamic
     }
     Set response.scenario = name
     Set response.integrationSource = "interoperability"
+    Quit $$$OK
+}
+
+/// Id of the installer's demonstration task, read with the caller's own credentials (0 if absent).
+ClassMethod DemoTaskId(authorization As %String, Output taskId As %Integer) As %Status [ Private ]
+{
+    Set taskId = 0
+    Set tSC = ##class(MyOwn.Service.Tasks).GetTasks(authorization, .response, .source)
+    If $$$ISERR(tSC) Quit tSC
+    Set tasks = response.%Get("tasks")
+    If '$IsObject(tasks) Quit $$$OK
+    For index = 0:1:(tasks.%Size() - 1) {
+        Set task = tasks.%Get(index)
+        If $IsObject(task), task.%Get("name") = ##class(MyOwn.Installer).#DemoTaskName Set taskId = +task.%Get("id")  Quit
+    }
     Quit $$$OK
 }
 

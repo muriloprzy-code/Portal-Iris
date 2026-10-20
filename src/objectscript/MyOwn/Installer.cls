@@ -118,11 +118,19 @@ ClassMethod EnsureAgentDefaults() As %Status [ Private ]
 }
 
 /// Starts the agent production when no other production owns this namespace.
+/// On a reinstall over a running production it restarts it: jobs of recompiled host classes
+/// keep running the previous code, and old and new pipeline code mixed in one production
+/// can call each other in a loop (seen as AgentGateway waiting on itself).
 ClassMethod EnsureAgentProduction() As %Status [ Private ]
 {
     Set production = "MyOwn.Production.Main"
     Set active = ##class(Ens.Director).GetActiveProductionName()
-    If active = production Quit ##class(Ens.Director).SetAutoStart(production)
+    If active = production {
+        Set tSC = ##class(Ens.Director).StopProduction(30, 0)
+        If $$$ISERR(tSC) Set tSC = ##class(Ens.Director).StopProduction(10, 1)
+        If $$$ISERR(tSC) Quit tSC
+        Set active = ""
+    }
     If active '= "" Quit $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
     Set tSC = ##class(Ens.Director).StartProduction(production)
     If $$$ISERR(tSC) Quit tSC

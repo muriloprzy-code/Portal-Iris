@@ -199,6 +199,14 @@ try {
         $s3Confirmation.data.state -eq 'executed' -and (Wait-TaskSuspendedState -Id $demoTaskId -Expected $false)
     }
 
+    Add-Check -Id 'IT-16' -Details 'S2 started like the portal screen (no taskId) uses the demonstration task and creates a proposal.' -Action {
+        $fromScreen = Invoke-PortalJson -Method POST -Path '/agent/simulate' -Body @{ scenario = 'S2'; taskId = 0 }
+        if ($fromScreen.data.proposalId) {
+            Invoke-PortalJson -Method POST -Path "/agent/proposals/$($fromScreen.data.proposalId)/reject" -Body @{ reason = 'Automated test cleanup' } | Out-Null
+        }
+        $fromScreen.data.decision.action -eq 'propose_task_suspend' -and [bool]$fromScreen.data.proposalId -and "$($fromScreen.data.decision.targetId)" -eq "$demoTaskId"
+    }
+
     Add-Check -Id 'S4' -Details 'Scenario S4 ignores a lock spike when there is not enough statistical evidence.' -Action {
         $script:s4 = Invoke-PortalJson -Method POST -Path '/agent/simulate' -Body @{ scenario = 'S4' }
         $s4.data.decision.action -eq 'ignore' -and -not $s4.data.proposalId
@@ -262,7 +270,9 @@ try {
 
     Add-Check -Id 'IT-13' -Details 'An access request is queued at once and its decision is readable later through REST.' -Action {
         $submitted = Invoke-PortalJson -Method POST -Path '/agent/access-requests' -Body @{ role = '%Operator'; justification = 'Automated test: asynchronous access request.' }
-        $queued = $submitted.data.status -eq 'queued' -and [bool]$submitted.data.id -and [bool]$submitted.data.traceId
+        # The production may already have finished (for example a cooldown suppression) by the time
+        # the POST reads the request back, so any non-failed status is a valid immediate answer.
+        $queued = $submitted.data.status -in @('queued', 'decided', 'suppressed') -and [bool]$submitted.data.id -and [bool]$submitted.data.traceId
         $detail = $null
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $detail = Invoke-PortalJson -Method GET -Path "/agent/access-requests/$($submitted.data.id)"
