@@ -149,6 +149,17 @@ ClassMethod ApplyGate(workflow As %String, eventId As %Integer, engine As %Strin
     Set tSC = ##class(MyOwn.Agent.Policy.Gate).Evaluate(decision, context, config, actor, .gate)
     If $$$ISERR(tSC) Quit tSC
     Set decision.action = gate.finalAction
+    ; Never a second proposal for the same target and action (pending, or executed within the cooldown).
+    If gate.allowed && gate.createProposal {
+        Set tSC = ..ResolveDuplicate(decision, context, config, .existingId, .duplicateReason, .duplicateMessage)
+        If $$$ISERR(tSC) Quit tSC
+        If existingId {
+            Set gate.createProposal = 0
+            Set gate.downgradedBy = duplicateReason
+            Set gate.duplicateOf = existingId
+            Set gate.reason = duplicateMessage
+        }
+    }
     Set decision = ..PublicDecision(decision)
     Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate, config, traceId, .decisionId)
     If $$$ISERR(tSC) Quit tSC
@@ -179,6 +190,13 @@ ClassMethod StoreProposal(decisionId As %Integer, decisionJSON As %String, conte
     Set tSC = ##class(MyOwn.Agent.Policy.Gate).Evaluate(decision, context, config, "", .gate)
     If $$$ISERR(tSC) Quit tSC
     If 'gate.allowed || 'gate.createProposal || (gate.finalAction '= decision.%Get("action")) Quit $$$ERROR($$$GeneralError, "PROHIBITED_TARGET")
+    ; Checked again here: two processes may have passed the Gate step for the same target.
+    Set tSC = ..ResolveDuplicate(decision, context, config, .existingId, .duplicateReason)
+    If $$$ISERR(tSC) Quit tSC
+    If existingId {
+        Set proposalId = $Select(duplicateReason="duplicate-proposal":existingId, 1:0)
+        Quit $$$OK
+    }
     Set tSC = ..CreateProposal(decisionId, decision, context, config, .proposalId)
     If $$$ISERR(tSC) Quit tSC
     Quit ##class(MyOwn.Service.Audit).RecordAgent("ProposalCreated", decisionId, "proposal " _ proposalId, 1, decision.%Get("action"))
@@ -385,28 +403,89 @@ ClassMethod PublicDecision(decision As %DynamicObject) As %DynamicObject
     Quit clean
 }
 
+/// Server-side state of the target before the proposed change; its fingerprint is what
+/// ConfirmProposal compares with a fresh read of the target (TARGET_CHANGED).
+ClassMethod ProposalBefore(decision As %DynamicObject, context As %DynamicObject) As %DynamicObject [ Private ]
+{
+    If decision.%Get("workflow") = "access-request" {
+        Set before = {}
+        Set before.user = decision.%Get("user")
+        Set before.roles = context.%Get("currentRoles")
+        Quit before
+    }
+    Quit ..TaskState(context.%Get("task"))
+}
+
+/// Fingerprint a proposal for this decision would carry (side-effect free).
+ClassMethod ProposalFingerprint(decision As %DynamicObject, context As %DynamicObject) As %String
+{
+    Quit ..Fingerprint(..ProposalBefore(decision, context).%ToJSON())
+}
+
+/// Gate deduplication with stale-proposal handling: a pending proposal for the same target and
+/// action is reused only while it can still be confirmed (same target fingerprint). A pending
+/// proposal whose target changed is superseded (expired and audited) so a fresh one can be made.
+ClassMethod ResolveDuplicate(decision As %DynamicObject, context As %DynamicObject, config As MyOwn.Agent.Config, Output existingId As %Integer, Output reason As %String, Output message As %String) As %Status [ Private ]
+{
+    Do ..ProposalTarget(decision, .kind, .targetType, .targetId)
+    Set currentFingerprint = ..ProposalFingerprint(decision, context)
+    Set tSC = $$$OK
+    For attempt = 1:1:50 {
+        Set tSC = ##class(MyOwn.Agent.Policy.Gate).CheckDuplicate(kind, targetType, targetId, config, .existingId, .reason, .message)
+        If $$$ISERR(tSC) || 'existingId || (reason '= "duplicate-proposal") Quit
+        Set existing = ##class(MyOwn.Agent.Proposal).%OpenId(existingId)
+        If '$IsObject(existing) || (existing.Fingerprint = currentFingerprint) Quit
+        Lock +^MyOwn.Agent.Lock("proposal", existingId):2
+        If '$Test Quit
+        Try {
+            Set existing = ##class(MyOwn.Agent.Proposal).%OpenId(existingId)
+            If existing.State = "pending" {
+                Set existing.State = "expired"
+                Set existing.ResolvedAt = $ZDateTime($Horolog, 3, 1)
+                Set existing.ResultMessage = "Superseded: the target changed after this proposal was created."
+                Set tSC = existing.%Save()
+                If $$$ISOK(tSC) Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ProposalExpired", existing.DecisionId, "proposal " _ existingId, 1, "superseded")
+            }
+        } Catch exception {
+            Set tSC = exception.AsStatus()
+        }
+        Lock -^MyOwn.Agent.Lock("proposal", existingId)
+        If $$$ISERR(tSC) Quit
+    }
+    Quit tSC
+}
+
+/// The proposal a decision would produce: kind and target, as stored on MyOwn.Agent.Proposal.
+ClassMethod ProposalTarget(decision As %DynamicObject, Output kind As %String, Output targetType As %String, Output targetId As %String) As %Status [ Private ]
+{
+    If decision.%Get("workflow") = "access-request" {
+        Set kind = "role.assign"
+        Set targetType = "user-role"
+        Set targetId = decision.%Get("user") _ "|" _ decision.%Get("role")
+    } Else {
+        Set kind = $Replace($Replace(decision.%Get("action"), "propose_", ""), "task_", "task.")
+        Set targetType = "task"
+        Set targetId = decision.%Get("targetId")
+    }
+    Quit $$$OK
+}
+
 ClassMethod CreateProposal(decisionId As %Integer, decision As %DynamicObject, context As %DynamicObject, config As MyOwn.Agent.Config, Output id As %Integer) As %Status [ Private ]
 {
     Set proposal = ##class(MyOwn.Agent.Proposal).%New()
     Set proposal.DecisionId = decisionId
+    Do ..ProposalTarget(decision, .kind, .targetType, .targetId)
+    Set proposal.Kind = kind
+    Set proposal.TargetType = targetType
+    Set proposal.TargetId = targetId
+    Set before = ..ProposalBefore(decision, context)
     If decision.%Get("workflow") = "access-request" {
-        Set proposal.Kind = "role.assign"
-        Set proposal.TargetType = "user-role"
-        Set proposal.TargetId = decision.%Get("user") _ "|" _ decision.%Get("role")
-        Set before = {}
-        Set before.user = decision.%Get("user")
-        Set before.roles = context.%Get("currentRoles")
         Set after = {}
         Set after.user = decision.%Get("user")
         Set after.roleToAssign = decision.%Get("role")
         Set proposal.RequiredPrivilege = "%Admin_Secure"
         Set proposal.UndoHint = "Remove the assigned role from the user in Permissions."
     } Else {
-        Set proposal.Kind = $Replace(decision.%Get("action"), "propose_", "")
-        Set proposal.Kind = $Replace(proposal.Kind, "task_", "task.")
-        Set proposal.TargetType = "task"
-        Set proposal.TargetId = decision.%Get("targetId")
-        Set before = ..TaskState(context.%Get("task"))
         Set after = {}.%FromJSON(before.%ToJSON())
         If proposal.Kind = "task.suspend" Set after.suspended = 1
         If proposal.Kind = "task.resume" Set after.suspended = 0
@@ -480,7 +559,16 @@ ClassMethod EscalationDecision(workflow As %String, context As %DynamicObject, e
 
 /// Chave estavel do incidente: ignora metricas volateis (valores, z-scores, timestamps)
 /// para que o cooldown realmente deduplique o mesmo problema.
-ClassMethod StableKey(workflow As %String, context As %DynamicObject) As %String [ Private ]
+/// Band of consecutive failures used in the stable key, so every new failure of an already
+/// failing task does not produce a new key (and a new event). 3 is the TaskWatcher threshold.
+ClassMethod FailureBand(failures As %Integer) As %String [ Private ]
+{
+    Set failures = +failures
+    Quit $Select(failures >= 3:"3+", failures >= 1:"1-2", 1:"0")
+}
+
+/// Public and side-effect free so the smoke tests can check that the key is stable.
+ClassMethod StableKey(workflow As %String, context As %DynamicObject) As %String
 {
     Set key = workflow
     Set runId = context.%Get("simulationRunId")
@@ -501,7 +589,7 @@ ClassMethod StableKey(workflow As %String, context As %DynamicObject) As %String
         }
     }
     Set task = context.%Get("task")
-    If $IsObject(task) Set key = key _ "|t:" _ task.%Get("id") _ ":" _ (+task.%Get("suspended")) _ ":" _ (+task.%Get("consecutiveFailures"))
+    If $IsObject(task) Set key = key _ "|t:" _ task.%Get("id") _ ":" _ (+task.%Get("suspended")) _ ":" _ ..FailureBand(task.%Get("consecutiveFailures"))
     Set key = key _ "|th:" _ context.%Get("thresholdMetric") _ ":" _ context.%Get("thresholdSeverity")
     Set logs = context.%Get("logs")
     If $IsObject(logs) {
@@ -561,6 +649,8 @@ ClassMethod ListProposals(state As %String = "", Output items As %DynamicArray) 
 {
     Set items = []
     Set state = $ZConvert(##class(MyOwn.Agent.Sanitize).Identifier(state), "L")
+    Set tSC = ##class(MyOwn.Agent.Proposal).ExpireOverdue(.expiredCount)
+    If $$$ISERR(tSC) Quit tSC
     Set statement = ##class(%SQL.Statement).%New()
     If state = "" {
         Set tSC = statement.%Prepare("SELECT TOP 100 ID FROM MyOwn_Agent.Proposal ORDER BY ID DESC")
@@ -1032,22 +1122,30 @@ ClassMethod DecisionView(decision As MyOwn.Agent.Decision, detail As %Boolean) A
     Set data.downgradedBy = decision.DowngradedBy
     Set data.traceId = decision.TraceId
     Set data.decidedAt = decision.DecidedAt
+    Set gate = ..JSONValue(decision.GateJSON)
     Set proposal = ..ProposalForDecision(decision.%Id())
+    Set reused = 0
+    ; A decision deduplicated against a pending proposal points to that proposal.
+    If '$IsObject(proposal), decision.DowngradedBy = "duplicate-proposal", +gate.%Get("duplicateOf") {
+        Set proposal = ##class(MyOwn.Agent.Proposal).%OpenId(+gate.duplicateOf)
+        Set reused = $IsObject(proposal)
+    }
     Set data.proposalId = $Select($IsObject(proposal):proposal.%Id(), 1:"")
     If detail {
         Set data.conditions = ..PublicDecision({"conditions":(..JSONArray(decision.ConditionsJSON))}).conditions
-        Set gate = ..JSONValue(decision.GateJSON)
         Set data.gate = {}
         Set data.gate.finalAction = decision.Action
         Set data.gate.downgradedBy = decision.DowngradedBy
         If gate.%IsDefined("allowed") Set data.gate.allowed = +gate.allowed
         If gate.%IsDefined("createProposal") Set data.gate.createProposal = +gate.createProposal
         If gate.%Get("reason") '= "" Set data.gate.reason = ##class(MyOwn.Agent.Sanitize).Text(gate.reason, 200)
+        If +gate.%Get("duplicateOf") Set data.gate.duplicateOf = +gate.duplicateOf
         If $IsObject(proposal) {
             Set data.proposal = {}
             Set data.proposal.id = proposal.%Id()
             Set data.proposal.kind = proposal.Kind
             Set data.proposal.state = proposal.State
+            If reused Set data.proposal.reused = 1
         }
         Set data.rationale = ##class(MyOwn.Agent.Sanitize).Text(decision.Rationale, 600)
         Set evidenceJSON = ..ReadStream(decision.EvidenceJSON)
@@ -1194,7 +1292,7 @@ ClassMethod TaskState(task As %DynamicObject) As %DynamicObject [ Private ]
     If '$IsObject(task) Quit state
     Set state.id = +task.%Get("id")
     Set state.name = task.%Get("name")
-    Set state.namespace = task.%Get("namespace")
+    Set state.namespace = $ZConvert(task.%Get("namespace"), "U")
     Set state.suspended = +task.%Get("suspended")
     Set state.manageable = +task.%Get("manageable")
     Quit state

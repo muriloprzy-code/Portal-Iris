@@ -9,6 +9,8 @@ Property RetentionDays As %Integer(MINVAL = 1, MAXVAL = 3650) [ InitialExpressio
 
 Method OnTask() As %Status
 {
+    Set tSC = ##class(MyOwn.Agent.Proposal).ExpireOverdue(.expired)
+    If $$$ISERR(tSC) Quit tSC
     Set cutoff = $ZDateTime($Horolog - ..RetentionDays, 3, 1)
     Set tSC = ..DeleteOlder("MyOwn_Agent.ToolCall", "At", "MyOwn.Agent.ToolCall", cutoff, .toolCallsDeleted)
     If $$$ISERR(tSC) Quit tSC

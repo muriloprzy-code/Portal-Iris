@@ -7,10 +7,10 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 ## Current verified baseline
 
 - Connected instance: InterSystems IRIS 2026.2 build 221U, namespace `MYOWN`, through `iris-agentic-dev` 1.5.0.
-- Core unit smoke: **13 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
-- Interoperability smoke: **16 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
+- Core unit smoke: **14 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-core.json`.
+- Interoperability smoke: **18 passed, 0 failed** (`scripts/Test-AgentSmoke.ps1`), report in `test-results/agents-smoke-integration.json`.
 - REST agent suite: **24 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
-- Agents UI (isolated browser): **13 passed, 0 failed** (`scripts/Test-AgentsUI.ps1`), report in `test-results/agents-ui.json`, screenshots in `test-results/ui/`.
+- Agents UI (isolated browser): **14 passed, 0 failed** (`scripts/Test-AgentsUI.ps1`), report in `test-results/agents-ui.json`, screenshots in `test-results/ui/`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
 - AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
@@ -134,7 +134,15 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 - `scripts/Test-AgentsUI.ps1` runs `tests/ui/agents-ui.mjs` with Playwright 1.55.0 (pinned, own `package.json` and lockfile) and Playwright's bundled Chromium in a fresh profile, never the user's browser. The credential reaches Node only through process environment variables. The test signs in, enables Demo mode through Settings, runs S1 to S10 from the Overview simulator, opens each decision drawer by the decision id returned to the screen, checks engine, risk, Gate result, proposal, rationale, evidence and conditions, closes the drawer with Esc, rejects the proposals it created, restores the settings, and fails on any browser console error or HTTP 5xx from the API.
 - Fixed: the Overview simulator called `/agent/simulate` without a task id, so S2 and S3 always failed from the screen. The screen now selects the installer's demonstration task (`MyOwn Portal health snapshot`) and the test asserts that the request carries its id; the server-side fallback stays as a safety net.
 - Result: 13 of 13 checks pass, no console errors, no server errors; screenshots `test-results/ui/S1-decision.png` to `S10-decision.png`.
-- Found, not fixed here: 26 `task.suspend` proposals created by `TaskWatcher` since 2026-10-19 are still `pending`, 21 of them past `ExpiresAt`. Expiry is applied only when someone tries to confirm, so the Approvals badge counts expired proposals, and repeated watcher cycles add new proposals for the same task.
+- Found here and fixed in the next section: expired proposals still listed as pending, and repeated `TaskWatcher` proposals for the same task.
+
+## Proposal expiry and deduplication (2026-10-20)
+
+- Root causes found: `Proposal.IsExpired` compared ODBC timestamps with `<`, which ObjectScript evaluates numerically (only the year), so no proposal ever expired; and `TaskWatcher` built the task state without `namespace`, so every watcher proposal failed confirmation with `TARGET_CHANGED` and stayed pending. With the exact failure count in the stable key, each new failure also produced a new key, so the cooldown never held and the watcher added a proposal every cycle (26 pending for two tasks).
+- Expiry: `IsExpired` compares as strings; `Proposal.ExpireOverdue` marks overdue pending proposals as `expired` (audited as `ProposalExpired`, detail `ttl`) whenever proposals are listed and in the retention task, so lists and the Approvals badge never show an expired proposal as pending.
+- Deduplication (Gate step and again in `ProposalStore`): `Gate.CheckDuplicate` blocks a second proposal for the same kind and target while one is pending and not expired (`duplicate-proposal`; the decision reuses that proposal id and the drawer shows it as "already pending, not duplicated"), or when the most recent executed proposal for that target is the same kind and was executed within `CooldownMinutes` (`recently-executed`). The opposite action (resume after suspend) is allowed. A pending proposal whose target fingerprint no longer matches is superseded (expired, audited with detail `superseded`) instead of being reused, so a reused proposal can always be confirmed.
+- `StableKey` uses a failure band (`0`, `1-2`, `3+`) instead of the exact count; `TaskWatcher` now includes the task namespace.
+- Tests: UT-15-STABLEKEY, IT-17-EXPIRY, IT-18-DEDUP (stale pending superseded, pending blocked, recently executed blocked, executed long ago allowed, opposite action allowed) and UI-APPROVALS (no pending card past its expiry; badge equals the pending cards). Pending proposals went from 26 to 1 after the change. Not verified end to end: confirming a new watcher proposal, which would suspend a real task.
 
 ## Next verified milestone
 

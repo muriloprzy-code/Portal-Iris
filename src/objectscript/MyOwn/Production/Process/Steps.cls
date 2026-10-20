@@ -39,8 +39,12 @@ ClassMethod Run(process As Ens.BusinessProcess, workflow As %String, source As %
         If $$$ISERR(tSC) Quit tSC
         Set proposalId = stored.ProposalId
         $$$LOGINFO("[" _ traceId _ "] step 3 proposal: proposalId=" _ proposalId)
+    } ElseIf gate.downgradedBy = "duplicate-proposal" {
+        ; The same action is already pending for this target: point to it instead of creating another.
+        Set proposalId = +gate.duplicateOf
+        $$$LOGINFO("[" _ traceId _ "] step 3 proposal: reused pending proposalId=" _ proposalId)
     } Else {
-        $$$LOGINFO("[" _ traceId _ "] step 3 proposal: none")
+        $$$LOGINFO("[" _ traceId _ "] step 3 proposal: none" _ $Select(gate.downgradedBy="recently-executed":" (recently executed proposalId=" _ gate.duplicateOf _ ")", 1:""))
     }
 
     Set response = ##class(MyOwn.Production.Msg.AgentResponse).%New()

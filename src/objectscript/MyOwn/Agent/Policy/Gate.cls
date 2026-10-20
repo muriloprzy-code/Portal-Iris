@@ -61,6 +61,57 @@ ClassMethod Evaluate(decision As %DynamicObject, context As %DynamicObject, conf
     Quit $$$OK
 }
 
+/// Proposal deduplication (needs the database, so it is kept out of Evaluate). Blocks a new
+/// proposal when the same kind for the same target is still pending and not expired
+/// (reason "duplicate-proposal"), or when the most recent executed proposal for that target
+/// is of the same kind and was executed within CooldownMinutes ("recently-executed").
+/// An opposite action (for example resume after a suspend) is not blocked.
+ClassMethod CheckDuplicate(kind As %String, targetType As %String, targetId As %String, config As MyOwn.Agent.Config, Output existingId As %Integer, Output reason As %String, Output message As %String) As %Status
+{
+    Set existingId = 0
+    Set reason = ""
+    Set message = ""
+    If (kind = "") || (targetId = "") Quit $$$OK
+    Set statement = ##class(%SQL.Statement).%New()
+    Set tSC = statement.%Prepare("SELECT TOP 1 ID FROM MyOwn_Agent.Proposal WHERE Kind = ? AND TargetType = ? AND TargetId = ? AND State = 'pending' AND ExpiresAt >= ? ORDER BY ID DESC")
+    If $$$ISERR(tSC) Quit tSC
+    Set result = statement.%Execute(kind, targetType, targetId, $ZDateTime($Horolog, 3, 1))
+    If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
+    If result.%Next() {
+        Set existingId = result.%Get("ID")
+        Set reason = "duplicate-proposal"
+        Set message = "Proposal #" _ existingId _ " for this target is still pending."
+        Quit $$$OK
+    }
+    Set statement = ##class(%SQL.Statement).%New()
+    Set tSC = statement.%Prepare("SELECT TOP 1 ID, Kind, ResolvedAt FROM MyOwn_Agent.Proposal WHERE TargetType = ? AND TargetId = ? AND State = 'executed' ORDER BY ResolvedAt DESC, ID DESC")
+    If $$$ISERR(tSC) Quit tSC
+    Set result = statement.%Execute(targetType, targetId)
+    If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
+    If result.%Next(), $ZConvert(result.%Get("Kind"), "L") = $ZConvert(kind, "L") {
+        Set cutoff = ..MinutesAgo(config.CooldownMinutes)
+        ; String comparison: ODBC timestamps compared with ">=" would be compared as numbers.
+        If '(cutoff ] result.%Get("ResolvedAt")) {
+            Set existingId = result.%Get("ID")
+            Set reason = "recently-executed"
+            Set message = "Proposal #" _ existingId _ " already applied this action to the target within the last " _ config.CooldownMinutes _ " minutes."
+        }
+    }
+    Quit $$$OK
+}
+
+ClassMethod MinutesAgo(minutes As %Integer) As %TimeStamp [ Private ]
+{
+    Set now = $Horolog
+    Set seconds = $Piece(now, ",", 2) - (minutes * 60)
+    Set days = +now
+    While seconds < 0 {
+        Set seconds = seconds + 86400
+        Set days = days - 1
+    }
+    Quit $ZDateTime(days _ "," _ seconds, 3, 1)
+}
+
 ClassMethod CheckCooldown(fingerprint As %String, config As MyOwn.Agent.Config, Output suppressed As %Boolean) As %Status
 {
     Set suppressed = 0

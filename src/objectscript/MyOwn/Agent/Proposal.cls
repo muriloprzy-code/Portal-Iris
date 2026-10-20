@@ -40,9 +40,49 @@ Method Resolve(newState As %String, resolvedBy As %String, message As %String = 
     Quit ..%Save()
 }
 
+/// Marks every pending proposal past ExpiresAt as expired (and audits it), so lists and the
+/// Approvals badge never show an expired proposal as pending. Proposals being confirmed or
+/// rejected right now (locked) are skipped; ConfirmProposal applies the same rule itself.
+ClassMethod ExpireOverdue(Output expired As %Integer) As %Status
+{
+    Set expired = 0
+    Set statement = ##class(%SQL.Statement).%New()
+    Set tSC = statement.%Prepare("SELECT ID FROM MyOwn_Agent.Proposal WHERE State = 'pending' AND ExpiresAt < ?")
+    If $$$ISERR(tSC) Quit tSC
+    Set result = statement.%Execute($ZDateTime($Horolog, 3, 1))
+    If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
+    Set count = 0
+    While result.%Next() {
+        Set count = count + 1
+        Set ids(count) = result.%Get("ID")
+    }
+    For index = 1:1:count {
+        Set id = ids(index)
+        Lock +^MyOwn.Agent.Lock("proposal", id):0
+        If '$Test Continue
+        Try {
+            Set proposal = ..%OpenId(id)
+            If $IsObject(proposal), proposal.State = "pending", proposal.IsExpired() {
+                Set proposal.State = "expired"
+                Set proposal.ResolvedAt = $ZDateTime($Horolog, 3, 1)
+                Set proposal.ResultMessage = "The proposal expired before confirmation."
+                Set tSC = proposal.%Save()
+                If $$$ISOK(tSC) Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ProposalExpired", proposal.DecisionId, "proposal " _ id, 1, "ttl")
+                If $$$ISOK(tSC) Set expired = expired + 1
+            }
+        } Catch exception {
+            Set tSC = exception.AsStatus()
+        }
+        Lock -^MyOwn.Agent.Lock("proposal", id)
+        If $$$ISERR(tSC) Quit
+    }
+    Quit tSC
+}
+
 Method IsExpired() As %Boolean
 {
-    Quit (..ExpiresAt '= "") && (..ExpiresAt < $ZDateTime($Horolog, 3, 1))
+    ; ODBC timestamps must be compared as strings: "<" would compare them as numbers (the year).
+    Quit (..ExpiresAt '= "") && ($ZDateTime($Horolog, 3, 1) ] ..ExpiresAt)
 }
 
 Storage Default

@@ -23,8 +23,8 @@ const basic = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64')
 // Expected drawer content per scenario with the deterministic Rules engine.
 const expected = {
   S1: { risk: 'critical', action: 'notify', proposal: false, evidence: true, conditions: false },
-  S2: { risk: 'critical', action: 'propose_task_suspend', proposal: true, evidence: true, conditions: false },
-  S3: { risk: 'warning', action: 'propose_task_resume', proposal: true, evidence: true, conditions: false },
+  S2: { risk: 'critical', action: 'propose_task_suspend', proposal: true, task: true, evidence: true, conditions: false },
+  S3: { risk: 'warning', action: 'propose_task_resume', proposal: true, task: true, evidence: true, conditions: false },
   S4: { risk: 'info', action: 'ignore', proposal: false, evidence: false, conditions: false },
   S5: { risk: 'low', action: 'approve', proposal: true, evidence: true, conditions: true },
   S6: { risk: 'high', action: 'escalate', proposal: false, evidence: true, conditions: false },
@@ -54,7 +54,8 @@ async function api(method, route, body) {
 }
 
 async function openTab(page, name) {
-  await page.getByRole('tab', { name, exact: true }).click()
+  // Tab names may carry a count badge (for example "Approvals 3"), so match the start of the name.
+  await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click()
 }
 
 async function setSettings(page, values) {
@@ -106,7 +107,8 @@ try {
       continue
     }
     await page.getByText(`${scenario} completed through the interoperability production.`).waitFor()
-    if (data.proposalId) createdProposals.push(data.proposalId)
+    // Only reject what this run created: a reused pending proposal (duplicate) belongs to someone else.
+    if (data.proposalId && data.gate?.downgradedBy !== 'duplicate-proposal') createdProposals.push(data.proposalId)
 
     await openTab(page, 'Decisions')
     const openButton = page.getByRole('button', { name: `Open decision ${data.decisionId}`, exact: true })
@@ -130,7 +132,11 @@ try {
     if (risk !== want.risk) problems.push(`risk=${risk}`)
     if (!gate.startsWith(`final action ${want.action}`)) problems.push(`gate=${gate}`)
     for (const fragment of want.gate ?? []) if (!gate.includes(fragment)) problems.push(`gate lacks ${fragment}`)
-    if (want.proposal !== /^#\d+ .* pending$/.test(proposal)) problems.push(`proposal=${proposal}`)
+    // S2/S3 act on the shared demonstration task: a pending proposal may be reused, and the same action
+    // executed within the cooldown legitimately yields no proposal (the Gate states why).
+    const pendingProposal = /^#\d+ · \S+ · pending/.test(proposal)
+    const recentlyExecuted = gate.includes('recently-executed') && proposal === 'No proposal was created.'
+    if (want.proposal ? !(pendingProposal || (want.task && recentlyExecuted)) : pendingProposal) problems.push(`proposal=${proposal}`)
     if (!rationale || rationale === '—') problems.push('rationale empty')
     if (want.evidence !== evidence > 0) problems.push(`evidence=${evidence}`)
     if (want.conditions !== conditions > 0) problems.push(`conditions=${conditions}`)
@@ -144,6 +150,19 @@ try {
     const closed = await drawer.waitFor({ state: 'detached', timeout: 3000 }).then(() => true, () => false)
     if (!closed) add(`UI-${scenario}-CLOSE`, false, 'Escape did not close the decision drawer.')
   }
+
+  // Expired proposals must never be shown (or counted in the badge) as pending.
+  await openTab(page, 'Approvals')
+  await page.locator('.agent-card-list').first().waitFor()
+  const pad = (value) => String(value).padStart(2, '0')
+  const now = new Date()
+  const nowText = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+  const cards = page.locator('.agent-card-list article').filter({ has: page.locator('.status-chip', { hasText: /^pending$/ }) })
+  const expiries = await cards.locator('dt:text-is("Expires") + dd').allInnerTexts()
+  const overdue = expiries.filter((value) => value.trim() < nowText)
+  const tabBadge = Number((await page.getByRole('tab', { name: /Approvals/ }).locator('b').innerText().catch(() => '0')) || 0)
+  await page.screenshot({ path: path.join(outDir, 'approvals.png') })
+  add('UI-APPROVALS', overdue.length === 0 && tabBadge === expiries.length, `${expiries.length} pending card(s), badge ${tabBadge}, ${overdue.length} past their expiry (server time compared with ${nowText}).`)
 } catch (error) {
   add('UI-RUN', false, `Unexpected failure: ${error.message}`)
   await page.screenshot({ path: path.join(outDir, 'failure.png'), fullPage: true }).catch(() => {})

@@ -7,7 +7,8 @@ Parameter ADAPTER = "Ens.InboundAdapter";
 Parameter FAILURETHRESHOLD = 3;
 
 /// Looks at tasks of the MYOWN namespace: repeated failures, or suspended tasks whose last run was ok.
-/// Duplicates are absorbed by the agent cooldown (stable key = task id + state + failure count).
+/// Duplicates are absorbed by the agent cooldown (stable key = task id + state + failure band,
+/// for example "3+"), and the Gate never creates a second proposal for the same task and action.
 Method OnProcessInput(pInput As %RegisteredObject, Output pOutput As %RegisteredObject) As %Status
 {
     Set tSC = $$$OK
@@ -63,13 +64,15 @@ Method Scan() As %Status [ Private ]
         Set repeated = (failures(name) >= ..#FAILURETHRESHOLD)
         Set recovered = (suspended && lastOk(name))
         If 'repeated && 'recovered Continue
-        Set tSC = ..Emit(taskId, name, manageable, suspended, failures(name), lastError(name), lastOk(name))
+        Set tSC = ..Emit(taskId, name, taskResult.%Get("NameSpace"), manageable, suspended, failures(name), lastError(name), lastOk(name))
         If $$$ISERR(tSC) Quit
     }
     Quit tSC
 }
 
-Method Emit(taskId As %Integer, name As %String, manageable As %Boolean, suspended As %Boolean, failures As %Integer, lastError As %String, lastOk As %Boolean) As %Status [ Private ]
+/// The task fields must match what the portal reads at confirmation time (id, name, namespace,
+/// suspended, manageable); otherwise every proposal from the watcher fails with TARGET_CHANGED.
+Method Emit(taskId As %Integer, name As %String, namespace As %String, manageable As %Boolean, suspended As %Boolean, failures As %Integer, lastError As %String, lastOk As %Boolean) As %Status [ Private ]
 {
     Set context = {}
     Set context.source = "task-watcher"
@@ -78,6 +81,7 @@ Method Emit(taskId As %Integer, name As %String, manageable As %Boolean, suspend
     Set context.task = {}
     Set context.task.id = taskId
     Set context.task.name = ##class(MyOwn.Agent.Sanitize).Text(name, 200)
+    Set context.task.namespace = namespace
     Set context.task.manageable = +manageable
     Set context.task.suspended = +suspended
     Set context.task.consecutiveFailures = failures

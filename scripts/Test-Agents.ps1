@@ -201,7 +201,8 @@ try {
 
     Add-Check -Id 'IT-16' -Details 'S2 started like the portal screen (no taskId) uses the demonstration task and creates a proposal.' -Action {
         $fromScreen = Invoke-PortalJson -Method POST -Path '/agent/simulate' -Body @{ scenario = 'S2'; taskId = 0 }
-        if ($fromScreen.data.proposalId) {
+        # A reused pending proposal (for example one from TaskWatcher) is not ours to reject.
+        if ($fromScreen.data.proposalId -and $fromScreen.data.gate.downgradedBy -ne 'duplicate-proposal') {
             Invoke-PortalJson -Method POST -Path "/agent/proposals/$($fromScreen.data.proposalId)/reject" -Body @{ reason = 'Automated test cleanup' } | Out-Null
         }
         $fromScreen.data.decision.action -eq 'propose_task_suspend' -and [bool]$fromScreen.data.proposalId -and "$($fromScreen.data.decision.targetId)" -eq "$demoTaskId"

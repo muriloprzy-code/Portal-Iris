@@ -281,7 +281,7 @@ function DecisionDrawer({ decision, onClose, onOpenTrace }: { decision: AgentDec
       <div><dt>Validation</dt><dd>{decision.validationStatus}</dd></div>
       <div><dt>Confidence</dt><dd>{Math.round(Number(decision.confidence || 0) * 100)}%</dd></div>
       <div className="wide"><dt>Gate</dt><dd>{gateSummary(decision)}{decision.gate?.reason ? ` · ${decision.gate.reason}` : ''}</dd></div>
-      <div className="wide"><dt>Proposal</dt><dd>{decision.proposal ? `#${decision.proposal.id} · ${decision.proposal.kind} · ${decision.proposal.state}` : 'No proposal was created.'}</dd></div>
+      <div className="wide"><dt>Proposal</dt><dd>{decision.proposal ? `#${decision.proposal.id} · ${decision.proposal.kind} · ${decision.proposal.state}${yes(decision.proposal.reused) ? ' · already pending, not duplicated' : ''}` : 'No proposal was created.'}</dd></div>
     </dl>
     <h4>Rationale</h4>
     <p className="decision-text">{decision.rationale || '—'}</p>

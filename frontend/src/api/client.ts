@@ -302,7 +302,8 @@ export type AgentDecision = {
   evidence?: AgentEvidence[]
   conditions?: string[]
   gate?: AgentGateResult
-  proposal?: { id: number; kind: string; state: string }
+  /** reused = 1 when the Gate pointed this decision to an already pending proposal instead of creating one. */
+  proposal?: { id: number; kind: string; state: string; reused?: number }
 }
 
 export type AgentEvidence = { source?: string; ref?: string | number }
@@ -313,6 +314,8 @@ export type AgentGateResult = {
   allowed?: number
   createProposal?: number
   reason?: string
+  /** Existing proposal that blocked a duplicate (downgradedBy duplicate-proposal or recently-executed). */
+  duplicateOf?: number
 }
 
 export type AgentProposal = {
