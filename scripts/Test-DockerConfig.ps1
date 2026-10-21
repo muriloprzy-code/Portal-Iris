@@ -33,6 +33,9 @@ $checks = [ordered]@{
     'CPF initialization' = $dockerfile -match 'ISC_CPF_MERGE_FILE'
     'IPM bootstrap' = $dockerfile -match '/tmp/zpm\.xml'
     'MYOWN namespace' = $merge -match 'CreateNamespace:Name=MYOWN'
+    # The production classes extend Ens.*; they only compile in an interoperability-enabled namespace.
+    # EnableNamespace (not Interop=1, which makes an IRIS for Health Foundation namespace with its own production).
+    'MYOWN interoperability' = ($merge -match 'CreateNamespace:Name=MYOWN[^\r\n]*Interop=0') -and ($init -match '(?s)EnableNamespace\("MYOWN".*zpm "load')
     'IPM package load' = $init -match 'zpm "load /home/irisowner/dev -v"'
     'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($start -match '--password-file') -and ($start -match 'iris\.cpf') -and ($start -match 'CSPpwd')
     'Web port mapping' = $compose -match '52774.*:52773'

@@ -2,6 +2,12 @@ zn "%SYS"
 do $System.OBJ.Load("/tmp/zpm.xml", "ck")
 zpm "enable -map -globally"
 
+; Enable interoperability before the package compiles (the production classes extend Ens.*).
+; EnableNamespace is used instead of Interop=1 in merge.cpf: on IRIS for Health, Interop=1
+; makes a Foundation namespace whose own production would block the portal production.
+set sc = ##class(%EnsembleMgr).EnableNamespace("MYOWN", 0, , 0, 0)
+if 'sc write !, "EnableNamespace MYOWN failed: ", $System.Status.GetErrorText(sc), !
+
 zn "MYOWN"
 zpm "load /home/irisowner/dev -v":1:1
 halt

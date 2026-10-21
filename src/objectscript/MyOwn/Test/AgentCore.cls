@@ -108,7 +108,8 @@ ClassMethod RunSmokeViaSQL() As %String [ SqlName = AgentCoreSmoke, SqlProc ]
     Set markerStatus = ##class(MyOwn.Service.Audit).AgentEventData("ProposalConfirmed", 42, "proposal 7;agent=0;decisionId=1" _ $Char(10) _ "x", 1, "task.suspend", 1, .eventData)
     Set unknownStatus = ##class(MyOwn.Service.Audit).AgentEventData("ApproveEverything", 42, "x", 1, "", 1, .unknownData)
     Set fields = $Length(eventData, ";")
-    Do ..Add(report, "UT-14-AUDIT", $$$ISOK(markerStatus) && ($Extract(eventData, 1, 21) = "agent=1;decisionId=42") && (fields = 7) && ($Length(eventData, "=") = 8) && (eventData '[ $Char(10)) && $$$ISERR(unknownStatus), "Agent audit events carry the agent marker and decision id, cannot be forged through their fields, and only use the specified event names.")
+    Set sameList = (##class(MyOwn.Installer).#AgentAuditEvents = ##class(MyOwn.Service.Audit).#AgentEvents) && (##class(MyOwn.Installer).#AgentAuditType = ##class(MyOwn.Service.Audit).#AgentType)
+    Do ..Add(report, "UT-14-AUDIT", $$$ISOK(markerStatus) && ($Extract(eventData, 1, 21) = "agent=1;decisionId=42") && (fields = 7) && ($Length(eventData, "=") = 8) && (eventData '[ $Char(10)) && $$$ISERR(unknownStatus) && sameList, "Agent audit events carry the agent marker and decision id, cannot be forged through their fields, only use the specified event names, and the installer registers the same list.")
 
     Set report.summary = {}
     Set report.summary.pass = report.pass

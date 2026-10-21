@@ -22,6 +22,10 @@ ClassMethod SetupViaSQL() As %String [ SqlName = MyOwnSetup, SqlProc ]
 /// Returns "OK" or an error message to the SQL caller.
 ClassMethod LoadAndSetupViaSQL(dir As %String) As %String [ SqlName = MyOwnLoadAndSetup, SqlProc ]
 {
+    ; The production classes extend Ens.*: the namespace must be interoperability-enabled
+    ; before they are compiled, not only later in Setup.
+    Set tSC = ..EnsureInteroperability($Namespace)
+    If $$$ISERR(tSC) Quit "INTEROPERABILITY ERROR: "_$System.Status.GetErrorText(tSC)
     Set tSC = $System.OBJ.LoadDir(dir, "ck", .errorLog, 1)
     If $$$ISERR(tSC) Quit "LOAD ERROR: "_$System.Status.GetErrorText(tSC)
     Quit ..SetupViaSQL()
@@ -125,16 +129,29 @@ ClassMethod EnsureAgentProduction() As %Status [ Private ]
 {
     Set production = "MyOwn.Production.Main"
     Set active = ##class(Ens.Director).GetActiveProductionName()
-    If active = production {
+    If (active = production) || ..IsEmptyFoundationProduction(active) {
         Set tSC = ##class(Ens.Director).StopProduction(30, 0)
         If $$$ISERR(tSC) Set tSC = ##class(Ens.Director).StopProduction(10, 1)
         If $$$ISERR(tSC) Quit tSC
         Set active = ""
     }
     If active '= "" Quit $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
-    Set tSC = ##class(Ens.Director).StartProduction(production)
+    ; Auto-start first: if starting now fails (on IRIS for Health image builds the Foundation
+    ; job can still hold the Ens runtime lock), IRIS starts the production on the next boot.
+    Set tSC = ##class(Ens.Director).SetAutoStart(production)
     If $$$ISERR(tSC) Quit tSC
-    Quit ##class(Ens.Director).SetAutoStart(production)
+    Quit ##class(Ens.Director).StartProduction(production)
+}
+
+/// On IRIS for Health, enabling interoperability creates and starts an empty
+/// &lt;NS&gt;PKG.FoundationProduction. Only that generated, item-less production may be replaced
+/// by the portal production; any other active production still blocks the installation.
+ClassMethod IsEmptyFoundationProduction(name As %String) As %Boolean [ Private ]
+{
+    If name '= ($Translate($Namespace, "%") _ "PKG.FoundationProduction") Quit 0
+    Set definition = ##class(Ens.Config.Production).%OpenId(name)
+    If '$IsObject(definition) Quit 0
+    Quit (definition.Items.Count() = 0)
 }
 
 ClassMethod EnsureHealthPatterns() As %Status [ Private ]
@@ -317,11 +334,12 @@ ClassMethod PrepareForContainerBundling() As %Status
     Quit tSC
 }
 
-/// Copied at compile time from MyOwn.Service.Audit: that class is not visible from %SYS,
-/// where the events are registered.
-Parameter AgentAuditType = {##class(MyOwn.Service.Audit).#AgentType};
+/// Same values as MyOwn.Service.Audit (AgentType, AgentEvents), kept as literals: the Installer
+/// must compile on its own (Install-All compiles it first) and runs in %SYS, where MyOwn classes
+/// are not visible. UT-14-AUDIT fails if the two lists differ.
+Parameter AgentAuditType = "Agent";
 
-Parameter AgentAuditEvents = {##class(MyOwn.Service.Audit).#AgentEvents};
+Parameter AgentAuditEvents = "Decision,ProposalCreated,ProposalConfirmed,ProposalRejected,ProposalExpired,ExecutionResult,ConfigChange,KillSwitch";
 
 /// Registers the audit events outside a full Setup (idempotent). Switches to %SYS itself.
 ClassMethod RegisterAuditEvents() As %Status

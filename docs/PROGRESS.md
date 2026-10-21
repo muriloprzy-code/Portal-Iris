@@ -16,19 +16,19 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
 - Frontend TypeScript type-check passed; Vite production bundle generated and served successfully by local IRIS at `/myown/`.
 - Current 2026.2 instance does not contain `%AI.Agent`, `%AI.Tool`, `%AI.ToolSet`, or `MyOwn.AIHub.Engine`. Real AI Hub work must be verified in build 154.
-- The AI Hub image files found under `Downloads\\ai hub` are still browser `.crdownload` files, so they cannot be loaded into Docker yet.
+- AI Hub build 154 (IRIS for Health, `irishealth-community:2026.3.0AI.154.0`) runs on port 52774 from a fresh volume: installation completes unattended and the same regression passes as on 2026.2 (see "AI Hub build 154 regression"). The IRIS Community edition of build 154 is not loaded on this machine yet.
 
 ## Backlog status
 
 | Task | Status | Verification / remaining work |
 |---|---|---|
-| T01 AI Hub environment | In progress | Agentic Dev is connected; Docker files target build 154. Load the two EAP images and run regression on both editions. |
+| T01 AI Hub environment | Done for IRIS for Health | Build 154 (IRIS for Health) installs unattended on a fresh volume and passes the full regression with the same results as 2026.2; `%AI.*` classes present. Remaining: the IRIS Community edition of build 154 (image not loaded here). |
 | T02 AI Hub spike | Blocked by image | Introspect and exercise real `%AI.*` APIs in build 154; record signatures in `AI-HUB-NOTES.md`. |
 | T03 Data model and retention | Done (core) | Persistence classes compile; retention smoke passes. |
 | T04 Rules engine and contexts | Done | Deterministic scenarios and unit tests pass. |
 | T05 Validator and sanitization | Done | Canonical and malicious-output checks pass; hardened by the adversarial corpus (strict types, field allow-list, evidence/conditions checks, delimiter look-alikes, invisible characters). |
 | T06 Gate, prohibited targets, budget, cooldown | Done (core) | Budget fallback, protected targets and one-use proposals pass. |
-| T07 Interoperability setup and audit | Done on 2026.2 | Production is installed and running; build 154 regression remains. |
+| T07 Interoperability setup and audit | Done on 2026.2 and build 154 (IRIS for Health) | Namespace enabled before the package compiles, empty Foundation production replaced, portal production auto-starts, nine audit events registered by the installer. |
 | T08 Production flow | Done (core) | Business Service → Process → Operation is exercised by integration tests. |
 | T09 Proposal confirmation | Done (core) | Revalidation, separation of duties, read-back and one-use behavior tested. |
 | T10 REST routes | Mostly done | Agent routes exist and are exercised; OpenAPI expansion and complete RBAC matrix remain. |
@@ -144,6 +144,32 @@ REST output (follow-up): `Agent.PublicDecision` is the single sanitized form of 
 - `StableKey` uses a failure band (`0`, `1-2`, `3+`) instead of the exact count; `TaskWatcher` now includes the task namespace.
 - Tests: UT-15-STABLEKEY, IT-17-EXPIRY, IT-18-DEDUP (stale pending superseded, pending blocked, recently executed blocked, executed long ago allowed, opposite action allowed) and UI-APPROVALS (no pending card past its expiry; badge equals the pending cards). Pending proposals went from 26 to 1 after the change. Not verified end to end: confirming a new watcher proposal, which would suspend a real task.
 - Regression IT-19-EXPIRY-REGRESSION: a proposal that expired hours earlier in the same year and month, and one that expired a year earlier, both fail confirmation with `PROPOSAL_EXPIRED` and are never listed as pending. The same-month case is the one the old numeric comparison missed (checked: old expression 0, new expression 1 for that timestamp).
+
+## AI Hub build 154 regression (2026-10-21)
+
+Target: `irishealth-community:2026.3.0AI.154.0` (IRIS for Health, `2026.3.0AI (Build 154U)`), Docker on port 52774 with a new volume `myown-portal-data-154`, `MYOWN_AI_API_KEY` empty, local IRIS 2026.2 on 52773 untouched. The image was not pushed anywhere.
+
+Installation defects found on the fresh build and fixed:
+
+1. The package never compiled: `MYOWN` was created with `Interop=0` and interoperability was only enabled later in `Setup`, so `MyOwn.Production.*` failed with "Class 'Ens.Production' does not exist". `docker/iris.script` now calls `%EnsembleMgr.EnableNamespace("MYOWN")` before `zpm load` (not `Interop=1`, see 3), and `MyOwnLoadAndSetup` (used by `Instalar.bat`) enables the namespace before `LoadDir`. `Test-DockerConfig.ps1` checks it.
+2. `MyOwn.Installer` did not compile on its own: its audit parameters were compile-time expressions over `MyOwn.Service.Audit`. They are literals again; UT-14-AUDIT fails if they differ from the Audit lists.
+3. On IRIS for Health, enabling interoperability creates and starts an empty `MYOWNPKG.FoundationProduction`, which blocked the portal production. The installer replaces only that generated, item-less Foundation production; any other active production still blocks the installation.
+4. During the image build the Foundation job keeps the Ens runtime lock (`ErrCanNotAcquireRuntimeLock`), so the installer now sets the portal production to auto-start before starting it; IRIS starts it on boot. Verified: on a new container the production was running without any manual step.
+
+Regression (reports in `test-results/aihub-154/`, baseline in `test-results/local-2026.2/`, each with `iris.image` and `iris.edition`):
+
+| Suite | 2026.2 (IRIS) | Build 154 (IRIS for Health) |
+|---|---|---|
+| `Test-MyOwn.ps1` | pass | pass (only difference: reported product `irisforhealth`) |
+| `Test-SysAdminMutations.ps1` | pass | pass |
+| `Test-Agents.ps1` | 24 / 0 / 1 skip | 24 / 0 / 1 skip, same checks |
+| `Test-AgentAdversarial.ps1` | 92 / 0 | 92 / 0 |
+| `Test-AgentSmoke.ps1` core | 14 / 0 | 14 / 0 |
+| `Test-AgentSmoke.ps1` integration | 19 / 0 | 19 / 0 |
+
+The first integration smoke run on build 154 ended with HTTP 504 from the web gateway (`Server_Response_Timeout` and `Queued_Request_Timeout` are 60 s) and no request reached the production; one rerun passed (14 s for the integration suite). The cause was not confirmed; the integration smoke runs in a single HTTP request, and IT-14 can wait up to 120 s for the audit buffer, so a slow flush can exceed the gateway limit.
+
+`%AI.Agent`, `%AI.Provider`, `%AI.Tool`, `%AI.ToolSet` and the `%AI.Policy` package exist in build 154 (details in `AI-HUB-NOTES.md`).
 
 ## Next verified milestone
 
