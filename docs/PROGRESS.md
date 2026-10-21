@@ -171,6 +171,10 @@ The first integration smoke run on build 154 ended with HTTP 504 from the web ga
 
 `%AI.Agent`, `%AI.Provider`, `%AI.Tool`, `%AI.ToolSet` and the `%AI.Policy` package exist in build 154 (details in `AI-HUB-NOTES.md`).
 
+## Real AI Hub test (T03, 2026-10-21)
+
+Five triage calls plus three injection cases against Gemini (`gemini-3.8-flash`; `gemini-2.5-flash` from `.env` is no longer offered to new keys) through `%AI.Agent` on build 154: 8 of 8 answers were a single JSON object accepted by our Validator, 12.6 to 83.3 s per call, the model ignored all injected instructions. Invalid key and a slow provider both fell back to Rules without breaking, but the reason is not recorded, the slow case returns HTTP 504 to the caller at 60 s, and `Budget.CallsAllowed` counts Rules decisions as AI calls. Details and findings in `AI-HUB-NOTES.md` ("Teste real"). Engine not implemented yet.
+
 ## Next verified milestone
 
 Load `iris-community:2026.3.0AI.154.0` and `irishealth-community:2026.3.0AI.154.0`, point `iris-agentic-dev` to that container, introspect `%AI.*`, and implement T02 plus T12–T14 against the signatures actually present in build 154.
