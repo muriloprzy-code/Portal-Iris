@@ -23,7 +23,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 | Task | Status | Verification / remaining work |
 |---|---|---|
 | T01 AI Hub environment | Done for IRIS for Health | Build 154 (IRIS for Health) installs unattended on a fresh volume and passes the full regression with the same results as 2026.2; `%AI.*` classes present. Remaining: the IRIS Community edition of build 154 (image not loaded here). |
-| T02 AI Hub spike | Blocked by image | Introspect and exercise real `%AI.*` APIs in build 154; record signatures in `AI-HUB-NOTES.md`. |
+| T02 AI Hub spike | Done (read-only, no key) | `%AI` API of build 154 introspected and partly exercised without a key; signatures, verified behavior and the mapping to the portal in `AI-HUB-NOTES.md`. Open: a real `Chat` with a key. |
 | T03 Data model and retention | Done (core) | Persistence classes compile; retention smoke passes. |
 | T04 Rules engine and contexts | Done | Deterministic scenarios and unit tests pass. |
 | T05 Validator and sanitization | Done | Canonical and malicious-output checks pass; hardened by the adversarial corpus (strict types, field allow-list, evidence/conditions checks, delimiter look-alikes, invisible characters). |
