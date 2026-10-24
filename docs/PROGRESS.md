@@ -215,7 +215,7 @@ Replay answers are now one fixture per demonstration scenario, each a real model
 
 | Scenario | Source | Model | Recorded (UTC) |
 |---|---|---|---|
-| S1 | T03 C1 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:09 |
+| S1 | recorder, exact context | gemini-3.8-flash | 2026-10-24 01:00 |
 | S2 | T03 C2 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:10 |
 | S3 | T03 C3 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:11 |
 | S4 | T03 C4 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:12 |
@@ -226,7 +226,7 @@ Replay answers are now one fixture per demonstration scenario, each a real model
 | S9 | T03 I2 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:15 |
 | S10 | not applicable: the budget check stops it before any AI call | — | — |
 
-Pending recording: none. S1 to S4, S8 and S9 come from the T03 calls, whose contexts were equivalent but not identical (each header says how); re-recording them with the exact contexts takes six more calls. The T04 synthetic answers (low and medium access, warning) and the invented tool call in the S2 replay were removed. A scenario whose fixture is not recorded makes the engine fall back with the new reason `replay_missing` instead of inventing an answer (AH-16). AH-15 checks that every recorded fixture has its header and passes the Validator for its scenario context.
+Pending recording: none. S2 to S4, S8 and S9 come from the T03 calls, whose contexts were equivalent but not identical (each header says how). Re-recording them with the exact contexts (2026-10-24 01:00 UTC, 3 of the 6 allowed calls): S1 recorded in 18.1 s; S2 and S3 got no answer within the 20 s deadline (S3 with no tool call), so the run stopped there and S4, S8 and S9 were not attempted; those five keep their T03 recordings. The recorder now stops at any provider failure (a 429 can surface as a timeout) and reports the tool calls made before the deadline. The T04 synthetic answers (low and medium access, warning) and the invented tool call in the S2 replay were removed. A scenario whose fixture is not recorded makes the engine fall back with the new reason `replay_missing` instead of inventing an answer (AH-16). AH-15 checks that every recorded fixture has its header and passes the Validator for its scenario context.
 
 The Agents screen and the overview card show the badge "Replay of recorded real decisions" while `MYOWN_AI_MODE=replay` (UI-REPLAY-BADGE: shown in replay on build 154, absent in live on 2026.2). The secret scan pattern for configured keys no longer crosses a line break (an empty `MYOWN_AI_API_KEY=` in a diff matched the next line).
 

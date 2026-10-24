@@ -37,6 +37,9 @@ ClassMethod Record(scenario As %String, authorization As %String = "", taskId As
         If $$$ISERR(validStatus) Set reason = "invalid_json", detail = $Select($IsObject(errors) && (errors.%Size() > 0): errors.%Get(0), 1: "")
     }
     Do ..SaveLedger(workflow, scenario, result, started, $Select(reason = "": "ok", 1: reason), detail)
+    ; Tool calls (also those made before a deadline) show where the time went.
+    Set calls = $Select($IsObject($Get(result)) && $IsObject(result.%Get("toolCalls")): result.toolCalls, 1: [])
+    Set failed.toolCalls = calls
     If reason '= "" Quit ..Failed(failed, reason, detail)
 
     Set raw = result.raw
@@ -55,6 +58,8 @@ ClassMethod Record(scenario As %String, authorization As %String = "", taskId As
     Set fixture.substitutions = substitutions
     Set fixture.latencyMs = +result.%Get("latencyMs")
     Set fixture.usage = result.%Get("usage")
+    Set fixture.iterations = +result.%Get("iterations")
+    If calls.%Size() > 0 Set fixture.toolCallsDuringRecording = calls
     Set fixture.raw = raw
     Quit fixture.%ToJSON()
 }

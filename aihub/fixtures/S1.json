@@ -3,15 +3,15 @@
   "status": "recorded",
   "provider": "gemini",
   "model": "gemini-3.8-flash",
-  "recordedAt": "2026-10-21T01:09:22Z",
-  "source": "T03 real call C1-disk-critical (docs/AI-HUB-NOTES.md, \"Teste real\")",
-  "context": "T03 C1: disk usage 92 %, z-score 3.4, critical; the T03 context also listed two task candidates (1001 manageable, 1002 not), S1 lists none.",
+  "recordedAt": "2026-10-24T01:00:46Z",
+  "source": "real call recorded by scripts/Record-ReplayFixtures.ps1",
+  "context": "Exact S1 context (MyOwn.Install.Scenarios.BuildContext).",
   "substitutions": [],
-  "latencyMs": 35007,
+  "latencyMs": 18067,
   "usage": {
-    "promptTokens": 311,
-    "completionTokens": 129,
-    "totalTokens": 842
+    "promptTokens": 424,
+    "completionTokens": 103,
+    "totalTokens": 587
   },
-  "raw": "{\"schemaVersion\":1,\"workflow\":\"incident-triage\",\"action\":\"escalate\",\"severity\":\"critical\",\"targetType\":\"none\",\"targetId\":\"\",\"rationale\":\"Disk usage has reached a critical threshold of 92% (z-score 3.4). The only potential remediation task present, 'System journal purge', is marked non-manageable. Immediate manual intervention is required to free disk space and avoid database freeze.\",\"confidence\":0.95,\"evidence\":[{\"source\":\"anomaly\",\"ref\":\"diskUsedPercent\"}],\"recommendedFollowUp\":\"Investigate disk consumption, manually trigger journal purge if appropriate, and expand storage.\"}"
+  "raw": "{\"schemaVersion\":1,\"workflow\":\"incident-triage\",\"action\":\"escalate\",\"severity\":\"critical\",\"targetType\":\"none\",\"targetId\":\"\",\"rationale\":\"Critical anomaly detected on diskUsedPercent (z-score 3.4) with no associated background tasks identified. Immediate system investigation is required.\",\"confidence\":0.95,\"evidence\":[{\"source\":\"anomaly\",\"ref\":\"diskUsedPercent\"}],\"recommendedFollowUp\":\"Investigate disk space utilization and free up storage on the IRIS host.\"}"
 }

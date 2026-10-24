@@ -58,8 +58,11 @@ foreach ($scenario in $Scenarios) {
         [IO.File]::WriteAllText((Join-Path $fixtureDirectory "$scenario.json"), $text + "`n", [Text.UTF8Encoding]::new($false))
         Write-Host "RECORDED  $scenario  $($result.provider)/$($result.model) at $($result.recordedAt), $($result.latencyMs) ms" -ForegroundColor Green
     } else {
-        Write-Host "PENDING   $scenario  $($result.reason): $($result.detail)" -ForegroundColor Yellow
+        $tools = @($result.toolCalls | ForEach-Object { "$($_.name):$($_.status) $($_.summary)" })
+        Write-Host "PENDING   $scenario  $($result.reason): $($result.detail)$(if ($tools) { ' | tools: ' + ($tools -join '; ') } else { ' | no tool call' })" -ForegroundColor Yellow
         if ($result.detail -match '429|quota|Rate limit') { Write-Host 'Stopped at the provider quota error.' -ForegroundColor Yellow; break }
+        # The provider retries a 429 internally, so a quota error can also surface as a timeout.
+        if ($result.reason -in @('provider_timeout', 'provider_error')) { Write-Host "Stopped at a provider failure ($($result.reason))." -ForegroundColor Yellow; break }
         if ($result.reason -in @('not_live', 'no_key', 'budget', 'kill_switch')) { break }
     }
 }
