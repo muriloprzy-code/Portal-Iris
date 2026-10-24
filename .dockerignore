@@ -14,3 +14,4 @@ backups/
 !/.env.example
 extras/
 tests/ui/node_modules
+test-results/

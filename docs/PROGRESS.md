@@ -1,6 +1,6 @@
 # AI Agents implementation progress
 
-Last updated: 2026-10-20
+Last updated: 2026-10-22
 
 This file records verified progress against `SPEC-AI-AGENTS.md` and its first addendum. A checked item means the implementation exists and the listed verification passed; it does not replace the remaining AI Hub build 154 validation.
 
@@ -12,10 +12,10 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - REST agent suite: **24 passed, 0 failed, 1 optional Viewer check skipped** (`scripts/Test-Agents.ps1`), report in `test-results/agents-core.json`.
 - Agents UI (isolated browser): **14 passed, 0 failed** (`scripts/Test-AgentsUI.ps1`), report in `test-results/agents-ui.json`, screenshots in `test-results/ui/`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
-- Secret scan: **SEC-11 passed** across 180 project files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`).
-- AI Hub suite: script and report generation are ready; **6 checks correctly skip** on the current non-AI-Hub instance.
+- Secret scan: **SEC-11 passed** across the 113 tracked or staged files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`; `.env` and untracked files are out of scope).
+- AI Hub engine suite (replay, no key, no network): **15 passed, 0 failed** on build 154 (`scripts/Test-Agents-AIHub.ps1`, `SELECT MyOwn_AIHub_Test.AIHubEngineSmoke()`); skipped on 2026.2, where the module is not installed.
 - Frontend TypeScript type-check passed; Vite production bundle generated and served successfully by local IRIS at `/myown/`.
-- Current 2026.2 instance does not contain `%AI.Agent`, `%AI.Tool`, `%AI.ToolSet`, or `MyOwn.AIHub.Engine`. Real AI Hub work must be verified in build 154.
+- Current 2026.2 instance does not contain `%AI.*`, so the AI Hub module (`aihub/`, `myown-portal-aihub`) is not installed there and Rules decide (`not_installed`).
 - AI Hub build 154 (IRIS for Health, `irishealth-community:2026.3.0AI.154.0`) runs on port 52774 from a fresh volume: installation completes unattended and the same regression passes as on 2026.2 (see "AI Hub build 154 regression"). The IRIS Community edition of build 154 is not loaded on this machine yet.
 
 ## Backlog status
@@ -33,12 +33,12 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 | T09 Proposal confirmation | Done (core) | Revalidation, separation of duties, read-back and one-use behavior tested. |
 | T10 REST routes | Mostly done | Agent routes exist and are exercised; OpenAPI expansion and complete RBAC matrix remain. |
 | T11 Scenarios S1–S10 | Done (Rules) | REST script exercises all ten scenarios through the production and verifies the expected decisions. |
-| T12–T14 Real AI Hub engine | Pending build 154 | Provider, agents, read-only ToolSets and real token usage must use APIs introspected from build 154. |
+| T12–T14 Real AI Hub engine | Done (replay verified; live blocked by provider quota) | `MyOwn.AIHub.*` module: deadline worker, read-only ToolSet, allow-list and audit policies, ledger, replay mode, fallback reasons. 14 engine checks pass in replay on build 154. Real calls on 2026-10-22 ended in fallbacks (refused option, three timeouts, then HTTP 429 free-tier quota); a successful AI decision with the new settings is still to be measured. |
 | T15 Adversarial tests | Mostly done | SEC-01..SEC-04 and SEC-06..SEC-11 pass. SEC-01..04 are also covered offline by the 92-case corpus (`MyOwn.Test.AgentAdversarial`). SEC-05 is ready and runs when a separate Viewer credential is supplied. SEC-01/02 still need a run with a real LLM. |
 | T16 Configuration UI/REST | Done (core) | Settings, budgets, kill switch and secret-presence-only display implemented. Provider connection test remains with real AI Hub. |
 | T17 Agent frontend | Done (first complete pass) | Decisions (with detail drawer), approvals, access, production, guardrails and settings implemented. |
 | T18 Observability and trace UI | Done (first complete pass) | Ledger summary and trace timeline consume real backend data. |
-| T19 Test scripts and JSON reports | Done (framework) | Core smoke, integration smoke, REST, secret-scan and AI Hub scripts write JSON reports. AI Hub checks remain skipped until build 154 is connected. |
+| T19 Test scripts and JSON reports | Done | Core smoke, integration smoke, REST, secret-scan, UI and AI Hub scripts write JSON reports; the AI Hub suite runs the engine checks in replay and, with `-Live`, real calls (15 s apart, stop at 429). |
 | T20 Browser smoke/screenshots | Done (Rules) | `scripts/Test-AgentsUI.ps1` (Playwright, isolated Chromium) runs S1 to S10 from the screen and checks every decision drawer; screenshots in `test-results/ui/`. Repeat with AI Hub for contest screenshots. |
 | T21 Docker/IPM/installer | In progress | Build 154 image, environment variables and Compose overlay documented; clean-machine and both-edition tests remain. |
 | T22 Submission documentation | In progress | README AI Hub instructions added; final judges section, video and full reference review remain. |
@@ -174,6 +174,40 @@ The first integration smoke run on build 154 ended with HTTP 504 from the web ga
 ## Real AI Hub test (T03, 2026-10-21)
 
 Five triage calls plus three injection cases against Gemini (`gemini-3.8-flash`; `gemini-2.5-flash` from `.env` is no longer offered to new keys) through `%AI.Agent` on build 154: 8 of 8 answers were a single JSON object accepted by our Validator, 12.6 to 83.3 s per call, the model ignored all injected instructions. Invalid key and a slow provider both fell back to Rules without breaking, but the reason is not recorded, the slow case returns HTTP 504 to the caller at 60 s, and `Budget.CallsAllowed` counts Rules decisions as AI calls. Details and findings in `AI-HUB-NOTES.md` ("Teste real"). Engine not implemented yet.
+
+## AI Hub engine (T04, 2026-10-22)
+
+Module `myown-portal-aihub` (`aihub/module.xml`, depends on `myown-portal`), installed only where `%AI.Agent` exists: by `docker/iris.script` after the core, and by `MyOwnLoadAndSetup` (`aihub/src` next to `src/objectscript`). No stub remains in the repository or the container (`extras/T03EngineStub.cls` deleted; temporary probe classes removed).
+
+- `MyOwn.AIHub.Engine`: `Ready(.reason)` and `Decide(workflow, contextJSON, .result)`. Each decision runs in a `JOB` worker; the caller waits up to `MYOWN_AI_TIMEOUT_SECONDS` (default 20, 5 to 55) and then terminates it, because the session `timeout_ms` does not interrupt a provider call. Tool calls made before the deadline are kept.
+- Fallback reasons, stored in `Decision.FallbackReason`, the AI ledger row (`ErrorSummary`), the `Decision` audit detail (`rules-<reason>/...`) and shown on screen as "AI" or "Rules (reason)": `kill_switch`, `budget`, `disabled` (preference rules), `not_installed`, `no_key`, `provider_timeout`, `provider_error`, `invalid_json`.
+- Only real AI calls count for `MaxAgentCallsPerHour` and the daily token budget (`Engine = 'aihub'`, not replay). Every attempt writes its own ledger row with real tokens (total as reported, which includes hidden reasoning), latency and cost (hidden reasoning priced as output).
+- Configuration only from the environment (`MyOwn.Agent.AIEnv`: provider, model, key presence, mode, timeout, output tokens, thinking); `PUT /agent/config` ignores provider fields and the screen shows them read-only.
+- Prompt: compact instructions, portal facts as plain JSON, untrusted text (task names and errors, log lines, justifications; cut to 300 characters, at most 5 logs) only inside `<untrusted_data>` with `<` and `>` escaped. Session: `max_iterations` 2, `max_tokens` 400, temperature 0, `reasoning_effort` (low by default) for Gemini; a provider refusal of that option is retried once without it and recorded.
+- Tools: `MyOwn.AIHub.Tools.Ops` (`GetTaskRuns`, `GetMetricHistory`, SQL reads of this namespace only) in `MyOwn.AIHub.ToolSet.Ops`. `Policy.ReadOnlyAuth` (global authorization policy) allows only those two tools from that class; anything else is denied, stored as a `ToolCall` with status `denied` and audited as the new event `MyOwn/Agent/ToolDenied`.
+- Replay mode (`MYOWN_AI_MODE=replay`): `MyOwn.AIHub.Fixtures` holds the eight T03 answers (placeholders for task id, user and role; measured tokens and latency), three synthetic branches and the test cases; tools still run through the real tool manager and policies.
+- `TaskWatcher` fix: `%SYS_Task.History.Error` holds the message of every row ("Success", "Task suspended", "Task has expired ..."), so every run counted as a failure (53 in a row for the health task). A failure is now `Status` not 1.
+- Installation fix: `zpm "load ...":1:1` halts the session after the core (third argument `pHaltOnComplete`), so nothing after it ran; the loads use `:1:0`.
+
+Engine checks (`MyOwn.AIHub.Test.EngineTest`, replay): AH-01 readiness, AH-02 valid JSON with a tool call, AH-03 AI decision recorded, AH-04 invalid JSON, AH-05 timeout (5 s deadline, worker terminated), AH-06 provider error, AH-07 write tool denied and audited (never executed), AH-08 budget, AH-09 kill switch, AH-10 preference rules, AH-11 replay not counted, AH-12 allow-list, AH-13 delimiters, AH-14 reasoning-option retry.
+
+Regression (reports in `test-results/t04-local/` and `test-results/t04-aihub-154/`):
+
+| Suite | 2026.2 (IRIS) | Build 154 (IRIS for Health) |
+|---|---|---|
+| `Test-MyOwn.ps1` | pass | pass |
+| `Test-SysAdminMutations.ps1` | pass | pass |
+| `Test-Agents.ps1` | 24 / 0 / 1 skip | 24 / 0 / 1 skip |
+| `Test-AgentAdversarial.ps1` | 92 / 0 | 92 / 0 |
+| `Test-AgentSmoke.ps1` core / integration | 14 / 0, 19 / 0 | 14 / 0, 19 / 0 |
+| `Test-Agents-AIHub.ps1` | skipped (not installed) | 15 / 0 |
+| `Test-AgentsUI.ps1` | 14 / 0 | 14 / 0 |
+
+The UI test now opens `/myown/index.html`: the private web server of the IRIS containers serves no default document for `/myown/` (404), so evaluators must use the full URL, as the IPM install message already says.
+
+Real calls (Gemini `gemini-3.8-flash`, free tier; 5 of the 6 allowed, at least 15 s apart; the monitoring services were paused and the hourly limit set to 6 during the window, then restored): 1) HTTP 400 for a native `generationConfig` sent through `extra_params`, fallback `provider_error` in 0.7 s; 2) to 4) no answer within 55 s and no tool called, fallback `provider_timeout` (once without the reasoning option); 5) run in the foreground to rule out the worker: HTTP 429 free-tier quota after 27.7 s. The provider retries a 429 internally before reporting it, which explains the timeouts. Stopped there. Latency after the changes could not be measured; the T03 baseline stays 12.6 to 83.3 s (median about 45 s). The compact prompt is only 7 to 10 % shorter for the small T03 contexts (1,173 to 1,067 characters for C2); the reduction applies mainly to real health and log contexts. On the 154 container the engine preference was left at `rules`, so the restored monitoring services make no real calls until the quota resets.
+
+Mistake in this session: stopping the hung `docker build` client on Windows did not stop the build in the Docker daemon, so two image builds overlapped for a few minutes. The image used for the regression is the later one (fixed `iris.script`), checked inside the image.
 
 ## Next verified milestone
 

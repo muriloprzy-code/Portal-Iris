@@ -19,6 +19,10 @@ services:
       MYOWN_AI_API_KEY: ${MYOWN_AI_API_KEY:-}
       MYOWN_AI_PROVIDER: ${MYOWN_AI_PROVIDER:-openai}
       MYOWN_AI_MODEL: ${MYOWN_AI_MODEL:-gpt-4.1-mini}
+      MYOWN_AI_MODE: ${MYOWN_AI_MODE:-live}
+      MYOWN_AI_TIMEOUT_SECONDS: ${MYOWN_AI_TIMEOUT_SECONDS:-20}
+      MYOWN_AI_MAX_OUTPUT_TOKENS: ${MYOWN_AI_MAX_OUTPUT_TOKENS:-400}
+      MYOWN_AI_THINKING: ${MYOWN_AI_THINKING:-low}
     volumes:
       - myown-portal-data:/durable
     healthcheck:

@@ -28,6 +28,12 @@ ClassMethod LoadAndSetupViaSQL(dir As %String) As %String [ SqlName = MyOwnLoadA
     If $$$ISERR(tSC) Quit "INTEROPERABILITY ERROR: "_$System.Status.GetErrorText(tSC)
     Set tSC = $System.OBJ.LoadDir(dir, "ck", .errorLog, 1)
     If $$$ISERR(tSC) Quit "LOAD ERROR: "_$System.Status.GetErrorText(tSC)
+    ; The AI Hub engine module (aihub/src next to src/objectscript) needs the %AI package.
+    Set aihub = ##class(%File).NormalizeDirectory(##class(%File).NormalizeDirectory(dir) _ "../../aihub/src")
+    If ##class(%Dictionary.CompiledClass).%ExistsId("%AI.Agent") && ##class(%File).DirectoryExists(aihub) {
+        Set tSC = $System.OBJ.LoadDir(aihub, "ck", .errorLog, 1)
+        If $$$ISERR(tSC) Quit "AIHUB LOAD ERROR: "_$System.Status.GetErrorText(tSC)
+    }
     Quit ..SetupViaSQL()
 }
 
@@ -339,7 +345,7 @@ ClassMethod PrepareForContainerBundling() As %Status
 /// are not visible. UT-14-AUDIT fails if the two lists differ.
 Parameter AgentAuditType = "Agent";
 
-Parameter AgentAuditEvents = "Decision,ProposalCreated,ProposalConfirmed,ProposalRejected,ProposalExpired,ExecutionResult,ConfigChange,KillSwitch";
+Parameter AgentAuditEvents = "Decision,ProposalCreated,ProposalConfirmed,ProposalRejected,ProposalExpired,ExecutionResult,ConfigChange,KillSwitch,ToolDenied";
 
 /// Registers the audit events outside a full Setup (idempotent). Switches to %SYS itself.
 ClassMethod RegisterAuditEvents() As %Status

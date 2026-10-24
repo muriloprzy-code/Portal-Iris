@@ -31,12 +31,24 @@ function Get-RelativePath {
     return $Path
 }
 
-$excludedDirectories = @('.git', '.tools', 'node_modules', 'dist', 'web\assets', 'test-results')
-$textExtensions = @('.cls', '.mac', '.int', '.inc', '.ps1', '.psm1', '.bat', '.cmd', '.sh', '.json', '.xml', '.yaml', '.yml', '.toml', '.md', '.txt', '.env', '.example')
-$files = Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object {
-    $relative = Get-RelativePath $_.FullName
-    -not ($excludedDirectories | Where-Object { $relative -like "$_*" }) -and
-    ($textExtensions -contains $_.Extension -or $_.Name -in @('Dockerfile', '.env.example'))
+# Scope: what git tracks (git ls-files, which includes the index) plus what is staged for the next
+# commit. Untracked and ignored files are out of scope, and .env files never count: they are
+# git-ignored and hold the local key by design.
+$excludedDirectories = @('.tools', 'node_modules', 'dist', 'web\assets', 'test-results')
+$textExtensions = @('.cls', '.mac', '.int', '.inc', '.ps1', '.psm1', '.bat', '.cmd', '.sh', '.json', '.xml', '.yaml', '.yml', '.toml', '.md', '.txt', '.env', '.example', '.ts', '.tsx', '.mjs')
+$git = Get-Command git -ErrorAction SilentlyContinue
+if (-not $git) { throw 'git is required: the scan covers tracked and staged files only.' }
+$listed = @(& $git.Source -C $root ls-files) + @(& $git.Source -C $root diff --cached --name-only --diff-filter=ACMR)
+if ($LASTEXITCODE -ne 0) { throw 'git could not list the tracked files.' }
+$files = $listed | Where-Object { $_ } | Sort-Object -Unique | ForEach-Object {
+    $relative = $_.Replace('/', '\')
+    $fullPath = Join-Path $root $relative
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return }
+    $item = Get-Item -LiteralPath $fullPath
+    $isEnv = ($item.Name -eq '.env') -or ($item.Name -like '.env.*' -and $item.Name -ne '.env.example')
+    if ($isEnv) { return }
+    if ($excludedDirectories | Where-Object { $relative -like "$_*" }) { return }
+    if ($textExtensions -contains $item.Extension -or $item.Name -in @('Dockerfile', '.env.example')) { $item }
 }
 
 foreach ($file in $files) {
@@ -51,8 +63,7 @@ foreach ($file in $files) {
     }
 }
 
-$git = Get-Command git -ErrorAction SilentlyContinue
-if ($git -and $HistoryDepth -gt 0) {
+if ($HistoryDepth -gt 0) {
     $history = & $git.Source -C $root log -p -n $HistoryDepth -- . 2>$null | Out-String
     foreach ($entry in $patterns.GetEnumerator()) {
         if ([regex]::IsMatch($history, $entry.Value)) {
@@ -82,5 +93,5 @@ if ($findings.Count -gt 0) {
     throw "$($findings.Count) possible secret finding(s) require review. Secret values were intentionally not printed."
 }
 
-Write-Host "PASS  SEC-11  No high-confidence secrets were found in $(@($files).Count) files or the last $HistoryDepth commits." -ForegroundColor Green
+Write-Host "PASS  SEC-11  No high-confidence secrets were found in $(@($files).Count) tracked or staged files or the last $HistoryDepth commits." -ForegroundColor Green
 Write-Host "Report written to $resolvedOutput" -ForegroundColor Cyan

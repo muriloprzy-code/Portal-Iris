@@ -13,7 +13,7 @@ ClassMethod Evaluate(config As MyOwn.Agent.Config, requestedTokens As %Integer, 
         Quit $$$OK
     }
     Set statement = ##class(%SQL.Statement).%New()
-    Set tSC = statement.%Prepare("SELECT COALESCE(SUM(TotalTokens),0) AS UsedToday FROM MyOwn_Agent.Ledger WHERE CAST(StartedAt AS DATE) = CURRENT_DATE")
+    Set tSC = statement.%Prepare("SELECT COALESCE(SUM(TotalTokens),0) AS UsedToday FROM MyOwn_Agent.Ledger WHERE Engine = 'aihub' AND Provider <> 'replay' AND CAST(StartedAt AS DATE) = CURRENT_DATE")
     If $$$ISERR(tSC) Quit tSC
     Set query = statement.%Execute()
     If query.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, query.%Message)
@@ -30,7 +30,8 @@ ClassMethod CallsAllowed(config As MyOwn.Agent.Config, Output allowed As %Boolea
     Set allowed = 1
     Set recentCalls = 0
     Set statement = ##class(%SQL.Statement).%New()
-    Set tSC = statement.%Prepare("SELECT COUNT(*) AS RecentCalls FROM MyOwn_Agent.Ledger WHERE StartedAt >= DATEADD(hour, -1, CURRENT_TIMESTAMP)")
+    ; Only real AI calls count (successful or not); Rules decisions and replayed answers cost nothing.
+    Set tSC = statement.%Prepare("SELECT COUNT(*) AS RecentCalls FROM MyOwn_Agent.Ledger WHERE Engine = 'aihub' AND Provider <> 'replay' AND StartedAt >= DATEADD(hour, -1, CURRENT_TIMESTAMP)")
     If $$$ISERR(tSC) Quit tSC
     Set query = statement.%Execute()
     If query.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, query.%Message)

@@ -24,7 +24,7 @@ Method Scan() As %Status [ Private ]
 {
     // Newest history rows first; consecutive failures are counted per task name.
     Set statement = ##class(%SQL.Statement).%New()
-    Set tSC = statement.%Prepare("SELECT TOP 200 Name, Error FROM %SYS_Task.History ORDER BY ID DESC")
+    Set tSC = statement.%Prepare("SELECT TOP 200 Name, Status, Error FROM %SYS_Task.History ORDER BY ID DESC")
     If $$$ISERR(tSC) Quit tSC
     Set result = statement.%Execute()
     If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
@@ -35,11 +35,11 @@ Method Scan() As %Status [ Private ]
             Set seen(name) = 1
             Set failures(name) = 0
             Set lastError(name) = ""
-            Set lastOk(name) = (result.%Get("Error") = "")
+            Set lastOk(name) = '..IsFailure(result.%Get("Status"))
             Set streak(name) = 1
         }
         If streak(name) {
-            If result.%Get("Error") '= "" {
+            If ..IsFailure(result.%Get("Status")) {
                 Set failures(name) = failures(name) + 1
                 If lastError(name) = "" Set lastError(name) = result.%Get("Error")
             } Else {
@@ -68,6 +68,14 @@ Method Scan() As %Status [ Private ]
         If $$$ISERR(tSC) Quit
     }
     Quit tSC
+}
+
+/// A history row is a failure only when its Status is not 1. Error holds the message of every
+/// row ("Success", "Task suspended", "Task has expired ...", in the instance language), so it
+/// cannot tell a failure apart.
+ClassMethod IsFailure(status As %String) As %Boolean
+{
+    Quit (status '= "") && ($Piece(status, " ", 1) '= "1")
 }
 
 /// The task fields must match what the portal reads at confirmation time (id, name, namespace,

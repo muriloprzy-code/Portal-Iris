@@ -8,7 +8,8 @@ import { chromium } from 'playwright'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-const baseUrl = (process.env.MYOWN_UI_URL || 'http://localhost:52773/myown/').replace(/\/?$/, '/')
+const configuredUrl = process.env.MYOWN_UI_URL || 'http://localhost:52773/myown/index.html'
+const baseUrl = configuredUrl.endsWith('.html') ? configuredUrl : configuredUrl.replace(/\/?$/, '/')
 const user = process.env.MYOWN_UI_USER
 const password = process.env.MYOWN_UI_PASSWORD
 const outDir = process.env.MYOWN_UI_OUT || 'test-results/ui'
@@ -20,7 +21,9 @@ if (!user || !password) {
 const apiRoot = new URL('/myown/api', baseUrl).toString()
 const basic = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64')
 
-// Expected drawer content per scenario with the deterministic Rules engine.
+// Expected drawer content per scenario with the deterministic Rules engine. The screen sets the
+// engine preference to "Rules only", so the badge reads "Rules (disabled)", or "Rules (budget)"
+// for S10, whose budget check comes first.
 const expected = {
   S1: { risk: 'critical', action: 'notify', proposal: false, evidence: true, conditions: false },
   S2: { risk: 'critical', action: 'propose_task_suspend', proposal: true, task: true, evidence: true, conditions: false },
@@ -31,7 +34,7 @@ const expected = {
   S7: { risk: 'high', action: 'escalate', proposal: false, evidence: true, conditions: false, gate: ['blocked', 'prohibited-target'] },
   S8: { risk: 'warning', action: 'notify', proposal: false, evidence: true, conditions: false },
   S9: { risk: 'high', action: 'escalate', proposal: false, evidence: true, conditions: false },
-  S10: { risk: 'warning', action: 'notify', proposal: false, evidence: true, conditions: false, outcome: 'budget_blocked' },
+  S10: { risk: 'warning', action: 'notify', proposal: false, evidence: true, conditions: false, outcome: 'budget_blocked', engine: 'Rules (budget)' },
 }
 
 const results = []
@@ -60,8 +63,10 @@ async function openTab(page, name) {
 
 async function setSettings(page, values) {
   await openTab(page, 'Settings')
-  for (const [label, checked] of Object.entries(values)) {
-    await page.getByLabel(label, { exact: true }).setChecked(checked)
+  for (const [label, value] of Object.entries(values)) {
+    // A select's accessible name also carries its selected option, so match selects by prefix.
+    if (typeof value === 'boolean') await page.getByLabel(label, { exact: true }).setChecked(value)
+    else await page.getByLabel(new RegExp(`^${label}`)).selectOption(value)
   }
   await page.getByRole('button', { name: 'Save settings' }).click()
   await page.getByText('Agent settings were saved and audited.').waitFor()
@@ -87,10 +92,13 @@ try {
   await page.getByRole('tab', { name: 'Overview', exact: true }).waitFor()
 
   const config = (await api('GET', '/agent/config')).data
-  original = { 'Demo mode': Boolean(Number(config.demoMode)), 'Read-only mode': Boolean(Number(config.readOnly)) }
+  original = { 'Demo mode': Boolean(Number(config.demoMode)), 'Read-only mode': Boolean(Number(config.readOnly)), 'Engine preference': config.enginePreference }
   if (Number(config.killSwitch)) throw new Error('The kill switch is on; turn it off before running the UI test.')
-  await setSettings(page, { 'Demo mode': true, 'Read-only mode': false })
-  add('UI-SETTINGS', true, 'Demo mode enabled and read-only disabled through the Settings screen.')
+  await setSettings(page, { 'Demo mode': true, 'Read-only mode': false, 'Engine preference': 'rules' })
+  // Provider and model come only from the server environment: the screen shows them read-only.
+  const providerReadOnly = await page.getByLabel('Provider', { exact: true }).getAttribute('readonly') !== null
+  const modelReadOnly = await page.getByLabel('Model', { exact: true }).getAttribute('readonly') !== null
+  add('UI-SETTINGS', providerReadOnly && modelReadOnly, `Demo mode on, read-only off and engine preference "Rules only" through the Settings screen; provider and model fields read-only: ${providerReadOnly && modelReadOnly}.`)
 
   for (const [scenario, want] of Object.entries(expected)) {
     await openTab(page, 'Overview')
@@ -128,7 +136,10 @@ try {
     await page.screenshot({ path: path.join(outDir, `${scenario}-decision.png`) })
 
     const problems = []
-    if (engine !== 'rules') problems.push(`engine=${engine}`)
+    const wantEngine = want.engine ?? 'Rules (disabled)'
+    if (engine !== wantEngine) problems.push(`engine=${engine}`)
+    const badge = (await page.locator('tr', { has: openButton }).locator('.status-chip').first().innerText()).trim()
+    if (badge !== wantEngine) problems.push(`table badge=${badge}`)
     if (risk !== want.risk) problems.push(`risk=${risk}`)
     if (!gate.startsWith(`final action ${want.action}`)) problems.push(`gate=${gate}`)
     for (const fragment of want.gate ?? []) if (!gate.includes(fragment)) problems.push(`gate lacks ${fragment}`)
@@ -172,7 +183,7 @@ try {
     try {
       await setSettings(page, original)
     } catch (error) {
-      await api('PUT', '/agent/config', { demoMode: original['Demo mode'], readOnly: original['Read-only mode'] }).catch(() => {})
+      await api('PUT', '/agent/config', { demoMode: original['Demo mode'], readOnly: original['Read-only mode'], enginePreference: original['Engine preference'] }).catch(() => {})
       add('UI-RESTORE', false, `Settings were restored through REST after the screen failed: ${error.message}`)
     }
   }

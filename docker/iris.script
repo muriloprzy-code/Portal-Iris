@@ -9,5 +9,9 @@ set sc = ##class(%EnsembleMgr).EnableNamespace("MYOWN", 0, , 0, 0)
 if 'sc write !, "EnableNamespace MYOWN failed: ", $System.Status.GetErrorText(sc), !
 
 zn "MYOWN"
-zpm "load /home/irisowner/dev -v":1:1
+; zpm "...":pTerminateOnError:pHaltOnComplete. The core load must not halt the session, or the
+; AI Hub line below never runs; errors still end the build with a non-zero exit code.
+zpm "load /home/irisowner/dev -v":1:0
+; The AI Hub engine module needs the %AI package (AI Hub builds only); elsewhere Rules decide.
+if ##class(%Dictionary.CompiledClass).%ExistsId("%AI.Agent") zpm "load /home/irisowner/dev/aihub -v":1:0
 halt

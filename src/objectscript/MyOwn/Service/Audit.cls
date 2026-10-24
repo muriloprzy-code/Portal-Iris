@@ -8,7 +8,7 @@ Parameter Event = "Change";
 /// Native audit events of the agent specification: MyOwn/Agent/&lt;name&gt;.
 Parameter AgentType = "Agent";
 
-Parameter AgentEvents = "Decision,ProposalCreated,ProposalConfirmed,ProposalRejected,ProposalExpired,ExecutionResult,ConfigChange,KillSwitch";
+Parameter AgentEvents = "Decision,ProposalCreated,ProposalConfirmed,ProposalRejected,ProposalExpired,ExecutionResult,ConfigChange,KillSwitch,ToolDenied";
 
 /// Records MyOwn/Agent/<var>event</var>. The event data starts with the agent marker
 /// <code>agent=1;decisionId=N</code> (agent=0 for human configuration changes) so agent-originated

@@ -7,7 +7,8 @@ ClassMethod Status(Output data As %DynamicObject) As %Status
     If $$$ISERR(tSC) Quit tSC
     Set data = config
     Set data.aiHubAvailable = ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.AIHub.Engine")
-    Set data.activeEngine = $Select((config.enginePreference'="rules")&&data.aiHubAvailable:"aihub", 1:"rules")
+    Set ready = data.aiHubAvailable && (config.enginePreference '= "rules") && 'config.killSwitch && ((config.aiMode = "replay") || config.apiKeyConfigured)
+    Set data.activeEngine = $Select(ready: "aihub", 1: "rules")
     Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.configObject)
     If $$$ISERR(tSC) Quit tSC
     Set tSC = ##class(MyOwn.Agent.Policy.Budget).Evaluate(configObject, 0, .budget)
@@ -54,7 +55,7 @@ ClassMethod Decide(workflow As %String, contextJSON As %String, source As %Strin
 {
     Set result = {}
     Set started = $ZDateTime($Horolog, 3, 1)
-    Set startSeconds = $Piece($Horolog, ",", 2)
+    Set startSeconds = $Piece($ZTimestamp, ",", 2)
     If traceId = "" Set traceId = $System.Util.CreateGUID()
     Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
     If $$$ISERR(tSC) Quit tSC
@@ -77,38 +78,48 @@ ClassMethod Decide(workflow As %String, contextJSON As %String, source As %Strin
         Quit $$$OK
     }
 
+    ; Engine choice. fallbackReason is empty only when the AI decided; otherwise it says why
+    ; Rules decided: kill_switch, budget, disabled, not_installed, no_key, provider_timeout,
+    ; provider_error or invalid_json.
     Set engine = "rules"
     Set outcome = "ok"
-    Set useAIHub = 0
-    If 'config.KillSwitch, config.EnginePreference '= "rules", ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.AIHub.Engine") {
+    Set fallbackReason = ""
+    Set fallbackDetail = ""
+    Set aiHubInstalled = ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.AIHub.Engine")
+    If config.KillSwitch {
+        Set fallbackReason = "kill_switch", outcome = "killed"
+    } ElseIf (source = "simulate") && context.%Get("budgetScenario") {
+        Set fallbackReason = "budget", outcome = "budget_blocked"
+    } ElseIf config.EnginePreference = "rules" {
+        Set fallbackReason = "disabled"
+    } ElseIf 'aiHubInstalled {
+        Set fallbackReason = "not_installed"
+    } Else {
         Set tSC = ##class(MyOwn.Agent.Policy.Budget).Evaluate(config, config.PerDecisionTokenBudget, .budget)
         If $$$ISERR(tSC) Quit tSC
         Set tSC = ##class(MyOwn.Agent.Policy.Budget).CallsAllowed(config, .callsAllowed, .recentCalls)
         If $$$ISERR(tSC) Quit tSC
-        If budget.allowed && callsAllowed Set useAIHub = 1
-        If 'budget.allowed Set outcome = "budget_blocked"
-        If 'callsAllowed Set outcome = "fallback"
-    }
-    If (source = "simulate") && context.%Get("budgetScenario") {
-        Set useAIHub = 0
-        Set outcome = "budget_blocked"
-    }
-    If config.KillSwitch Set outcome = "killed"
-
-    Set tSC = $$$OK
-    If useAIHub {
-        Set engine = "aihub"
-        Set tSC = $ClassMethod("MyOwn.AIHub.Engine", "Decide", workflow, contextJSON, .engineResult)
-        If $$$ISERR(tSC) {
-            Set engine = "rules"
-            Set outcome = "fallback"
+        If 'budget.allowed || 'callsAllowed {
+            Set fallbackReason = "budget", outcome = "budget_blocked"
+            Set fallbackDetail = $Select('budget.allowed: budget.reason, 1: "MAX_AGENT_CALLS_PER_HOUR")
+        } ElseIf '$ClassMethod("MyOwn.AIHub.Engine", "Ready", .notReadyReason) {
+            Set fallbackReason = notReadyReason
+        } Else {
+            Set tSC = ..TryAIHub(workflow, contextJSON, traceId, started, .aiResult, .aiDecision, .fallbackReason, .fallbackDetail)
+            If $$$ISERR(tSC) Quit tSC
+            If fallbackReason = "" {
+                Set engine = "aihub"
+                Set engineResult = aiResult
+                Set decision = aiDecision
+            }
         }
     }
-    If engine = "rules" Set tSC = ##class(MyOwn.Agent.Engine.Rules).Decide(workflow, contextJSON, .engineResult)
-    If $$$ISERR(tSC) Quit tSC
-
-    Set rawDecision = engineResult.decision.%ToJSON()
-    Set tSC = ##class(MyOwn.Agent.Decision.Validator).Validate(workflow, rawDecision, contextJSON, .decision, .validationErrors)
+    If fallbackReason '= "" {
+        If (outcome = "ok") && (fallbackReason '= "disabled") && (fallbackReason '= "not_installed") Set outcome = "fallback"
+        Set tSC = ##class(MyOwn.Agent.Engine.Rules).Decide(workflow, contextJSON, .engineResult)
+        If $$$ISERR(tSC) Quit tSC
+        Set tSC = ##class(MyOwn.Agent.Decision.Validator).Validate(workflow, engineResult.decision.%ToJSON(), contextJSON, .decision, .validationErrors)
+    }
     If $$$ISERR(tSC) {
         Set decision = ..EscalationDecision(workflow, context, validationErrors)
         Set validationStatus = "rejected"
@@ -118,22 +129,104 @@ ClassMethod Decide(workflow As %String, contextJSON As %String, source As %Strin
     }
     // From here on only the sanitized form is used: stored, sent through the production and returned.
     Set decision = ..PublicDecision(decision)
-    Set duration = ($Piece($Horolog, ",", 2) - startSeconds) * 1000
-    If duration < 0 Set duration = duration + 86400000
-    Set tSC = ..SaveLedger(traceId, workflow, engine, engineResult, started, duration, outcome, .ledgerId)
-    If $$$ISERR(tSC) Quit tSC
+    If engine = "rules" {
+        Set duration = ..ElapsedMs(startSeconds)
+        Set summary = $Select(fallbackReason '= "": fallbackReason _ $Select(fallbackDetail '= "": ": " _ fallbackDetail, 1: ""), 1: "")
+        Set tSC = ..SaveLedger(traceId, workflow, "rules", engineResult, started, duration, outcome, summary, .ledgerId)
+        If $$$ISERR(tSC) Quit tSC
+    }
     Set result.traceId = traceId
     Set result.eventId = eventId
     Set result.engine = engine
     Set result.outcome = outcome
+    Set result.fallbackReason = fallbackReason
     Set result.validationStatus = validationStatus
     Set result.decision = decision
     Quit $$$OK
 }
 
+/// Calls the AI Hub engine once and records that attempt in the ledger (it counts against
+/// the call limit and the token budget whether or not it succeeds). On a provider timeout,
+/// provider error or a reply that fails the Validator, fallbackReason is set and the caller
+/// decides with Rules. Errors in the attempt itself never escape as a failed status.
+ClassMethod TryAIHub(workflow As %String, contextJSON As %String, traceId As %String, started As %TimeStamp, Output aiResult As %DynamicObject, Output decision As %DynamicObject, Output fallbackReason As %String, Output fallbackDetail As %String) As %Status [ Private ]
+{
+    Set fallbackReason = "", fallbackDetail = "", decision = ""
+    Set aiResult = {}
+    Set callStatus = $$$OK
+    Try {
+        Set callStatus = $ClassMethod("MyOwn.AIHub.Engine", "Decide", workflow, contextJSON, .aiResult)
+    } Catch exception {
+        Set callStatus = exception.AsStatus()
+    }
+    If '$IsObject(aiResult) Set aiResult = {}
+    If $$$ISERR(callStatus) {
+        ; The engine reports "AIHUB_FALLBACK:<reason>:<detail>"; anything else is a provider error.
+        Set text = $System.Status.GetErrorText(callStatus)
+        Set fallbackReason = $Select(text [ "AIHUB_FALLBACK:": $Piece($Piece(text, "AIHUB_FALLBACK:", 2), ":", 1), 1: "provider_error")
+        If '$ListFind($ListBuild("provider_timeout", "provider_error", "no_key"), fallbackReason) Set fallbackReason = "provider_error"
+        Set fallbackDetail = $Piece($Piece(text, "AIHUB_FALLBACK:", 2), ":", 2, 999)
+        If fallbackDetail = "" Set fallbackDetail = text
+    } Else {
+        Set raw = aiResult.%Get("raw")
+        If raw = "", $IsObject(aiResult.%Get("decision")) Set raw = aiResult.decision.%ToJSON()
+        Set validStatus = ##class(MyOwn.Agent.Decision.Validator).Validate(workflow, raw, contextJSON, .decision, .errors)
+        If $$$ISERR(validStatus) {
+            Set fallbackReason = "invalid_json"
+            Set fallbackDetail = $Select($IsObject(errors) && (errors.%Size() > 0): errors.%Get(0), 1: "")
+        }
+    }
+    Set fallbackDetail = ##class(MyOwn.Agent.Sanitize).Text(fallbackDetail, 300)
+    ; On success the engine may leave a notice (for example a retry without the thinking option).
+    Set summary = $Select(fallbackReason '= "": fallbackReason _ ": " _ fallbackDetail, 1: ##class(MyOwn.Agent.Sanitize).Text(aiResult.%Get("notice"), 300))
+    Set tSC = ..SaveLedger(traceId, workflow, "aihub", aiResult, started, +aiResult.%Get("latencyMs"), $Select(fallbackReason = "": "ok", 1: fallbackReason), summary, .ledgerId)
+    If $$$ISERR(tSC) Quit tSC
+    Set tSC = ..SaveToolCalls(ledgerId, traceId, aiResult.%Get("toolCalls"))
+    If $$$ISERR(tSC) Quit tSC
+    ; A tool the read-only policy refused is a security event: audit it (tool name and ledger id only).
+    Set calls = aiResult.%Get("toolCalls")
+    If $IsObject(calls) {
+        For index = 0:1:(calls.%Size() - 1) {
+            Set call = calls.%Get(index)
+            If call.%Get("status") '= "denied" Continue
+            Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ToolDenied", 0, ##class(MyOwn.Agent.Sanitize).Identifier(call.%Get("name"), 80), 0, "ledger " _ ledgerId)
+            If $$$ISERR(tSC) Quit
+        }
+    }
+    Quit tSC
+}
+
+/// Persists the tool calls collected by the AI Hub audit policy (including denied ones).
+ClassMethod SaveToolCalls(ledgerId As %Integer, traceId As %String, calls As %DynamicArray) As %Status [ Private ]
+{
+    If '$IsObject(calls) Quit $$$OK
+    For index = 0:1:(calls.%Size() - 1) {
+        Set call = calls.%Get(index)
+        Set row = ##class(MyOwn.Agent.ToolCall).%New()
+        Set row.LedgerId = ledgerId
+        Set row.TraceId = traceId
+        Set row.ToolName = $Extract(##class(MyOwn.Agent.Sanitize).Identifier(call.%Get("name"), 160), 1, 160)
+        Set row.ArgsJSON = ##class(MyOwn.Agent.Sanitize).Text(call.%Get("args"), 1000)
+        Set row.ResultSummary = ##class(MyOwn.Agent.Sanitize).Text(call.%Get("summary"), 500)
+        Set row.DurationMs = +call.%Get("durationMs")
+        Set row.Status = $Extract(##class(MyOwn.Agent.Sanitize).Identifier(call.%Get("status"), 20), 1, 20)
+        Set row.At = $ZDateTime($Horolog, 3, 1)
+        Set tSC = row.%Save()
+        If $$$ISERR(tSC) Quit
+    }
+    Quit $Get(tSC, $$$OK)
+}
+
+ClassMethod ElapsedMs(startSeconds) As %Integer [ Private ]
+{
+    Set duration = ($Piece($ZTimestamp, ",", 2) - startSeconds) * 1000 \ 1
+    If duration < 0 Set duration = duration + 86400000
+    Quit duration
+}
+
 /// Production step 2 (business process): the deterministic Gate on the validated decision,
 /// then the decision record with the final action and the downgrade reason.
-ClassMethod ApplyGate(workflow As %String, eventId As %Integer, engine As %String, validationStatus As %String, decisionJSON As %String, contextJSON As %String, traceId As %String, actor As %String, Output result As %DynamicObject) As %Status
+ClassMethod ApplyGate(workflow As %String, eventId As %Integer, engine As %String, validationStatus As %String, decisionJSON As %String, contextJSON As %String, traceId As %String, actor As %String, Output result As %DynamicObject, fallbackReason As %String = "") As %Status
 {
     Set result = {}
     Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
@@ -161,9 +254,11 @@ ClassMethod ApplyGate(workflow As %String, eventId As %Integer, engine As %Strin
         }
     }
     Set decision = ..PublicDecision(decision)
-    Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate, config, traceId, .decisionId)
+    Set tSC = ..SaveDecision(eventId, workflow, engine, decision, validationStatus, gate, config, traceId, .decisionId, fallbackReason)
     If $$$ISERR(tSC) Quit tSC
-    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("Decision", decisionId, workflow _ "/" _ gate.finalAction, 1, engine _ "/" _ validationStatus _ "/" _ $Select(gate.downgradedBy'="":gate.downgradedBy, 1:"none"))
+    ; detail: engine (with the fallback reason when Rules decided) / validation / gate downgrade
+    Set engineLabel = engine _ $Select(fallbackReason '= "": "-" _ fallbackReason, 1: "")
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("Decision", decisionId, workflow _ "/" _ gate.finalAction, 1, engineLabel _ "/" _ validationStatus _ "/" _ $Select(gate.downgradedBy'="":gate.downgradedBy, 1:"none"))
     If $$$ISERR(tSC) Quit tSC
     Set result.decisionId = decisionId
     Set result.decision = decision
@@ -333,7 +428,7 @@ ClassMethod SaveEvent(workflow As %String, source As %String, fingerprint As %St
     Quit tSC
 }
 
-ClassMethod SaveDecision(eventId As %Integer, workflow As %String, engine As %String, value As %DynamicObject, validationStatus As %String, gate As %DynamicObject, config As MyOwn.Agent.Config, traceId As %String, Output id As %Integer) As %Status [ Private ]
+ClassMethod SaveDecision(eventId As %Integer, workflow As %String, engine As %String, value As %DynamicObject, validationStatus As %String, gate As %DynamicObject, config As MyOwn.Agent.Config, traceId As %String, Output id As %Integer, fallbackReason As %String = "") As %Status [ Private ]
 {
     Set decision = ##class(MyOwn.Agent.Decision).%New()
     Set decision.EventId = eventId
@@ -356,6 +451,7 @@ ClassMethod SaveDecision(eventId As %Integer, workflow As %String, engine As %St
     Set decision.ValidationStatus = validationStatus
     Set decision.DowngradedBy = gate.downgradedBy
     Set decision.GateJSON = gate.%ToJSON()
+    Set decision.FallbackReason = $Extract(##class(MyOwn.Agent.Sanitize).Identifier(fallbackReason, 40), 1, 40)
     Set decision.Autonomy = $Select(workflow="access-request":config.AutonomyAccess, 1:config.AutonomyTriage)
     Set decision.AppliedAutomatically = 0
     Set decision.TraceId = traceId
@@ -507,9 +603,10 @@ ClassMethod CreateProposal(decisionId As %Integer, decision As %DynamicObject, c
     Quit tSC
 }
 
-ClassMethod SaveLedger(traceId As %String, workflow As %String, engine As %String, engineResult As %DynamicObject, started As %TimeStamp, duration As %Integer, outcome As %String, Output id As %Integer) As %Status [ Private ]
+ClassMethod SaveLedger(traceId As %String, workflow As %String, engine As %String, engineResult As %DynamicObject, started As %TimeStamp, duration As %Integer, outcome As %String, errorSummary As %String, Output id As %Integer) As %Status [ Private ]
 {
     Set ledger = ##class(MyOwn.Agent.Ledger).%New()
+    Set ledger.ErrorSummary = ##class(MyOwn.Agent.Sanitize).Text(errorSummary, 500)
     Set ledger.TraceId = traceId
     Set ledger.Workflow = workflow
     Set ledger.Engine = engine
@@ -525,8 +622,12 @@ ClassMethod SaveLedger(traceId As %String, workflow As %String, engine As %Strin
     }
     Set calls = engineResult.%Get("toolCalls")
     If $IsObject(calls) Set ledger.ToolCallCount = calls.%Size()
+    Set ledger.Iterations = +engineResult.%Get("iterations")
     Set ledger.Outcome = outcome
-    Set tSC = ##class(MyOwn.Agent.Pricing).Estimate(ledger.Model, ledger.PromptTokens, ledger.CompletionTokens, .cost, .hasPrice)
+    ; Hidden reasoning is billed as output but only shows in the total (T03): price total - prompt.
+    Set billedOutput = ledger.CompletionTokens
+    If ledger.TotalTokens > (ledger.PromptTokens + ledger.CompletionTokens) Set billedOutput = ledger.TotalTokens - ledger.PromptTokens
+    Set tSC = ##class(MyOwn.Agent.Pricing).Estimate(ledger.Model, ledger.PromptTokens, billedOutput, .cost, .hasPrice)
     If $$$ISERR(tSC) Quit tSC
     If hasPrice Set ledger.CostEstimateUSD = cost
     Set tSC = ledger.%Save()
@@ -904,9 +1005,7 @@ ClassMethod UpdateConfig(input As %DynamicObject, actor As %String, Output data 
         If '##class(MyOwn.Agent.Config).ValidateChoice(value, "auto,rules,aihub") Quit $$$ERROR($$$GeneralError, "INVALID_REQUEST")
         Set config.EnginePreference = value
     }
-    If input.%IsDefined("provider") Set config.Provider = $Extract(##class(MyOwn.Agent.Sanitize).Identifier(input.provider), 1, 80)
-    If input.%IsDefined("model") Set config.Model = $Extract(##class(MyOwn.Agent.Sanitize).Text(input.model, 160), 1, 160)
-    If input.%IsDefined("baseURL") Set config.BaseURL = $Extract(##class(MyOwn.Agent.Sanitize).Text(input.baseURL, 500), 1, 500)
+    ; provider, model and baseURL are ignored: they come only from the environment (MyOwn.Agent.AIEnv).
     If input.%IsDefined("autonomyTriage") {
         Set value = $ZConvert(input.autonomyTriage, "L")
         If '##class(MyOwn.Agent.Config).ValidateChoice(value, "advise,assist,auto-safe") Quit $$$ERROR($$$GeneralError, "INVALID_REQUEST")
@@ -1112,6 +1211,7 @@ ClassMethod DecisionView(decision As MyOwn.Agent.Decision, detail As %Boolean) A
     Set data.eventId = decision.EventId
     Set data.workflow = decision.Workflow
     Set data.engine = decision.Engine
+    Set data.fallbackReason = decision.FallbackReason
     Set data.action = decision.Action
     Set data.severity = decision.Severity
     Set data.riskLevel = decision.RiskLevel
@@ -1194,6 +1294,7 @@ ClassMethod ResponseFromMessage(message As MyOwn.Production.Msg.AgentResponse) A
     Set data.proposalId = message.ProposalId
     Set data.engine = message.Engine
     Set data.outcome = message.Outcome
+    Set data.fallbackReason = message.FallbackReason
     Set data.decision = ..PublicDecision(..JSONValue(message.DecisionJSON))
     If message.GateJSON '= "" Set data.gate = ..JSONValue(message.GateJSON)
     If message.Outcome = "suppressed" Set data.status = "suppressed"

@@ -17,13 +17,13 @@ ClassMethod Run(process As Ens.BusinessProcess, workflow As %String, source As %
     Set agentRequest.Actor = actor
     Set tSC = process.SendRequestSync("AgentGateway", agentRequest, .decided)
     If $$$ISERR(tSC) Quit tSC
-    $$$LOGINFO("[" _ traceId _ "] step 1 decide: engine=" _ decided.Engine _ " outcome=" _ decided.Outcome _ " validation=" _ decided.ValidationStatus)
+    $$$LOGINFO("[" _ traceId _ "] step 1 decide: engine=" _ decided.Engine _ " outcome=" _ decided.Outcome _ " validation=" _ decided.ValidationStatus _ $Select(decided.FallbackReason '= "": " fallback=" _ decided.FallbackReason, 1: ""))
     If decided.Outcome = "suppressed" {
         Set response = decided
         Quit $$$OK
     }
 
-    Set tSC = ##class(MyOwn.Agent.Service.Agent).ApplyGate(workflow, decided.EventId, decided.Engine, decided.ValidationStatus, decided.DecisionJSON, contextJSON, traceId, actor, .gated)
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).ApplyGate(workflow, decided.EventId, decided.Engine, decided.ValidationStatus, decided.DecisionJSON, contextJSON, traceId, actor, .gated, decided.FallbackReason)
     If $$$ISERR(tSC) Quit tSC
     Set gate = gated.gate
     $$$LOGINFO("[" _ traceId _ "] step 2 gate: finalAction=" _ gate.finalAction _ " allowed=" _ (+gate.allowed) _ " createProposal=" _ (+gate.createProposal) _ " downgradedBy=" _ gate.downgradedBy _ " decisionId=" _ gated.decisionId)
@@ -56,6 +56,7 @@ ClassMethod Run(process As Ens.BusinessProcess, workflow As %String, source As %
     Set response.DecisionId = gated.decisionId
     Set response.ProposalId = proposalId
     Set response.ValidationStatus = decided.ValidationStatus
+    Set response.FallbackReason = decided.FallbackReason
     Set response.GateJSON = gate.%ToJSON()
     Quit $$$OK
 }

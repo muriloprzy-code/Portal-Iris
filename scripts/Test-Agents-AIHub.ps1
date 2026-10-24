@@ -3,8 +3,23 @@ param(
     [string]$BaseUrl = 'http://localhost:52774',
     [Parameter(Mandatory)]
     [PSCredential]$Credential,
-    [string]$OutputPath = 'test-results/agents-aihub.json'
+    [string]$Namespace = 'MYOWN',
+    [string]$IrisImage = 'unknown',
+    [ValidateSet('iris', 'irisforhealth', 'unknown')]
+    [string]$Edition = 'unknown',
+    [string]$OutputPath = 'test-results/agents-aihub.json',
+    # Opt-in real provider calls through the portal (needs MYOWN_AI_MODE=live and a key in the
+    # container environment). Calls are sequential, 15 s apart, and stop at the first HTTP 429.
+    [switch]$Live,
+    [string[]]$LiveScenarios = @('S2'),
+    [int]$LiveSpacingSeconds = 15
 )
+
+# AI Hub engine suite. Always: MyOwn_AIHub_Test.AIHubEngineSmoke() in replay mode (no key, no
+# network): valid and invalid JSON, timeout, provider error, budget, kill switch, write tool
+# blocked by the policy, allow-list and delimiters. With -Live: real decisions through
+# POST /agent/simulate, reporting engine, fallback reason, tokens and latency from the ledger.
+# On an instance without the %AI package (or without the module) every check is skipped.
 
 $ErrorActionPreference = 'Stop'
 $startedAt = [DateTimeOffset]::Now
@@ -12,11 +27,12 @@ $root = $BaseUrl.TrimEnd('/')
 $password = $Credential.GetNetworkCredential().Password
 $token = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($Credential.UserName):$password"))
 $headers = @{ Authorization = "Basic $token"; 'X-MyOwn-SysAdmin-Authorization' = "Basic $token"; Accept = 'application/json' }
+$queryUri = "$root/api/atelier/v1/$Namespace/action/query"
 $results = [System.Collections.Generic.List[object]]::new()
 
 function Invoke-PortalJson {
     param([string]$Method, [string]$Path, [object]$Body)
-    $arguments = @{ Uri = "$root/myown/api$Path"; Method = $Method; Headers = $headers }
+    $arguments = @{ Uri = "$root/myown/api$Path"; Method = $Method; Headers = $headers; TimeoutSec = 90 }
     if ($null -ne $Body) {
         $arguments.ContentType = 'application/json'
         $arguments.Body = $Body | ConvertTo-Json -Depth 12 -Compress
@@ -24,70 +40,61 @@ function Invoke-PortalJson {
     Invoke-RestMethod @arguments
 }
 
+function Invoke-IrisSql {
+    param([string]$Query, [object[]]$Parameters = @())
+    $body = @{ query = $Query; parameters = $Parameters } | ConvertTo-Json -Compress
+    $response = Invoke-RestMethod -Method Post -Uri $queryUri -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 300
+    if ($response.status.errors.Count) { throw "SQL failed: $($response.status.errors | ConvertTo-Json -Compress)" }
+    return $response.result.content
+}
+
 function Add-Result {
-    param([string]$Id, [string]$Status, [string]$Details)
-    $results.Add([ordered]@{ id = $Id; status = $Status; durationMs = 0; details = $Details })
+    param([string]$Id, [string]$Status, [string]$Details, [object]$Data = $null)
+    $item = [ordered]@{ id = $Id; status = $Status; details = $Details }
+    if ($null -ne $Data) { $item.data = $Data }
+    $results.Add($item)
     $color = if ($Status -eq 'pass') { 'Green' } elseif ($Status -eq 'fail') { 'Red' } else { 'Yellow' }
-    Write-Host "$($Status.ToUpper())  $Id  $Details" -ForegroundColor $color
+    Write-Host ("{0,-5} {1}  {2}" -f $Status.ToUpper(), $Id, $Details) -ForegroundColor $color
 }
 
-function Add-Check {
-    param([string]$Id, [string]$Details, [scriptblock]$Action)
-    $watch = [Diagnostics.Stopwatch]::StartNew()
-    $passed = $false
-    $failure = ''
-    try {
-        $passed = [bool](& $Action)
-        if (-not $passed) { $failure = 'The returned value did not meet the expected condition.' }
-    } catch {
-        $failure = $_.Exception.Message
-    } finally {
-        $watch.Stop()
-    }
-    $results.Add([ordered]@{
-        id = $Id
-        status = if ($passed) { 'pass' } else { 'fail' }
-        durationMs = [int]$watch.ElapsedMilliseconds
-        details = if ($failure) { "$Details $failure" } else { $Details }
-    })
-    $color = if ($passed) { 'Green' } else { 'Red' }
-    $statusLabel = if ($passed) { 'PASS' } else { 'FAIL' }
-    $failureSuffix = if ([string]::IsNullOrEmpty($failure)) { '' } else { " $failure" }
-    Write-Host "$statusLabel  $Id  $Details$failureSuffix" -ForegroundColor $color
-}
+$version = [string](Invoke-IrisSql -Query 'SELECT $ZVERSION AS v')[0].v
+$config = (Invoke-PortalJson -Method GET -Path '/agent/config').data
+$installed = [bool][int]$config.aiHubInstalled
 
-$health = Invoke-PortalJson -Method GET -Path '/health'
-$status = Invoke-PortalJson -Method GET -Path '/agent/status'
-$aiHubAvailable = [bool]$status.data.aiHubAvailable
-
-if (-not $aiHubAvailable) {
-    foreach ($id in 'AH-01','AH-02','AH-03','AH-04','AH-05','AH-06') {
-        Add-Result -Id $id -Status 'skip' -Details 'The connected IRIS instance does not contain the MyOwn AI Hub engine. Run this suite against build 154.'
-    }
+if (-not $installed) {
+    Add-Result -Id 'AH-ENGINE' -Status 'skip' -Details 'The MyOwn AI Hub module is not installed here (it needs the %AI package of build 154); Rules decide.'
 } else {
-    Add-Check -Id 'AH-01' -Details 'The AI Hub module is installed and selected by the portal.' -Action {
-        [bool]$status.data.aiHubAvailable -and $status.data.activeEngine -eq 'aihub'
-    }
+    Add-Result -Id 'AH-00-CONFIG' -Status $(if ($config.aiConfigSource -eq 'environment') { 'pass' } else { 'fail' }) -Details "Provider settings come from the environment: provider '$($config.provider)', model '$($config.model)', mode $($config.aiMode), timeout $($config.aiTimeoutSeconds) s, key configured: $([bool][int]$config.apiKeyConfigured)."
 
-    $guardrails = Invoke-PortalJson -Method GET -Path '/agent/guardrails'
-    Add-Check -Id 'AH-02' -Details 'The portal reports read-only agent tools and human confirmation for state changes.' -Action {
-        [bool]$guardrails.data.agentToolsAreReadOnly -and [bool]$guardrails.data.stateChangesRequireConfirmation
-    }
+    $raw = (Invoke-IrisSql -Query 'SELECT MyOwn_AIHub_Test.AIHubEngineSmoke() AS r')[0].r
+    $smoke = if ($raw -is [string]) { $raw | ConvertFrom-Json } else { $raw }
+    if ($smoke.error) { Add-Result -Id 'AH-SMOKE' -Status 'fail' -Details $smoke.error }
+    foreach ($item in $smoke.results) { Add-Result -Id $item.id -Status $item.status -Details $item.details }
 
-    Add-Result -Id 'AH-03' -Status 'skip' -Details 'Tool authorization denial requires build-154 ToolSet introspection and is enabled after the real API signatures are recorded.'
-
-    if ([string]::IsNullOrWhiteSpace($env:MYOWN_AI_API_KEY)) {
-        foreach ($id in 'AH-04','AH-05','AH-06') {
-            Add-Result -Id $id -Status 'skip' -Details 'Set MYOWN_AI_API_KEY only in the local environment to run provider-dependent AI Hub checks.'
+    if ($Live) {
+        if ($config.aiMode -ne 'live' -or -not [bool][int]$config.apiKeyConfigured) {
+            Add-Result -Id 'AH-LIVE' -Status 'skip' -Details 'Live calls need MYOWN_AI_MODE=live and a key in the container environment.'
+        } else {
+            $first = $true
+            foreach ($scenario in $LiveScenarios) {
+                if (-not $first) { Start-Sleep -Seconds $LiveSpacingSeconds }
+                $first = $false
+                try {
+                    $watch = [Diagnostics.Stopwatch]::StartNew()
+                    $simulation = (Invoke-PortalJson -Method POST -Path '/agent/simulate' -Body @{ scenario = $scenario }).data
+                    $watch.Stop()
+                    $ledger = Invoke-IrisSql -Query "SELECT Engine, Provider, Model, DurationMs, PromptTokens, CompletionTokens, TotalTokens, Iterations, ToolCallCount, CostEstimateUSD, Outcome, ErrorSummary FROM MyOwn_Agent.Ledger WHERE TraceId = ? AND Engine = 'aihub'" -Parameters @($simulation.traceId)
+                    $row = @($ledger)[0]
+                    $data = [ordered]@{ scenario = $scenario; engine = $simulation.engine; fallbackReason = $simulation.fallbackReason; action = $simulation.decision.action; httpMs = [int]$watch.ElapsedMilliseconds; ledger = $row }
+                    $status = if ($simulation.engine -eq 'aihub' -and $row) { 'pass' } else { 'fail' }
+                    Add-Result -Id "AH-LIVE-$scenario" -Status $status -Details "engine $($simulation.engine)$(if ($simulation.fallbackReason) { " ($($simulation.fallbackReason))" }), action $($simulation.decision.action), provider latency $($row.DurationMs) ms, HTTP $([int]$watch.ElapsedMilliseconds) ms, tokens $($row.PromptTokens)/$($row.CompletionTokens)/$($row.TotalTokens)." -Data $data
+                } catch {
+                    $message = $_.Exception.Message
+                    Add-Result -Id "AH-LIVE-$scenario" -Status 'fail' -Details "The live call failed: $message"
+                    if ($message -match '429') { break }
+                }
+            }
         }
-    } else {
-        Add-Check -Id 'AH-04' -Details 'A real AI Hub decision is returned with nonzero token usage.' -Action {
-            $decision = Invoke-PortalJson -Method POST -Path '/agent/simulate' -Body @{ scenario = 'S1' }
-            $ledger = Invoke-PortalJson -Method GET -Path '/agent/ledger/summary'
-            $decision.data.engine -eq 'aihub' -and [double]$ledger.data.totalTokens -gt 0
-        }
-        Add-Result -Id 'AH-05' -Status 'skip' -Details 'Invalid-provider-output repair will be enabled after the build-154 provider test hook is confirmed.'
-        Add-Result -Id 'AH-06' -Status 'skip' -Details 'Provider-timeout fallback will be enabled after the build-154 provider configuration API is confirmed.'
     }
 }
 
@@ -98,7 +105,8 @@ $report = [ordered]@{
     suite = 'agents-aihub'
     startedAt = $startedAt.ToString('o')
     finishedAt = [DateTimeOffset]::Now.ToString('o')
-    iris = [ordered]@{ version = [string]$health.data.version; aiHubAvailable = $aiHubAvailable }
+    iris = [ordered]@{ version = $version; image = $IrisImage; edition = $Edition; namespace = $Namespace; aiHubInstalled = $installed }
+    source = 'SELECT MyOwn_AIHub_Test.AIHubEngineSmoke()' + $(if ($Live) { ' and POST /agent/simulate (live)' } else { '' })
     results = $results
     summary = [ordered]@{ pass = $pass; fail = $fail; skip = $skip }
 }

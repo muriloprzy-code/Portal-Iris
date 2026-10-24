@@ -30,7 +30,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'The Playwright Chromium browser could not be installed.' }
 
     $resolve = { param($path) if ([IO.Path]::IsPathRooted($path)) { $path } else { Join-Path $root $path } }
-    $env:MYOWN_UI_URL = "$($BaseUrl.TrimEnd('/'))/myown/"
+    # index.html explicitly: the private web server of the IRIS containers serves no default document for /myown/.
+    $env:MYOWN_UI_URL = "$($BaseUrl.TrimEnd('/'))/myown/index.html"
     $env:MYOWN_UI_USER = $Credential.UserName
     $env:MYOWN_UI_PASSWORD = $Credential.GetNetworkCredential().Password
     $env:MYOWN_UI_OUT = & $resolve $ScreenshotDirectory

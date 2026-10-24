@@ -306,6 +306,8 @@ ClassMethod Add(report As %DynamicObject, id As %String, passed As %Boolean, det
     Quit $$$OK
 }
 
+/// Runs with the engine preference forced to rules (these checks expect deterministic Rules
+/// decisions even where AI Hub is installed) and restores the previous preference afterwards.
 ClassMethod RunIntegrationViaSQL() As %String [ SqlName = AgentIntegrationSmoke, SqlProc ]
 {
     Set report = {}
@@ -313,6 +315,31 @@ ClassMethod RunIntegrationViaSQL() As %String [ SqlName = AgentIntegrationSmoke,
     Set report.results = []
     Set report.pass = 0
     Set report.fail = 0
+    Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
+    If $$$ISERR(tSC) Quit {"suite": (report.suite), "error": ($System.Status.GetErrorText(tSC))}.%ToJSON()
+    Set preference = config.EnginePreference
+    Set config.EnginePreference = "rules"
+    Set tSC = config.%Save()
+    If $$$ISERR(tSC) Quit {"suite": (report.suite), "error": ($System.Status.GetErrorText(tSC))}.%ToJSON()
+    Try {
+        Do ..IntegrationChecks(report)
+    } Catch exception {
+        Do ..Add(report, "IT-EXCEPTION", 0, exception.DisplayString())
+    }
+    ; Reopened: the checks may have changed and restored other settings meanwhile.
+    Kill config
+    If $$$ISOK(##class(MyOwn.Agent.Config).GetOrCreate(.config)) {
+        Set config.EnginePreference = preference
+        Do config.%Save()
+    }
+    Set report.summary = {}
+    Set report.summary.pass = report.pass
+    Set report.summary.fail = report.fail
+    Quit report.%ToJSON()
+}
+
+ClassMethod IntegrationChecks(report As %DynamicObject) [ Private ]
+{
 
     Set tSC = ##class(MyOwn.Agent.Service.Agent).ProductionStatus(.production)
     Do ..Add(report, "IT-01", $$$ISOK(tSC) && production.running && (production.items.%Size() = 10), "The interoperability production is running with ten configured items.")
@@ -449,11 +476,6 @@ ClassMethod RunIntegrationViaSQL() As %String [ SqlName = AgentIntegrationSmoke,
     Set details = "The retention task completes successfully without deleting recent telemetry."
     If $$$ISERR(tSC) Set details = details _ " " _ $System.Status.GetErrorText(tSC)
     Do ..Add(report, "UT-08", $$$ISOK(tSC), details)
-
-    Set report.summary = {}
-    Set report.summary.pass = report.pass
-    Set report.summary.fail = report.fail
-    Quit report.%ToJSON()
 }
 
 }

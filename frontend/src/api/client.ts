@@ -260,9 +260,16 @@ export type AgentConfig = {
   killSwitch: boolean | number
   readOnly: boolean | number
   enginePreference: 'auto' | 'rules' | 'aihub'
+  /** Read-only: the AI provider settings come only from the server environment. */
   provider: string
   model: string
-  baseURL: string
+  baseURL?: string
+  aiMode?: 'live' | 'replay' | string
+  aiTimeoutSeconds?: number
+  aiMaxOutputTokens?: number
+  aiThinking?: string
+  aiConfigSource?: string
+  aiHubInstalled?: boolean | number
   autonomyTriage: 'advise' | 'assist' | 'auto-safe'
   autonomyAccess: 'advise' | 'assist' | 'auto-safe'
   dailyTokenBudget: number
@@ -296,6 +303,8 @@ export type AgentDecision = {
   downgradedBy: string
   traceId: string
   decidedAt: string
+  /** Empty when the AI decided; otherwise why Rules decided (kill_switch, budget, disabled, not_installed, no_key, provider_timeout, provider_error, invalid_json). */
+  fallbackReason?: string
   proposalId?: number | string
   /** Detail only (GET /agent/decisions/:id). Model-written text is sanitized by the server and must be rendered as text. */
   rationale?: string
@@ -362,6 +371,7 @@ export type AgentSimulation = {
   proposalId: number | string
   engine: string
   outcome: string
+  fallbackReason?: string
   integrationSource?: string
   decision: Record<string, unknown>
   gate?: Record<string, unknown>

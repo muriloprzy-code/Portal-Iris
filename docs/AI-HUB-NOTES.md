@@ -108,7 +108,7 @@ The full member lists (public signatures of all 60 classes) were extracted to a 
 - Lifecycle [Verified without key]: `##class(%AI.Agent).%New(provider)` → `Method %Init(context As %DynamicObject = {{}}) As %Status` → `Method CreateSession(config As %DynamicObject = "") As %AI.Agent.Session`. Session `config` keys [Source]: `max_iterations`, `timeout_ms` (whole agentic loop), `cache`.
 - Run [Source, not executed: needs a key]: `Method Chat(session As %AI.Agent.Session, input As %String, feedback As %RegisteredObject = "") As %AI.LLM.Response`; `Method Run(session, goal As %String = "", callbackOref = "") As %AI.LLM.Response` is a thin wrapper around one `Chat`; also `ChatWithContent`, `StreamChat`, `StreamChatWithContent`. Tool calls requested by the model are executed inside `Chat` until a final answer (bounded by `MaxIterations`/`timeout_ms`/stall detection), so `response.ToolCalls` is normally empty.
 - `%AI.LLM.Response` [Source]: `Content` (string, or a stream above ~3.6 MB), `Usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`), `ToolCalls`, `Extra` (provider fields such as `finish_reason`).
-- **Structured JSON output: no API found** (no `response_format`/JSON-schema option in any `%AI` class). The JSON must be requested in the instructions and checked by our Validator, as today.
+- **Structured JSON output: no ObjectScript API found.** The session config does accept a `response_format` key (T04, below), passed through to the provider; whether a provider honors it was not verified. The JSON is requested in the instructions and checked by our Validator in every case.
 
 ### d) Tokens, cost, traces, history
 
@@ -208,6 +208,43 @@ docker build --build-arg IMAGE=irishealth-community:2026.3.0AI.154.0 --build-arg
 docker compose -f compose.yaml -f compose.aihub.yaml up -d --no-build
 ```
 
+## Engine implementation (T04, 2026-10-22)
+
+Verified on build 154 without a provider (no network) unless stated otherwise. Same rule as above: only signatures and behavior, in our own words.
+
+### Session and provider options
+
+- `CreateSession(config)` rejects unknown keys and lists the accepted ones: `max_iterations`, `cache`, `tool_catalog`, `temperature`, `max_tokens`, `top_p`, `presence_penalty`, `frequency_penalty`, `stop_sequences`, `response_format`, `extra_params`, `auto_compact_on_token_limit`, `timeout_ms` [Verified]. `max_output_tokens` is not a key. `extra_params` must be an object; `response_format` accepts any JSON value without validation.
+- `extra_params` is merged into the top level of the HTTP request body, next to `max_tokens`, `temperature` and `response_format` [Verified with the `openai` provider and `base_url` pointing to a local capture server inside the container]. With Gemini (real call 1), a top-level `generationConfig` sent this way was rejected with HTTP 400 "Unknown name generationConfig". The engine now sends `reasoning_effort` instead, and retries once without it if the provider refuses it; whether Gemini honors `reasoning_effort` was not confirmed (calls 2 to 4 timed out, see below).
+- The `gemini` provider settings accept `http_config` and `extra_config` objects with any content at creation time (unknown keys inside are not rejected then); their effect was not exercised.
+
+### Tools and policies
+
+- In a tool manager, a tool that comes from a ToolSet is registered under its own name: the policy `toolref` is the tool name (for example `GetTaskRuns`) and `metadata.origin_class` is the defining class. A tool added with `AddTool("iris:Class")` has `toolref` `iris:Class` and no `origin_class` [Verified]. The allow-list therefore checks `origin_class`.
+- A tool hidden by `%CanList` fails with `ToolNotFound` and reaches no audit method; a listed but denied tool fails with `ToolAccessDenied` and calls `%LogDenial` [Verified]. The portal lists every registered tool and denies by allow-list, so every blocked attempt is recorded; the portal agent registers only its read-only ToolSet.
+- `SetAuthPolicy` / `SetAuditPolicy` on the tool manager (global policies) cover tools from any registration, including ones added outside the ToolSet [Verified with a test-only write tool].
+- `ToolMgr.ExecuteTool(name, args)` runs a tool through the policies without a model, which is how replay mode exercises the same path.
+- `%AI.Agent` subclass with `Parameter TOOLSETS` loads the ToolSet in `%Init()`; a ToolSet whose `<Include>` class is compiled in the same batch needs `DependsOn` on that class, or the ToolSet generator fails with `CLASS DOES NOT EXIST`.
+
+### Running a decision under a deadline
+
+- A provider call cannot be interrupted from ObjectScript and `timeout_ms` is only checked between iterations, so the engine runs each decision in a `JOB` worker and terminates it at `MYOWN_AI_TIMEOUT_SECONDS`. A `JOB` worker makes provider calls normally [Verified against the local capture server, with and without tools].
+- Process-private globals do not reach the worker; mode and key-variable overrides are passed in the request.
+
+### Real calls (Gemini `gemini-3.8-flash`, free tier, 5 calls)
+
+| # | Path | Result | Time |
+|---|---|---|---|
+| 1 | Portal S2, worker | HTTP 400: top-level `generationConfig` unknown | 0.7 s |
+| 2 | Portal S2, worker, `reasoning_effort` low | no answer, no tool called; worker terminated | 55 s |
+| 3 | Same, with tool-call timing | no answer, no tool called | 55 s |
+| 4 | Same, without `reasoning_effort` | no answer, no tool called | 55 s |
+| 5 | Foreground, no worker | HTTP 429 "exceeded your current quota" (`generate_content_free_tier_requests`) | 27.7 s |
+
+- The provider retries a 429 internally (with waits) before reporting it, so a quota error looks like a slow provider; the portal's deadline turns it into `provider_timeout`. Each portal decision may therefore have sent more than one request to Gemini.
+- Every case fell back to Rules with a valid decision and the reason recorded; nothing broke. No successful AI answer was obtained with the new settings, so the latency after the changes is not measured; T03 remains the baseline (12.6 to 83.3 s, median about 45 s).
+- Prompt size: compact instructions plus input are 7 to 10 % shorter than T03 for the same small contexts (C1 1,151 to 1,042 characters, C2 1,173 to 1,067, I2 1,064 to 990); the tool catalog now sent with the agent is not included in these figures.
+
 ## Commands for the build 154 environment
 
 ```text
@@ -231,7 +268,7 @@ The IRIS edition uses the corresponding `iris-community` archive and local tag. 
 - [x] Authorization and audit policy method signatures (verified, including denial).
 - [x] Structured-output or repair mechanism: none exists; our Validator stays.
 - [ ] AI Hub tracing/telemetry support (only Rust log file and OTel traceparent found; not exercised).
-- [ ] OpenAI-compatible base URL behavior (not exercised). Ollama: no provider in build 154.
+- [x] `base_url` with the `openai` provider (T04, local capture server: request body and `extra_params` placement). Ollama: no provider in build 154.
 - [x] A real `Chat` with a key: response shape, usage numbers, latency, provider failure (T03, Gemini `gemini-3.8-flash`).
 
 Record exact class names, method signatures, return values and any divergence here after connecting Agentic Dev to the build 154 container.

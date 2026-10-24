@@ -29,6 +29,7 @@ Method Decide(request As MyOwn.Production.Msg.AgentRequest, Output response As M
         Set response.Engine = result.engine
         Set response.Outcome = result.outcome
         Set response.ValidationStatus = result.validationStatus
+        Set response.FallbackReason = result.%Get("fallbackReason")
     }
     Set response.TraceId = result.%Get("traceId")
     Set response.EventId = +result.%Get("eventId")

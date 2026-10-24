@@ -15,6 +15,10 @@ Property ValidationStatus As %String(MAXLEN = 20);
 /// Deterministic Gate result {allowed, finalAction, downgradedBy, createProposal}; empty before the Gate step.
 Property GateJSON As %String(MAXLEN = 2000);
 
+/// Empty when the AI decided; otherwise why Rules decided (kill_switch, budget, disabled,
+/// not_installed, no_key, provider_timeout, provider_error, invalid_json).
+Property FallbackReason As %String(MAXLEN = 40);
+
 Storage Default
 {
 <Data name="AgentResponseDefaultData">
@@ -45,6 +49,9 @@ Storage Default
 </Value>
 <Value name="9">
 <Value>GateJSON</Value>
+</Value>
+<Value name="10">
+<Value>FallbackReason</Value>
 </Value>
 </Data>
 <DefaultData>AgentResponseDefaultData</DefaultData>

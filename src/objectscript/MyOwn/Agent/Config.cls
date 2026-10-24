@@ -4,6 +4,7 @@ Class MyOwn.Agent.Config Extends (%Persistent, %JSON.Adaptor)
 Property KillSwitch As %Boolean [ InitialExpression = 0 ];
 Property ReadOnly As %Boolean [ InitialExpression = 0 ];
 Property EnginePreference As %String(MAXLEN = 20) [ InitialExpression = "auto" ];
+/// Deprecated: provider settings come from the environment (MyOwn.Agent.AIEnv). Kept for storage compatibility.
 Property Provider As %String(MAXLEN = 80) [ InitialExpression = "openai" ];
 Property Model As %String(MAXLEN = 160) [ InitialExpression = "" ];
 Property BaseURL As %String(MAXLEN = 500) [ InitialExpression = "" ];
@@ -45,9 +46,17 @@ ClassMethod PublicView(Output data As %DynamicObject) As %Status
     Set data.killSwitch = config.KillSwitch
     Set data.readOnly = config.ReadOnly
     Set data.enginePreference = config.EnginePreference
-    Set data.provider = config.Provider
-    Set data.model = config.Model
-    Set data.baseURL = config.BaseURL
+    ; Provider settings come only from the environment (MyOwn.Agent.AIEnv); the persisted
+    ; Provider/Model/BaseURL properties are no longer used.
+    Set ai = ##class(MyOwn.Agent.AIEnv).PublicView()
+    Set data.provider = ai.provider
+    Set data.model = ai.model
+    Set data.aiMode = ai.mode
+    Set data.aiTimeoutSeconds = ai.timeoutSeconds
+    Set data.aiThinking = ai.thinking
+    Set data.aiMaxOutputTokens = ai.maxOutputTokens
+    Set data.aiConfigSource = ai.source
+    Set data.aiHubInstalled = ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.AIHub.Engine")
     Set data.autonomyTriage = config.AutonomyTriage
     Set data.autonomyAccess = config.AutonomyAccess
     Set data.dailyTokenBudget = config.DailyTokenBudget
@@ -57,7 +66,7 @@ ClassMethod PublicView(Output data As %DynamicObject) As %Status
     Set data.proposalTTLMinutes = config.ProposalTTLMinutes
     Set data.webhookURL = config.WebhookURL
     Set data.demoMode = config.DemoMode
-    Set data.apiKeyConfigured = ($System.Util.GetEnviron("MYOWN_AI_API_KEY") '= "")
+    Set data.apiKeyConfigured = ai.apiKeyConfigured
     Set data.highRiskResources = []
     For index = 1:1:config.HighRiskResources.Count() {
         Do data.highRiskResources.%Push(config.HighRiskResources.GetAt(index))

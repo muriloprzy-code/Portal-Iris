@@ -26,6 +26,9 @@ Property ConditionsJSON As %String(MAXLEN = 1000);
 /// Deterministic Gate result {allowed, finalAction, downgradedBy, createProposal, reason}.
 Property GateJSON As %String(MAXLEN = 2000);
 
+/// Empty when the AI decided; otherwise why Rules decided (see MyOwn.Production.Msg.AgentResponse).
+Property FallbackReason As %String(MAXLEN = 40);
+
 Index EventIndex On EventId;
 Index TraceIdIndex On TraceId;
 Index DecidedAtIndex On DecidedAt;
@@ -96,6 +99,9 @@ Storage Default
 </Value>
 <Value name="21">
 <Value>GateJSON</Value>
+</Value>
+<Value name="22">
+<Value>FallbackReason</Value>
 </Value>
 </Data>
 <DataLocation>^MyOwn.Agent.DecisionD</DataLocation>

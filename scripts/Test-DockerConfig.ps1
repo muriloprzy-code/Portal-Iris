@@ -12,6 +12,8 @@ $requiredFiles = @(
     'docker\iris.script',
     'docker\start-iris.sh',
     'module.xml',
+    'aihub\module.xml',
+    'aihub\src\MyOwn\AIHub\Engine.cls',
     'web\index.html'
 )
 
@@ -37,10 +39,13 @@ $checks = [ordered]@{
     # EnableNamespace (not Interop=1, which makes an IRIS for Health Foundation namespace with its own production).
     'MYOWN interoperability' = ($merge -match 'CreateNamespace:Name=MYOWN[^\r\n]*Interop=0') -and ($init -match '(?s)EnableNamespace\("MYOWN".*zpm "load')
     'IPM package load' = $init -match 'zpm "load /home/irisowner/dev -v"'
+    # The AI Hub module loads after the core, and only where the %AI package exists.
+    # The core load must not halt the session (third zpm argument), or the AI Hub line never runs.
+    'AI Hub module load' = $init -match '(?s)zpm "load /home/irisowner/dev -v":1:0.*%ExistsId\("%AI\.Agent"\) zpm "load /home/irisowner/dev/aihub -v"'
     'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($start -match '--password-file') -and ($start -match 'iris\.cpf') -and ($start -match 'CSPpwd')
     'Web port mapping' = $compose -match '52774.*:52773'
     'Durable IRIS data' = ($compose -match 'ISC_DATA_DIRECTORY: /durable/iris') -and ($compose -match 'myown-portal-data:/durable')
-    'AI provider environment' = ($compose -match 'MYOWN_AI_API_KEY') -and ($compose -match 'MYOWN_AI_PROVIDER') -and ($compose -match 'MYOWN_AI_MODEL')
+    'AI provider environment' = ($compose -match 'MYOWN_AI_API_KEY') -and ($compose -match 'MYOWN_AI_PROVIDER') -and ($compose -match 'MYOWN_AI_MODEL') -and ($compose -match 'MYOWN_AI_MODE') -and ($compose -match 'MYOWN_AI_TIMEOUT_SECONDS')
     'Static web application' = $null -ne $manifest.Export.Document.Module.WebApplication
 }
 
