@@ -1,0 +1,20 @@
+{
+  "scenario": "S5",
+  "status": "recorded",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "recordedAt": "2026-10-24T00:43:15Z",
+  "source": "real call recorded by scripts/Record-ReplayFixtures.ps1",
+  "context": "Exact S5 context (MyOwn.Install.Scenarios.BuildContext).",
+  "substitutions": [
+    "demo.viewer -> {{requester}}",
+    "DemoOperator -> {{roleRequested}}"
+  ],
+  "latencyMs": 11620,
+  "usage": {
+    "promptTokens": 418,
+    "completionTokens": 71,
+    "totalTokens": 571
+  },
+  "raw": "{\"schemaVersion\":1,\"workflow\":\"access-request\",\"action\":\"approve\",\"riskLevel\":\"low\",\"user\":\"{{requester}}\",\"role\":\"{{roleRequested}}\",\"rationale\":\"Empty privilege delta and low risk floor with zero prohibited permissions.\",\"confidence\":1.0,\"evidence\":[{\"source\":\"privilege-delta\",\"ref\":\"delta\"}],\"conditions\":[]}"
+}

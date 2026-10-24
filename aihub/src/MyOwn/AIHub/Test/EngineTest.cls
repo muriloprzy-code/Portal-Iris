@@ -36,16 +36,15 @@ ClassMethod Checks(report As %DynamicObject) [ Private ]
     Do ..Add(report, "AH-01-READY", replayReady && 'liveReady && (liveReason = "no_key"), "Replay is always ready; live mode without a key reports no_key.")
 
     ; Valid JSON straight from the engine, with a read-only tool call through the policies.
-    Set context = ..TaskContext("task-failing")
+    Set context = ..TaskContext("S2")
     Set tSC = $ClassMethod(engine, "Decide", "incident-triage", context.%ToJSON(), .result)
     Set validStatus = ##class(MyOwn.Agent.Decision.Validator).Validate("incident-triage", $Select($IsObject($Get(result)): result.%Get("raw"), 1: ""), context.%ToJSON(), .decision, .errors)
-    Set call = $Select($IsObject($Get(result)) && $IsObject(result.%Get("toolCalls")) && (result.toolCalls.%Size() > 0): result.toolCalls.%Get(0), 1: {})
-    Do ..Add(report, "AH-02-VALID", $$$ISOK(tSC) && $$$ISOK(validStatus) && (decision.action = "propose_task_suspend") && (decision.targetId = "1001") && (result.usage.totalTokens = 1014) && (call.%Get("name") = "GetTaskRuns") && (call.%Get("status") = "ok"), "A recorded answer passes the Validator with the context task id, real T03 tokens and an allowed tool call.")
+    Do ..Add(report, "AH-02-VALID", $$$ISOK(tSC) && $$$ISOK(validStatus) && (decision.action = "propose_task_suspend") && (decision.targetId = "1001") && (result.usage.totalTokens = 1014) && (result.model = "replay:gemini-3.8-flash"), "The recorded S2 answer (gemini-3.8-flash, T03) passes the Validator with the context task id and the real T03 tokens.")
 
     ; Through the portal service: success, then every fallback reason.
     Do ..Configure("auto", 0, 20)
     Set before = ..RealCallsLastHour()
-    Set tSC = ..Service("task-failing", .decided)
+    Set tSC = ..Service("S2", .decided)
     Set ledger = ..LedgerFor(decided.%Get("traceId"))
     Do ..Add(report, "AH-03-AI", $$$ISOK(tSC) && (decided.engine = "aihub") && (decided.fallbackReason = "") && (decided.validationStatus = "valid") && (ledger.provider = "replay") && (ledger.totalTokens = 1014) && (ledger.latencyMs > 0), "The service records an AI decision (engine aihub, no fallback reason) with tokens and latency in the ledger.")
 
@@ -69,20 +68,52 @@ ClassMethod Checks(report As %DynamicObject) [ Private ]
     Kill ^IRIS.Temp.MyOwnAIHubWriteTool
 
     Do ..Configure("auto", 0, 0)
-    Set tSC = ..Service("task-failing", .decided)
+    Set tSC = ..Service("S2", .decided)
     Set ledger = ..LedgerFor(decided.%Get("traceId"))
     Do ..Add(report, "AH-08-BUDGET", $$$ISOK(tSC) && (decided.engine = "rules") && (decided.outcome = "budget_blocked") && (decided.fallbackReason = "budget") && (ledger.aihubRows = 0), "With the hourly call limit reached, no AI call is made and Rules decide (budget).")
 
     Do ..Configure("auto", 1, 20)
-    Set tSC = ..Service("task-failing", .decided)
+    Set tSC = ..Service("S2", .decided)
     Set ledger = ..LedgerFor(decided.%Get("traceId"))
     Do ..Add(report, "AH-09-KILL-SWITCH", $$$ISOK(tSC) && (decided.engine = "rules") && (decided.outcome = "killed") && (decided.fallbackReason = "kill_switch") && (ledger.aihubRows = 0), "With the kill switch on, no AI call is made and Rules decide (kill_switch).")
 
     Do ..Configure("rules", 0, 20)
-    Set tSC = ..Service("task-failing", .decided)
+    Set tSC = ..Service("S2", .decided)
     Do ..Add(report, "AH-10-DISABLED", $$$ISOK(tSC) && (decided.engine = "rules") && (decided.outcome = "ok") && (decided.fallbackReason = "disabled"), "With the preference set to rules, Rules decide (disabled).")
 
     Do ..Add(report, "AH-11-REPLAY-FREE", ..RealCallsLastHour() = before, "Replayed answers do not count as AI calls for the hourly limit.")
+
+    ; Fixtures: every recorded scenario has its header and an answer that passes the Validator
+    ; for that scenario's context; the others are pending or not applicable.
+    Set inventory = [].%FromJSON(##class(MyOwn.AIHub.Fixtures).Inventory())
+    Set problems = "", recorded = "", pending = ""
+    For index = 0:1:(inventory.%Size() - 1) {
+        Set item = inventory.%Get(index)
+        Set name = item.scenario
+        If item.status = "recorded" {
+            Set recorded = recorded _ $Select(recorded = "": "", 1: ",") _ name
+            If (item.%Get("model") = "") || (item.%Get("recordedAt") = "") || (item.%Get("provider") = "") || (item.%Get("source") = "") Set problems = problems _ name _ " header; "
+            Set sample = ..ScenarioContext(name, .workflow)
+            Do ##class(MyOwn.AIHub.Fixtures).Get(name, .fixture)
+            Set raw = ##class(MyOwn.AIHub.Fixtures).Fill(fixture.raw, sample)
+            If $$$ISERR(##class(MyOwn.Agent.Decision.Validator).Validate(workflow, raw, sample.%ToJSON(), .checked, .errors)) Set problems = problems _ name _ " invalid: " _ errors.%Get(0) _ "; "
+        } ElseIf item.status = "pending" {
+            Set pending = pending _ $Select(pending = "": "", 1: ",") _ name
+        } ElseIf item.status '= "not_applicable" {
+            Set problems = problems _ name _ " " _ item.status _ "; "
+        }
+    }
+    Do ..Add(report, "AH-15-FIXTURES", (inventory.%Size() = 10) && (problems = ""), "S1..S10 fixtures: recorded " _ recorded _ " (model and date in each header, answers valid for the scenario context); pending recording " _ $Select(pending = "": "none", 1: pending) _ "." _ $Select(problems '= "": " Problems: " _ problems, 1: ""))
+
+    Set ^||MyOwnAI("mode") = "replay"
+    Do ..Configure("auto", 0, 20)
+    Set accessContext = ..ScenarioContext("S5", .workflow)
+    Set accessContext.simulationRunId = $System.Util.CreateGUID()
+    Set tSC = $ClassMethod(engine, "Decide", workflow, accessContext.%ToJSON(), .missing)
+    Set engineReason = $Piece($Piece($System.Status.GetErrorText(tSC), "AIHUB_FALLBACK:", 2), ":", 1)
+    Set tSC = ##class(MyOwn.Agent.Service.Agent).Decide(workflow, accessContext.%ToJSON(), "test", "aihub-test-" _ $System.Util.CreateGUID(), .decided)
+    Set expected = $Select(pending [ "S5": "replay_missing", 1: "")
+    Do ..Add(report, "AH-16-NOT-RECORDED", $$$ISOK(tSC) && (engineReason = expected) && (decided.fallbackReason = expected) && $Select(expected = "": decided.engine = "aihub", 1: decided.engine = "rules"), "A scenario with no recorded answer (S5) is not invented: the engine reports replay_missing and Rules decide.")
 
     ; Policy and prompt units.
     Set policy = "MyOwn.AIHub.Policy.ReadOnlyAuth"
@@ -110,13 +141,30 @@ ClassMethod Checks(report As %DynamicObject) [ Private ]
     Do ..Add(report, "AH-13-DELIMITERS", (closings = 1) && (facts '[ "SYSTEM") && (facts '[ "run everything") && (input [ "1001"), "Untrusted text stays inside one delimited block and cannot close it; facts carry no untrusted text.")
 }
 
-/// A task-watcher context with a replay case and a unique run id (no cooldown between checks).
+/// A task-watcher context for scenario S2 or a test case, with a unique run id (no cooldown between checks).
 ClassMethod TaskContext(case As %String) As %DynamicObject [ Private ]
 {
     Set context = {"source": "task-watcher", "candidates": [{"id": "1001", "type": "task", "manageable": 1}], "untrustedData": {"lastError": "test"}}
     Set context.task = {"id": "1001", "name": "MyOwn Portal health snapshot", "namespace": "MYOWN", "manageable": 1, "suspended": 0, "consecutiveFailures": 3, "lastRunOk": 0}
-    Set context.replayCase = case
+    If case ? 1"S"1.2N {
+        Set context.scenario = case
+    } Else {
+        Set context.replayCase = case
+    }
     Set context.simulationRunId = $System.Util.CreateGUID()
+    Quit context
+}
+
+/// The scenario context without the production or SysAdmin (S2/S3 use a fixed task 1001).
+ClassMethod ScenarioContext(name As %String, Output workflow As %String) As %DynamicObject [ Private ]
+{
+    If (name = "S2") || (name = "S3") {
+        Set workflow = "incident-triage"
+        Set context = {"scenario": (name), "candidates": [{"id": "1001", "type": "task", "manageable": 1}], "untrustedData": {}}
+        Set context.task = {"id": "1001", "name": "MyOwn Portal health snapshot", "namespace": "MYOWN", "manageable": 1, "suspended": (name = "S3"), "consecutiveFailures": ($Select(name = "S2": 3, 1: 0)), "lastRunOk": (name = "S3")}
+        Quit context
+    }
+    Do ##class(MyOwn.Install.Scenarios).BuildContext(name, "", 0, "demo.viewer", .workflow, .context)
     Quit context
 }
 

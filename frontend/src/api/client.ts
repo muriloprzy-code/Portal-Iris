@@ -303,7 +303,7 @@ export type AgentDecision = {
   downgradedBy: string
   traceId: string
   decidedAt: string
-  /** Empty when the AI decided; otherwise why Rules decided (kill_switch, budget, disabled, not_installed, no_key, provider_timeout, provider_error, invalid_json). */
+  /** Empty when the AI decided; otherwise why Rules decided (kill_switch, budget, disabled, not_installed, no_key, provider_timeout, provider_error, invalid_json, replay_missing). */
   fallbackReason?: string
   proposalId?: number | string
   /** Detail only (GET /agent/decisions/:id). Model-written text is sanitized by the server and must be rendered as text. */

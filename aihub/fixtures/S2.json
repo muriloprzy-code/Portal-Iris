@@ -1,0 +1,19 @@
+{
+  "scenario": "S2",
+  "status": "recorded",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "recordedAt": "2026-10-21T01:10:22Z",
+  "source": "T03 real call C2-task-failing (docs/AI-HUB-NOTES.md, \"Teste real\")",
+  "context": "T03 C2: task 1001 failing 4 times in a row (S2: 3), not suspended; T03 also listed a non-manageable candidate 1002.",
+  "substitutions": [
+    "1001 -> {{taskId}}"
+  ],
+  "latencyMs": 35387,
+  "usage": {
+    "promptTokens": 318,
+    "completionTokens": 140,
+    "totalTokens": 1014
+  },
+  "raw": "{\"schemaVersion\":1,\"workflow\":\"incident-triage\",\"action\":\"propose_task_suspend\",\"severity\":\"warning\",\"targetType\":\"task\",\"targetId\":\"{{taskId}}\",\"rationale\":\"Task 'MyOwn Portal health snapshot' (ID {{taskId}}) has failed 4 consecutive times and is actively running. Suspending the task prevents repetitive failure loops and resource consumption until root cause is identified.\",\"confidence\":0.92,\"evidence\":[{\"source\":\"task\",\"ref\":\"{{taskId}}\"}],\"recommendedFollowUp\":\"Review the task error logs and execution history for ID {{taskId}}, resolve the underlying error, and test run manually.\"}"
+}

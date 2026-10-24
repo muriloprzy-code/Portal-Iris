@@ -1,0 +1,5 @@
+{
+  "scenario": "S10",
+  "status": "not_applicable",
+  "context": "S10 is the budget scenario: the budget check stops it before any AI call, so no model answer can exist."
+}

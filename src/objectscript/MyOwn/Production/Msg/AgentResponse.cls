@@ -16,7 +16,7 @@ Property ValidationStatus As %String(MAXLEN = 20);
 Property GateJSON As %String(MAXLEN = 2000);
 
 /// Empty when the AI decided; otherwise why Rules decided (kill_switch, budget, disabled,
-/// not_installed, no_key, provider_timeout, provider_error, invalid_json).
+/// not_installed, no_key, provider_timeout, provider_error, invalid_json, replay_missing).
 Property FallbackReason As %String(MAXLEN = 40);
 
 Storage Default

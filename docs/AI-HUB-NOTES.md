@@ -245,6 +245,10 @@ Verified on build 154 without a provider (no network) unless stated otherwise. S
 - Every case fell back to Rules with a valid decision and the reason recorded; nothing broke. No successful AI answer was obtained with the new settings, so the latency after the changes is not measured; T03 remains the baseline (12.6 to 83.3 s, median about 45 s).
 - Prompt size: compact instructions plus input are 7 to 10 % shorter than T03 for the same small contexts (C1 1,151 to 1,042 characters, C2 1,173 to 1,067, I2 1,064 to 990); the tool catalog now sent with the agent is not included in these figures.
 
+### First successful calls with the T04 settings (2026-10-24)
+
+Three recordings of replay fixtures (S5, S6, S7, exact scenario contexts, worker with the 20 s deadline, `max_tokens` 400, `reasoning_effort` low, tool catalog sent): 11.6, 13.3 and 16.4 s; prompt 418 tokens each, output 71 to 85, total 571 to 702. All three passed the Validator; no tool was called. The gap between the total and input plus output (82 to 199 tokens, against 384 to 2,522 in T03) suggests `reasoning_effort` is honored by the `gemini` provider; not confirmed in the provider source.
+
 ## Commands for the build 154 environment
 
 ```text

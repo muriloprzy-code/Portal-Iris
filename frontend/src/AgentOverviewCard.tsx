@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { analyzeCurrentHealth, getAgentLedgerSummary, getAgentProposals, getAgentStatus, type AgentLedgerSummary, type AgentSimulation, type AgentStatus } from './api/client'
-import { engineLabel } from './engineLabel'
+import { engineLabel, ReplayBadge } from './engineLabel'
 
 type AgentOverviewCardProps = {
   canManage: boolean
@@ -56,7 +56,7 @@ export default function AgentOverviewCard({ canManage, onPendingChange, onOpenAg
 
   return <section className="agent-overview-card">
     <div className="agent-overview-heading"><div><p className="eyebrow">INTEROPERABILITY AGENT</p><h3>Safe operational decisions</h3><p>Events are analyzed inside the production; every proposed change still requires human confirmation.</p></div><span className={`agent-orb ${status?.activeEngine === 'aihub' ? 'aihub' : ''}`}>✦</span></div>
-    <div className="agent-overview-stats"><span><small>ENGINE</small><strong>{status?.activeEngine === 'aihub' ? 'AI Hub' : 'Rules'}</strong></span><span><small>DECISIONS</small><strong>{ledger?.decisions ?? '—'}</strong></span><span><small>PRODUCTION</small><strong>{yes(status?.production.running) ? 'Running' : 'Stopped'}</strong></span><span><small>BUDGET</small><strong>{status ? `${status.tokensUsedToday}/${status.dailyTokenBudget}` : '—'}</strong></span></div>
+    <div className="agent-overview-stats"><span><small>ENGINE</small><strong>{status?.activeEngine === 'aihub' ? 'AI Hub' : 'Rules'}</strong>{status?.aiMode === 'replay' && <ReplayBadge />}</span><span><small>DECISIONS</small><strong>{ledger?.decisions ?? '—'}</strong></span><span><small>PRODUCTION</small><strong>{yes(status?.production.running) ? 'Running' : 'Stopped'}</strong></span><span><small>BUDGET</small><strong>{status ? `${status.tokensUsedToday}/${status.dailyTokenBudget}` : '—'}</strong></span></div>
     {analysis && <p className="agent-analysis-result">Latest: <b>{String(analysis.decision?.action || analysis.outcome)}</b> · {engineLabel(analysis.engine, analysis.fallbackReason)} · trace {analysis.traceId}</p>}
     {error && <p className="agent-analysis-error">{error}</p>}
     <div className="agent-overview-actions">{canManage && <button className="state-action" type="button" onClick={analyze} disabled={busy}>{busy ? 'Analyzing…' : 'Analyze current health'}</button>}<button className="row-action" type="button" onClick={onOpenAgents}>Open Agents</button></div>

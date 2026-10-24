@@ -1,0 +1,17 @@
+{
+  "scenario": "S4",
+  "status": "recorded",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "recordedAt": "2026-10-21T01:12:19Z",
+  "source": "T03 real call C4-nothing (docs/AI-HUB-NOTES.md, \"Teste real\")",
+  "context": "T03 C4: no anomaly and no task (S4: no anomaly, threshold not exceeded).",
+  "substitutions": [],
+  "latencyMs": 57566,
+  "usage": {
+    "promptTokens": 289,
+    "completionTokens": 68,
+    "totalTokens": 741
+  },
+  "raw": "{\"schemaVersion\":1,\"workflow\":\"incident-triage\",\"action\":\"ignore\",\"severity\":\"info\",\"targetType\":\"none\",\"targetId\":\"\",\"rationale\":\"No anomalies or incidents detected in the current context. All systems operating normally.\",\"confidence\":0.95,\"evidence\":[],\"recommendedFollowUp\":\"Continue routine system monitoring.\"}"
+}

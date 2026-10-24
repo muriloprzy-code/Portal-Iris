@@ -71,6 +71,13 @@ if (-not $installed) {
     if ($smoke.error) { Add-Result -Id 'AH-SMOKE' -Status 'fail' -Details $smoke.error }
     foreach ($item in $smoke.results) { Add-Result -Id $item.id -Status $item.status -Details $item.details }
 
+    # Replay fixtures S1..S10: which are real recorded decisions (model, date) and which still need recording.
+    $inventoryRaw = (Invoke-IrisSql -Query 'SELECT MyOwn_AIHub.Fixtures_Inventory() AS r')[0].r
+    $inventory = @(if ($inventoryRaw -is [string]) { $inventoryRaw | ConvertFrom-Json } else { $inventoryRaw })
+    $recordedList = @($inventory | Where-Object status -eq 'recorded' | ForEach-Object { "$($_.scenario) ($($_.model), $($_.recordedAt))" })
+    $pendingList = @($inventory | Where-Object status -eq 'pending' | ForEach-Object scenario)
+    Add-Result -Id 'AH-FIXTURES' -Status $(if ($inventory.Count -eq 10) { 'pass' } else { 'fail' }) -Details "Recorded: $($recordedList -join '; '). Pending recording: $(if ($pendingList) { $pendingList -join ', ' } else { 'none' })." -Data $inventory
+
     if ($Live) {
         if ($config.aiMode -ne 'live' -or -not [bool][int]$config.apiKeyConfigured) {
             Add-Result -Id 'AH-LIVE' -Status 'skip' -Details 'Live calls need MYOWN_AI_MODE=live and a key in the container environment.'

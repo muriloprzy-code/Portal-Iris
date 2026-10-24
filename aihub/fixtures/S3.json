@@ -1,0 +1,19 @@
+{
+  "scenario": "S3",
+  "status": "recorded",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "recordedAt": "2026-10-21T01:11:20Z",
+  "source": "T03 real call C3-task-recovered (docs/AI-HUB-NOTES.md, \"Teste real\")",
+  "context": "T03 C3: task 1001 suspended, 0 failures, last run ok (same state as S3); T03 also listed candidate 1002.",
+  "substitutions": [
+    "1001 -> {{taskId}}"
+  ],
+  "latencyMs": 56348,
+  "usage": {
+    "promptTokens": 318,
+    "completionTokens": 123,
+    "totalTokens": 935
+  },
+  "raw": "{\"schemaVersion\":1,\"workflow\":\"incident-triage\",\"action\":\"propose_task_resume\",\"severity\":\"warning\",\"targetType\":\"task\",\"targetId\":\"{{taskId}}\",\"rationale\":\"Task {{taskId}} (MyOwn Portal health snapshot) is currently suspended despite a successful last run and zero consecutive failures. It is manageable and eligible to be resumed.\",\"confidence\":0.88,\"evidence\":[{\"source\":\"task\",\"ref\":\"{{taskId}}\"}],\"recommendedFollowUp\":\"Verify if the suspension was intentional; if not, approve task resumption to ensure health snapshot collection.\"}"
+}

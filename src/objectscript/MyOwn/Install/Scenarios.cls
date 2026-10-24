@@ -4,6 +4,30 @@ Class MyOwn.Install.Scenarios
 ClassMethod Run(name As %String, authorization As %String, taskId As %Integer, requester As %String, Output response As %DynamicObject) As %Status
 {
     Set name = $ZConvert(##class(MyOwn.Agent.Sanitize).Identifier(name), "U")
+    Set tSC = ..BuildContext(name, authorization, taskId, requester, .workflow, .context)
+    If $$$ISERR(tSC) Quit tSC
+    Set traceId = $System.Util.CreateGUID()
+    Set context.simulationRunId = traceId
+    If workflow = "access-request" Quit ..RunAccess(name, requester, context, .response)
+    Set request = ##class(MyOwn.Production.Msg.IncidentEvent).%New()
+    Set request.Source = "simulate"
+    Set request.ContextJSON = context.%ToJSON()
+    Set request.TraceId = traceId
+    Set request.Fingerprint = $ZCRC(request.ContextJSON, 7) _ ":" _ $Length(request.ContextJSON)
+    Set tSC = ##class(Ens.Director).CreateBusinessService("HealthMonitor", .service)
+    If $$$ISERR(tSC) Quit tSC
+    Set tSC = service.ProcessInput(request, .agentResponse)
+    If $$$ISERR(tSC) Quit tSC
+    If '$IsObject(agentResponse) Quit $$$ERROR($$$GeneralError, "AGENT_RESPONSE_MISSING")
+    Set response = ##class(MyOwn.Agent.Service.Agent).ResponseFromMessage(agentResponse)
+    Set response.scenario = name
+    Quit $$$OK
+}
+
+/// The decision context of a demonstration scenario, as the production receives it (also used
+/// to record replay fixtures). context.scenario names the scenario; the model never sees it.
+ClassMethod BuildContext(name As %String, authorization As %String, taskId As %Integer, requester As %String, Output workflow As %String, Output context As %DynamicObject) As %Status
+{
     Set workflow = "incident-triage"
     Set context = {}
     Set context.candidates = []
@@ -65,21 +89,7 @@ ClassMethod Run(name As %String, authorization As %String, taskId As %Integer, r
     } Else {
         Quit $$$ERROR($$$GeneralError, "Unknown demonstration scenario.")
     }
-    Set traceId = $System.Util.CreateGUID()
-    Set context.simulationRunId = traceId
-    If workflow = "access-request" Quit ..RunAccess(name, requester, context, .response)
-    Set request = ##class(MyOwn.Production.Msg.IncidentEvent).%New()
-    Set request.Source = "simulate"
-    Set request.ContextJSON = context.%ToJSON()
-    Set request.TraceId = traceId
-    Set request.Fingerprint = $ZCRC(request.ContextJSON, 7) _ ":" _ $Length(request.ContextJSON)
-    Set tSC = ##class(Ens.Director).CreateBusinessService("HealthMonitor", .service)
-    If $$$ISERR(tSC) Quit tSC
-    Set tSC = service.ProcessInput(request, .agentResponse)
-    If $$$ISERR(tSC) Quit tSC
-    If '$IsObject(agentResponse) Quit $$$ERROR($$$GeneralError, "AGENT_RESPONSE_MISSING")
-    Set response = ##class(MyOwn.Agent.Service.Agent).ResponseFromMessage(agentResponse)
-    Set response.scenario = name
+    Set context.scenario = name
     Quit $$$OK
 }
 

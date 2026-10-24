@@ -1,6 +1,6 @@
 # AI Agents implementation progress
 
-Last updated: 2026-10-22
+Last updated: 2026-10-24
 
 This file records verified progress against `SPEC-AI-AGENTS.md` and its first addendum. A checked item means the implementation exists and the listed verification passed; it does not replace the remaining AI Hub build 154 validation.
 
@@ -13,7 +13,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - Agents UI (isolated browser): **14 passed, 0 failed** (`scripts/Test-AgentsUI.ps1`), report in `test-results/agents-ui.json`, screenshots in `test-results/ui/`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across the 113 tracked or staged files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`; `.env` and untracked files are out of scope).
-- AI Hub engine suite (replay, no key, no network): **15 passed, 0 failed** on build 154 (`scripts/Test-Agents-AIHub.ps1`, `SELECT MyOwn_AIHub_Test.AIHubEngineSmoke()`); skipped on 2026.2, where the module is not installed.
+- AI Hub engine suite (replay, no key, no network): **18 passed, 0 failed** on build 154 (16 engine checks, configuration and the fixture inventory) (`scripts/Test-Agents-AIHub.ps1`, `SELECT MyOwn_AIHub_Test.AIHubEngineSmoke()`); skipped on 2026.2, where the module is not installed.
 - Frontend TypeScript type-check passed; Vite production bundle generated and served successfully by local IRIS at `/myown/`.
 - Current 2026.2 instance does not contain `%AI.*`, so the AI Hub module (`aihub/`, `myown-portal-aihub`) is not installed there and Rules decide (`not_installed`).
 - AI Hub build 154 (IRIS for Health, `irishealth-community:2026.3.0AI.154.0`) runs on port 52774 from a fresh volume: installation completes unattended and the same regression passes as on 2026.2 (see "AI Hub build 154 regression"). The IRIS Community edition of build 154 is not loaded on this machine yet.
@@ -208,6 +208,29 @@ The UI test now opens `/myown/index.html`: the private web server of the IRIS co
 Real calls (Gemini `gemini-3.8-flash`, free tier; 5 of the 6 allowed, at least 15 s apart; the monitoring services were paused and the hourly limit set to 6 during the window, then restored): 1) HTTP 400 for a native `generationConfig` sent through `extra_params`, fallback `provider_error` in 0.7 s; 2) to 4) no answer within 55 s and no tool called, fallback `provider_timeout` (once without the reasoning option); 5) run in the foreground to rule out the worker: HTTP 429 free-tier quota after 27.7 s. The provider retries a 429 internally before reporting it, which explains the timeouts. Stopped there. Latency after the changes could not be measured; the T03 baseline stays 12.6 to 83.3 s (median about 45 s). The compact prompt is only 7 to 10 % shorter for the small T03 contexts (1,173 to 1,067 characters for C2); the reduction applies mainly to real health and log contexts. On the 154 container the engine preference was left at `rules`, so the restored monitoring services make no real calls until the quota resets.
 
 Mistake in this session: stopping the hung `docker build` client on Windows did not stop the build in the Docker daemon, so two image builds overlapped for a few minutes. The image used for the regression is the later one (fixed `iris.script`), checked inside the image.
+
+## Replay fixtures from real decisions (4b, 2026-10-24)
+
+Replay answers are now one fixture per demonstration scenario, each a real model decision with its header (`aihub/fixtures/S1.json` .. `S10.json`: status, provider, model, `recordedAt` in UTC, source, how the context relates to the scenario, substitutions). Only the task id, user and role are replaced by placeholders; the answer text is otherwise literal. `scripts/Build-ReplayFixtures.ps1` writes them into `MyOwn.AIHub.Fixtures` (`-Check` verifies the class matches); `scripts/Record-ReplayFixtures.ps1` records pending scenarios through `MyOwn_AIHub.RecordScenario` (exact scenario context from `MyOwn.Install.Scenarios.BuildContext`, live engine, Validator, ledger row so the call counts for the limits; no production, no proposal), at most 6 calls, 15 s apart, stopping at a quota error.
+
+| Scenario | Source | Model | Recorded (UTC) |
+|---|---|---|---|
+| S1 | T03 C1 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:09 |
+| S2 | T03 C2 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:10 |
+| S3 | T03 C3 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:11 |
+| S4 | T03 C4 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:12 |
+| S5 | recorder, exact context | gemini-3.8-flash | 2026-10-24 00:43 |
+| S6 | recorder, exact context | gemini-3.8-flash | 2026-10-24 00:44 |
+| S7 | recorder, exact context | gemini-3.8-flash | 2026-10-24 00:44 |
+| S8 | T03 I1 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:13 |
+| S9 | T03 I2 (equivalent context) | gemini-3.8-flash | 2026-10-21 01:15 |
+| S10 | not applicable: the budget check stops it before any AI call | — | — |
+
+Pending recording: none. S1 to S4, S8 and S9 come from the T03 calls, whose contexts were equivalent but not identical (each header says how); re-recording them with the exact contexts takes six more calls. The T04 synthetic answers (low and medium access, warning) and the invented tool call in the S2 replay were removed. A scenario whose fixture is not recorded makes the engine fall back with the new reason `replay_missing` instead of inventing an answer (AH-16). AH-15 checks that every recorded fixture has its header and passes the Validator for its scenario context.
+
+The Agents screen and the overview card show the badge "Replay of recorded real decisions" while `MYOWN_AI_MODE=replay` (UI-REPLAY-BADGE: shown in replay on build 154, absent in live on 2026.2). The secret scan pattern for configured keys no longer crosses a line break (an empty `MYOWN_AI_API_KEY=` in a diff matched the next line).
+
+Real calls: 3 (S5, S6, S7), all answered within the 20 s deadline: 11.6, 13.3 and 16.4 s; tokens in/out/total 418/71/571, 418/85/702, 418/78/628. Compared with T03 (12.6 to 83.3 s, totals 741 to 2,947 for about 300 prompt tokens), the hidden reasoning is much smaller (total minus input and output: 82 to 199 tokens against 384 to 2,522), which suggests `reasoning_effort` low is honored; the prompt is larger because it now includes the tool catalog. Three calls at another time of day are not a benchmark. Regression after the change: 2026.2 all seven suites pass; build 154 (replay) all pass, with one rerun of `Test-AgentSmoke.ps1` and `Test-Agents-AIHub.ps1` after HTTP 504 from the 60 s web gateway (both run as one long SQL request; the AI Hub suite takes about 60 s, at that limit).
 
 ## Next verified milestone
 

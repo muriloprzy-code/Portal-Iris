@@ -1,0 +1,20 @@
+{
+  "scenario": "S7",
+  "status": "recorded",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "recordedAt": "2026-10-24T00:44:38Z",
+  "source": "real call recorded by scripts/Record-ReplayFixtures.ps1",
+  "context": "Exact S7 context (MyOwn.Install.Scenarios.BuildContext).",
+  "substitutions": [
+    "demo.viewer -> {{requester}}",
+    "%All -> {{roleRequested}}"
+  ],
+  "latencyMs": 16442,
+  "usage": {
+    "promptTokens": 418,
+    "completionTokens": 78,
+    "totalTokens": 628
+  },
+  "raw": "{\"schemaVersion\":1,\"workflow\":\"access-request\",\"action\":\"deny\",\"riskLevel\":\"high\",\"user\":\"{{requester}}\",\"role\":\"{{roleRequested}}\",\"rationale\":\"Role {{roleRequested}} is explicitly prohibited and riskFloor is high, precluding approval.\",\"confidence\":1.0,\"evidence\":[{\"source\":\"privilege-delta\",\"ref\":\"prohibited:1\"}],\"conditions\":[]}"
+}

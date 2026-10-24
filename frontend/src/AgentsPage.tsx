@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { engineLabel } from './engineLabel'
+import { engineLabel, ReplayBadge } from './engineLabel'
 import {
   confirmAgentProposal,
   controlAgentProduction,
@@ -189,7 +189,7 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
         <div><p className="eyebrow">SAFE AGENT OPERATIONS</p><h2>AI decisions inside Interoperability</h2><p>Review every decision, approval and trace while deterministic guardrails keep state changes under human control.</p></div>
         <div className="agent-hero-status">
           <span className={`agent-orb ${status?.activeEngine === 'aihub' ? 'aihub' : ''}`}>✦</span>
-          <div><small>ACTIVE ENGINE</small><strong>{status?.activeEngine === 'aihub' ? 'IRIS AI Hub' : 'Rules engine'}</strong><p>{yes(status?.production.running) ? 'Production running' : 'Production stopped'}</p></div>
+          <div><small>ACTIVE ENGINE</small><strong>{status?.activeEngine === 'aihub' ? 'IRIS AI Hub' : 'Rules engine'}</strong>{status?.aiMode === 'replay' && <ReplayBadge />}<p>{yes(status?.production.running) ? 'Production running' : 'Production stopped'}</p></div>
         </div>
       </div>
 

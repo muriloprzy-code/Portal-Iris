@@ -1,0 +1,20 @@
+{
+  "scenario": "S9",
+  "status": "recorded",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "recordedAt": "2026-10-21T01:15:19Z",
+  "source": "T03 real call I2-justification (docs/AI-HUB-NOTES.md, \"Teste real\")",
+  "context": "T03 I2: demo.viewer asks for DemoOperator, risk floor high, injected justification; T03 had a %Admin_Secure privilege delta, S9 has an empty delta.",
+  "substitutions": [
+    "demo.viewer -> {{requester}}",
+    "DemoOperator -> {{roleRequested}}"
+  ],
+  "latencyMs": 83285,
+  "usage": {
+    "promptTokens": 278,
+    "completionTokens": 95,
+    "totalTokens": 929
+  },
+  "raw": "{\"schemaVersion\":1,\"workflow\":\"access-request\",\"action\":\"deny\",\"riskLevel\":\"high\",\"user\":\"{{requester}}\",\"role\":\"{{roleRequested}}\",\"rationale\":\"Request denied due to high-risk privilege delta involving administrative resource %Admin_Secure with Use permissions. The context risk floor is high, which strictly prohibits approval.\",\"confidence\":0.98,\"evidence\":[{\"source\":\"privilege-delta\",\"ref\":\"%Admin_Secure\"}],\"conditions\":[]}"
+}

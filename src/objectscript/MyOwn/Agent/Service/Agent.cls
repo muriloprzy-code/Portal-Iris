@@ -80,7 +80,7 @@ ClassMethod Decide(workflow As %String, contextJSON As %String, source As %Strin
 
     ; Engine choice. fallbackReason is empty only when the AI decided; otherwise it says why
     ; Rules decided: kill_switch, budget, disabled, not_installed, no_key, provider_timeout,
-    ; provider_error or invalid_json.
+    ; provider_error, invalid_json or replay_missing (replay mode, scenario not recorded).
     Set engine = "rules"
     Set outcome = "ok"
     Set fallbackReason = ""
@@ -164,7 +164,7 @@ ClassMethod TryAIHub(workflow As %String, contextJSON As %String, traceId As %St
         ; The engine reports "AIHUB_FALLBACK:<reason>:<detail>"; anything else is a provider error.
         Set text = $System.Status.GetErrorText(callStatus)
         Set fallbackReason = $Select(text [ "AIHUB_FALLBACK:": $Piece($Piece(text, "AIHUB_FALLBACK:", 2), ":", 1), 1: "provider_error")
-        If '$ListFind($ListBuild("provider_timeout", "provider_error", "no_key"), fallbackReason) Set fallbackReason = "provider_error"
+        If '$ListFind($ListBuild("provider_timeout", "provider_error", "no_key", "replay_missing"), fallbackReason) Set fallbackReason = "provider_error"
         Set fallbackDetail = $Piece($Piece(text, "AIHUB_FALLBACK:", 2), ":", 2, 999)
         If fallbackDetail = "" Set fallbackDetail = text
     } Else {

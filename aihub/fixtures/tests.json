@@ -1,0 +1,60 @@
+{
+  "invalid-json": {
+    "source": "test (not a model answer)",
+    "latencyMs": 900,
+    "usage": {
+      "promptTokens": 300,
+      "completionTokens": 40,
+      "totalTokens": 400
+    },
+    "raw": "Sure! Here is my decision: escalate the incident because the disk is full."
+  },
+  "timeout": {
+    "source": "test (not a model answer)",
+    "latencyMs": 30000,
+    "usage": {
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0
+    },
+    "raw": ""
+  },
+  "provider-error": {
+    "source": "test, error text shaped after T03 K1 (invalid key)",
+    "latencyMs": 248,
+    "usage": {
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0
+    },
+    "error": {
+      "reason": "provider_error",
+      "detail": "Provider 'gemini' error: API error 400 INVALID_ARGUMENT"
+    }
+  },
+  "write-tool": {
+    "source": "test (not a model answer)",
+    "latencyMs": 900,
+    "usage": {
+      "promptTokens": 320,
+      "completionTokens": 60,
+      "totalTokens": 500
+    },
+    "tools": [
+      {
+        "name": "SuspendTask",
+        "args": {
+          "taskId": "{{taskId}}"
+        }
+      },
+      {
+        "name": "GetTaskRuns",
+        "args": {
+          "taskId": "{{taskId}}",
+          "count": 2
+        }
+      }
+    ],
+    "raw": "{\"schemaVersion\":1,\"workflow\":\"incident-triage\",\"action\":\"escalate\",\"severity\":\"warning\",\"targetType\":\"none\",\"targetId\":\"\",\"rationale\":\"The write tool was refused; an administrator must decide.\",\"confidence\":0.6,\"evidence\":[],\"recommendedFollowUp\":\"Review the task manually.\"}"
+  }
+}

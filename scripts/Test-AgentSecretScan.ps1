@@ -14,8 +14,9 @@ $patterns = [ordered]@{
     'GitHub token' = 'gh[pousr]_[A-Za-z0-9]{20,}'
     'AWS access key' = 'AKIA[0-9A-Z]{16}'
     'Private key' = '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
-    'Configured AI key' = '(?im)^\s*(?:MYOWN_AI_API_KEY|OPENAI_API_KEY)\s*[:=]\s*["'']?[^\s"''#${][^\r\n#]*'
-    'Configured IRIS password' = '(?im)^\s*IRIS_PASSWORD\s*[:=]\s*["'']?(?!SUA_SENHA|CHANGE[-_]?ME|YOUR_PASSWORD|<PASSWORD>)[^\s"''#${][^\r\n#]*'
+    # [ \t]* rather than \s*: an empty value must not reach into the next line.
+    'Configured AI key' = '(?im)^[ \t]*(?:MYOWN_AI_API_KEY|OPENAI_API_KEY)[ \t]*[:=][ \t]*["'']?[^\s"''#${][^\r\n#]*'
+    'Configured IRIS password' = '(?im)^[ \t]*IRIS_PASSWORD[ \t]*[:=][ \t]*["'']?(?!SUA_SENHA|CHANGE[-_]?ME|YOUR_PASSWORD|<PASSWORD>)[^\s"''#${][^\r\n#]*'
 }
 
 function Add-Finding {

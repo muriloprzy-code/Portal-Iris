@@ -100,6 +100,12 @@ try {
   const modelReadOnly = await page.getByLabel('Model', { exact: true }).getAttribute('readonly') !== null
   add('UI-SETTINGS', providerReadOnly && modelReadOnly, `Demo mode on, read-only off and engine preference "Rules only" through the Settings screen; provider and model fields read-only: ${providerReadOnly && modelReadOnly}.`)
 
+  // The replay badge appears exactly when the server runs with MYOWN_AI_MODE=replay.
+  await openTab(page, 'Overview')
+  const replayMode = config.aiMode === 'replay'
+  const badges = await page.getByText('Replay of recorded real decisions', { exact: true }).count()
+  add('UI-REPLAY-BADGE', replayMode ? badges > 0 : badges === 0, `aiMode ${config.aiMode}: replay badge shown ${badges} time(s).`)
+
   for (const [scenario, want] of Object.entries(expected)) {
     await openTab(page, 'Overview')
     await page.getByLabel('Demonstration scenario').selectOption(scenario)

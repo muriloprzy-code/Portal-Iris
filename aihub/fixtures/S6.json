@@ -1,0 +1,20 @@
+{
+  "scenario": "S6",
+  "status": "recorded",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "recordedAt": "2026-10-24T00:44:10Z",
+  "source": "real call recorded by scripts/Record-ReplayFixtures.ps1",
+  "context": "Exact S6 context (MyOwn.Install.Scenarios.BuildContext).",
+  "substitutions": [
+    "demo.viewer -> {{requester}}",
+    "DemoOperator -> {{roleRequested}}"
+  ],
+  "latencyMs": 13326,
+  "usage": {
+    "promptTokens": 418,
+    "completionTokens": 85,
+    "totalTokens": 702
+  },
+  "raw": "{\"schemaVersion\":1,\"workflow\":\"access-request\",\"action\":\"escalate\",\"riskLevel\":\"high\",\"user\":\"{{requester}}\",\"role\":\"{{roleRequested}}\",\"rationale\":\"Risk floor is high and delta level is high, precluding automatic approval. Escalating for security review.\",\"confidence\":0.95,\"evidence\":[{\"source\":\"privilege-delta\",\"ref\":\"deltaLevel:high\"}],\"conditions\":[]}"
+}

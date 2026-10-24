@@ -144,14 +144,22 @@ ClassMethod Live(workflow As %String, contextJSON As %String, timeoutSeconds As 
     Quit $$$OK
 }
 
-/// Recorded answers: same tool manager and policies as live, no provider.
+/// Recorded real answers (MyOwn.AIHub.Fixtures): same tool manager and policies as live, no
+/// provider. A scenario with no recorded answer falls back (replay_missing); none is invented.
 ClassMethod Replay(workflow As %String, contextJSON As %String, Output answer As %DynamicObject) As %Status
 {
     Set context = {}.%FromJSON(contextJSON)
     Set case = ##class(MyOwn.AIHub.Fixtures).Pick(workflow, context)
+    Set answer = {"provider": "replay", "model": "", "replayCase": (case), "iterations": 0}
     Set tSC = ##class(MyOwn.AIHub.Fixtures).Get(case, .fixture)
-    If $$$ISERR(tSC) Quit tSC
-    Set answer = {"provider": "replay", "model": ("replay:" _ fixture.%Get("source")), "replayCase": (case), "iterations": 1, "usage": (fixture.usage)}
+    If $$$ISERR(tSC) Quit ..Fallback("replay_missing", case _ ": no fixture")
+    Set status = fixture.%Get("status")
+    If (status '= "") && (status '= "recorded") Quit ..Fallback("replay_missing", case _ ": " _ $Replace(status, "_", " ") _ $Select(status = "pending": " recording", 1: ""))
+    ; The ledger shows which recorded model answered (replay:<model>), the call date in the notice.
+    Set answer.model = "replay:" _ $Select(fixture.%Get("model") '= "": fixture.model, 1: "test")
+    Set answer.iterations = 1
+    Set answer.usage = fixture.usage
+    If fixture.%Get("recordedAt") '= "" Set answer.notice = "replay of " _ case _ " recorded " _ fixture.recordedAt
     Set tools = fixture.%Get("tools")
     If $IsObject(tools) && (tools.%Size() > 0) {
         Set answer.iterations = 2
@@ -159,7 +167,7 @@ ClassMethod Replay(workflow As %String, contextJSON As %String, Output answer As
         Set tSC = manager.RegisterToolSet("MyOwn.AIHub.ToolSet.Ops")
         If $$$ISERR(tSC) Quit tSC
         ; The write tool exists only in the test package; registering it shows the policy, not the ToolSet, stops it.
-        If case = "write-tool" {
+        If case = "test:write-tool" {
             Set tSC = manager.AddTool("iris:MyOwn.AIHub.Test.WriteTool")
             If $$$ISERR(tSC) Quit tSC
         }
@@ -176,7 +184,7 @@ ClassMethod Replay(workflow As %String, contextJSON As %String, Output answer As
             }
         }
     }
-    If case = "timeout" Hang fixture.latencyMs / 1000
+    If case = "test:timeout" Hang fixture.latencyMs / 1000
     Set error = fixture.%Get("error")
     If $IsObject(error) Quit ..Fallback(error.reason, error.detail)
     Set answer.raw = ##class(MyOwn.AIHub.Fixtures).Fill(fixture.%Get("raw"), context)
