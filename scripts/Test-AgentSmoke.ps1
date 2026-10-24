@@ -21,11 +21,38 @@ $headers = @{ Authorization = "Basic $token"; Accept = 'application/json' }
 $queryUri = "$($BaseUrl.TrimEnd('/'))/api/atelier/v1/$Namespace/action/query"
 
 function Invoke-IrisSql {
-    param([string]$Query)
-    $body = @{ query = $Query } | ConvertTo-Json -Compress
+    param([string]$Query, [object[]]$Parameters = @())
+    $body = @{ query = $Query; parameters = $Parameters } | ConvertTo-Json -Compress
     $response = Invoke-RestMethod -Method Post -Uri $queryUri -Headers $headers -ContentType 'application/json' -Body $body
     if ($response.status.errors.Count) { throw "SQL failed: $($response.status.errors | ConvertTo-Json -Compress)" }
     return $response.result.content[0]
+}
+
+# Checks returned as "pending" (audit records appear only after IRIS flushes its audit buffer)
+# are resolved here with short polls, so no single request has to outlast the 60 s web gateway.
+function Resolve-PendingChecks {
+    param([object[]]$Results, [int]$TimeoutSeconds = 120, [int]$IntervalSeconds = 2)
+    foreach ($item in @($Results | Where-Object { $_.status -eq 'pending' })) {
+        $started = Get-Date
+        while ($true) {
+            $arguments = @($item.poll.args)
+            $placeholders = ($arguments | ForEach-Object { '?' }) -join ', '
+            $raw = (Invoke-IrisSql -Query "SELECT $($item.poll.proc)($placeholders) AS r" -Parameters $arguments).r
+            $check = if ($raw -is [string]) { $raw | ConvertFrom-Json } else { $raw }
+            $elapsed = [int]((Get-Date) - $started).TotalSeconds
+            if ($check.done) {
+                $item.status = if ($check.pass) { 'pass' } else { 'fail' }
+                $item.details = "$($item.details) (audit record visible $elapsed s after the suite returned)"
+                break
+            }
+            if ($elapsed -ge $TimeoutSeconds) {
+                $item.status = 'fail'
+                $item.details = "$($item.details) Audit record not visible after $TimeoutSeconds s."
+                break
+            }
+            Start-Sleep -Seconds $IntervalSeconds
+        }
+    }
 }
 
 $resolvedDirectory = if ([IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory } else { Join-Path (Split-Path -Parent $PSScriptRoot) $OutputDirectory }
@@ -34,16 +61,19 @@ if (-not (Test-Path -LiteralPath $resolvedDirectory)) { New-Item -ItemType Direc
 $version = [string](Invoke-IrisSql -Query 'SELECT $ZVERSION AS v').v
 $suites = @(
     @{ Method = 'AgentCoreSmoke'; File = 'agents-smoke-core.json' },
-    @{ Method = 'AgentIntegrationSmoke'; File = 'agents-smoke-integration.json' }
+    @{ Method = 'AgentIntegrationSmoke'; Arguments = '0'; File = 'agents-smoke-integration.json' }
 )
 $totalFail = 0
 
 foreach ($suite in $suites) {
     $startedAt = [DateTimeOffset]::Now
-    $raw = (Invoke-IrisSql -Query "SELECT MyOwn_Test.$($suite.Method)() AS r").r
+    $request = [Diagnostics.Stopwatch]::StartNew()
+    $raw = (Invoke-IrisSql -Query "SELECT MyOwn_Test.$($suite.Method)($($suite.Arguments)) AS r").r
+    $request.Stop()
     $data = if ($raw -is [string]) { $raw | ConvertFrom-Json } else { $raw }
-    $pass = [int]$data.summary.pass
-    $fail = [int]$data.summary.fail
+    Resolve-PendingChecks -Results $data.results
+    $pass = @($data.results | Where-Object status -eq 'pass').Count
+    $fail = @($data.results | Where-Object status -ne 'pass').Count
     $totalFail += $fail
 
     $report = [ordered]@{
@@ -57,7 +87,9 @@ foreach ($suite in $suites) {
             namespace = $Namespace
         }
         engine = 'rules'
-        source = "SELECT MyOwn_Test.$($suite.Method)()"
+        source = "SELECT MyOwn_Test.$($suite.Method)($($suite.Arguments))"
+        # Duration of the suite request itself (must stay well under the 60 s web gateway limit).
+        requestMs = [int]$request.ElapsedMilliseconds
         results = $data.results
         summary = [ordered]@{ pass = $pass; fail = $fail; skip = 0 }
     }

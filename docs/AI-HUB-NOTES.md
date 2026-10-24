@@ -249,6 +249,34 @@ Verified on build 154 without a provider (no network) unless stated otherwise. S
 
 Three recordings of replay fixtures (S5, S6, S7, exact scenario contexts, worker with the 20 s deadline, `max_tokens` 400, `reasoning_effort` low, tool catalog sent): 11.6, 13.3 and 16.4 s; prompt 418 tokens each, output 71 to 85, total 571 to 702. All three passed the Validator; no tool was called. The gap between the total and input plus output (82 to 199 tokens, against 384 to 2,522 in T03) suggests `reasoning_effort` is honored by the `gemini` provider; not confirmed in the provider source.
 
+## Web gateway HTTP 504 on the first run (2026-10-24)
+
+Symptom: `Test-AgentSmoke.ps1` and `Test-Agents-AIHub.ps1` sometimes ended with HTTP 504, usually on the first regression run after a container start, and passed when repeated.
+
+**Effective limits in the build 154 container** (`/durable/iris/csp/bin/CSP.ini`, `/durable/iris/httpd/conf/httpd.conf`): Web Gateway `Server_Response_Timeout=60` and `Queued_Request_Timeout=60` in `[SYSTEM]`, no per-application override (all portal and Atelier paths use `[APP_PATH:/]`), 3 to 6 server connections; Apache `Timeout 300`. The effective limit is therefore **60 s, set by the Web Gateway**. The gateway log (`CSP.log`) has one entry per 504, "CSP application closed the connection before sending a complete response", on `POST /api/atelier/v1/MYOWN/action/query`, each exactly 60 s after the request started.
+
+**Cold start is not the cause.** First requests after a container restart (IRIS cold, replay mode): `/myown/index.html` 308 ms, `/api/health` 239 ms, `/api/agent/status` 149 ms, `/api/agent/decisions` 65 ms, `/api/agent/proposals` 55 ms, `simulate` S1 172 ms, S5 161 ms (S1 again 79 ms), first Atelier query 421 ms. Every route stays well under the 10 s target in replay, so no warm-up step is needed.
+
+**Cause: two checks wait for the audit buffer.** Per-check timings (new `durationMs` in the suite reports), suites run through `iris session` to bypass the gateway:
+
+| Before (one request per suite) | Total | Slowest check |
+|---|---|---|
+| Core smoke | 0.7 s | none over 1 s |
+| Integration smoke | 56.5 s | IT-14-AUDIT 55.4 s |
+| AI Hub engine smoke | 58.3 s | AH-07-WRITE-BLOCKED 52.2 s; AH-05 5.0 s (deadline test, by design) |
+
+IT-14 and AH-07 poll `%SYS.Audit` until the agent audit records (`Decision`/`ProposalCreated`/`ProposalRejected`, `ToolDenied`) are visible. They become visible only when IRIS writes its audit buffer, 46 to 60 s after they are recorded in these runs, on both 2026.2 and build 154; no documented API to force that write was found. Whether a suite finished under or over 60 s depended on where that cycle fell, hence "first run fails, rerun passes". No other route or test exceeds 30 s (REST suite 2.7 s in total, adversarial corpus 0.2 s, UI test 19 s over many short requests).
+
+**Fix (minimal): split the wait.** `AgentIntegrationSmoke(waitAudit)` and `AIHubEngineSmoke(waitAudit)` keep the in-process wait by default; with `waitAudit=0` (used by the scripts) they return IT-14 and AH-07 as `pending` with a short check, `MyOwn_Test.AgentAuditCheck(decisionId)` and `MyOwn_AIHub_Test.AIHubDeniedAuditCheck(ledgerId, actor)`, which the scripts poll every 2 s for up to 120 s. No timeout was raised and no warm-up was added.
+
+| After (fresh image and volume, single regression run, 2026-10-24 01:28 UTC) | Suite request | Audit visible after | Script total |
+|---|---|---|---|
+| Core smoke | 0.2 s | — | |
+| Integration smoke | 1.4 s | 50 s | 52 s (with core) |
+| AI Hub engine smoke | 6.9 s | 52 s | 60 s |
+
+Regression on the fresh container, first and only run: Test-MyOwn 4 s, SysAdminMutations 2 s, REST 24/0/1 in 5 s, adversarial 92/92 in 1 s, smokes 14/14 and 19/19, AI Hub 18/18, UI 15/15 in 19 s; no warning in `CSP.log`.
+
 ## Commands for the build 154 environment
 
 ```text

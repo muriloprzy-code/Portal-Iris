@@ -5,6 +5,7 @@ ClassMethod RunSmokeViaSQL() As %String [ SqlName = AgentCoreSmoke, SqlProc ]
 {
     Set report = {}
     Set report.suite = "agents-core-smoke"
+    Set %MyOwnCheckAt = $ZHorolog
     Set report.results = []
     Set report.pass = 0
     Set report.fail = 0
@@ -268,6 +269,34 @@ ClassMethod TimestampDaysAgo(days As %Integer) As %TimeStamp [ Private ]
 
 /// Agent audit events recorded for <var>decisionId</var>, and whether any recent agent event
 /// carries text that must never reach the audit log (model rationale or injected justification).
+/// One poll of IT-14 (for callers that run the smoke with waitAudit=0): {"done", "pass", "missing", "leaked"}.
+ClassMethod AgentAuditCheck(decisionId As %Integer) As %String [ SqlName = AgentAuditCheck, SqlProc ]
+{
+    Set tSC = ..AuditStatus(decisionId, 1, .missing, .leaked)
+    Set done = $$$ISERR(tSC) || (missing = "") || leaked
+    Quit {"done": (done), "pass": ($$$ISOK(tSC) && (missing = "") && 'leaked), "missing": (missing), "leaked": (leaked)}.%ToJSON()
+}
+
+/// Polls the agent audit events of a decision up to attempts times, 0.5 s apart.
+ClassMethod AuditStatus(decisionId As %Integer, attempts As %Integer, Output missing As %String, Output leaked As %Boolean) As %Status [ Private ]
+{
+    Set expectedEvents = $ListBuild("Decision", "ProposalCreated", "ProposalRejected")
+    Set missing = "Decision, ProposalCreated, ProposalRejected"
+    Set leaked = 0
+    Set tSC = $$$OK
+    For attempt = 1:1:attempts {
+        Set tSC = ..AgentAuditEvents(decisionId, .events, .leaked)
+        If $$$ISERR(tSC) Quit
+        Set missing = ""
+        For index = 1:1:$ListLength(expectedEvents) {
+            If '$ListFind(events, $List(expectedEvents, index)) Set missing = missing _ $Select(missing="":"", 1:", ") _ $List(expectedEvents, index)
+        }
+        Quit:missing=""
+        If attempt < attempts Hang 0.5
+    }
+    Quit tSC
+}
+
 ClassMethod AgentAuditEvents(decisionId As %Integer, Output events As %List, Output leaked As %Boolean) As %Status [ Private ]
 {
     Set events = ""
@@ -291,12 +320,25 @@ ClassMethod AgentAuditEvents(decisionId As %Integer, Output events As %List, Out
     Quit $$$OK
 }
 
+/// A check whose result is known only later: the caller polls poll.proc(poll.args).
+ClassMethod AddPending(report As %DynamicObject, id As %String, details As %String, poll As %DynamicObject) [ Private ]
+{
+    Set now = $ZHorolog
+    Do report.results.%Push({"id": (id), "status": "pending", "details": (details), "poll": (poll), "durationMs": ((now - $Get(%MyOwnCheckAt, now)) * 1000 \ 1)})
+    Set %MyOwnCheckAt = now
+    Set report.pending = +report.%Get("pending") + 1
+}
+
 ClassMethod Add(report As %DynamicObject, id As %String, passed As %Boolean, details As %String) As %Status [ Private ]
 {
     Set item = {}
     Set item.id = id
     Set item.status = $Select(passed:"pass", 1:"fail")
     Set item.details = details
+    ; Time since the previous check (or the start of the suite): shows which checks are slow.
+    Set now = $ZHorolog
+    Set item.durationMs = (now - $Get(%MyOwnCheckAt, now)) * 1000 \ 1
+    Set %MyOwnCheckAt = now
     Do report.results.%Push(item)
     If passed {
         Set report.pass = report.pass + 1
@@ -308,10 +350,14 @@ ClassMethod Add(report As %DynamicObject, id As %String, passed As %Boolean, det
 
 /// Runs with the engine preference forced to rules (these checks expect deterministic Rules
 /// decisions even where AI Hub is installed) and restores the previous preference afterwards.
-ClassMethod RunIntegrationViaSQL() As %String [ SqlName = AgentIntegrationSmoke, SqlProc ]
+/// Audit records become visible only when IRIS flushes its audit buffer (up to about a minute).
+/// waitAudit=1 waits for them here; waitAudit=0 returns IT-14 as "pending" with a short check to
+/// poll (MyOwn_Test.AgentAuditCheck), so no single request has to outlast the 60 s web gateway.
+ClassMethod RunIntegrationViaSQL(waitAudit As %Boolean = 1) As %String [ SqlName = AgentIntegrationSmoke, SqlProc ]
 {
     Set report = {}
     Set report.suite = "agents-integration-smoke"
+    Set %MyOwnCheckAt = $ZHorolog
     Set report.results = []
     Set report.pass = 0
     Set report.fail = 0
@@ -322,7 +368,7 @@ ClassMethod RunIntegrationViaSQL() As %String [ SqlName = AgentIntegrationSmoke,
     Set tSC = config.%Save()
     If $$$ISERR(tSC) Quit {"suite": (report.suite), "error": ($System.Status.GetErrorText(tSC))}.%ToJSON()
     Try {
-        Do ..IntegrationChecks(report)
+        Do ..IntegrationChecks(report, waitAudit)
     } Catch exception {
         Do ..Add(report, "IT-EXCEPTION", 0, exception.DisplayString())
     }
@@ -335,10 +381,11 @@ ClassMethod RunIntegrationViaSQL() As %String [ SqlName = AgentIntegrationSmoke,
     Set report.summary = {}
     Set report.summary.pass = report.pass
     Set report.summary.fail = report.fail
+    If +report.%Get("pending") Set report.summary.pending = report.pending
     Quit report.%ToJSON()
 }
 
-ClassMethod IntegrationChecks(report As %DynamicObject) [ Private ]
+ClassMethod IntegrationChecks(report As %DynamicObject, waitAudit As %Boolean = 1) [ Private ]
 {
 
     Set tSC = ##class(MyOwn.Agent.Service.Agent).ProductionStatus(.production)
@@ -452,24 +499,16 @@ ClassMethod IntegrationChecks(report As %DynamicObject) [ Private ]
     ; Native audit (MyOwn/Agent/*) is written through a buffer that IRIS flushes in batches
     ; (observed 20-70 s locally, no public flush API), so poll up to 120 s for the S5 events.
     Set auditDecisionId = $Select($IsObject($Get(accessScenario)):+accessScenario.decisionId, 1:0)
-    Set expectedEvents = $ListBuild("Decision", "ProposalCreated", "ProposalRejected")
-    Set missing = "Decision, ProposalCreated, ProposalRejected"
-    Set leaked = 0
-    For attempt = 1:1:240 {
-        Set tSC = ..AgentAuditEvents(auditDecisionId, .events, .leaked)
-        If $$$ISERR(tSC) Quit
-        Set missing = ""
-        For index = 1:1:$ListLength(expectedEvents) {
-            If '$ListFind(events, $List(expectedEvents, index)) Set missing = missing _ $Select(missing="":"", 1:", ") _ $List(expectedEvents, index)
-        }
-        Quit:missing=""
-        Hang 0.5
-    }
+    Set tSC = ..AuditStatus(auditDecisionId, $Select(waitAudit: 240, 1: 1), .missing, .leaked)
     Set details = "The S5 decision has Decision, ProposalCreated and ProposalRejected audit events marked agent=1 with its decision id, and no audit event contains model or justification text."
     If $$$ISERR(tSC) Set details = details _ " " _ $System.Status.GetErrorText(tSC)
-    If missing '= "" Set details = details _ " Missing: " _ missing _ "."
     If leaked Set details = details _ " Model or justification text found in audit data."
-    Do ..Add(report, "IT-14-AUDIT", $$$ISOK(tSC) && (auditDecisionId > 0) && (missing = "") && 'leaked, details)
+    If 'waitAudit && $$$ISOK(tSC) && (auditDecisionId > 0) && (missing '= "") && 'leaked {
+        Do ..AddPending(report, "IT-14-AUDIT", details, {"proc": "MyOwn_Test.AgentAuditCheck", "args": [(auditDecisionId)]})
+    } Else {
+        If missing '= "" Set details = details _ " Missing: " _ missing _ "."
+        Do ..Add(report, "IT-14-AUDIT", $$$ISOK(tSC) && (auditDecisionId > 0) && (missing = "") && 'leaked, details)
+    }
 
     Set retention = ##class(MyOwn.Task.AgentRetention).%New()
     Set tSC = retention.OnTask()

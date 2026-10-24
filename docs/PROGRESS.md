@@ -167,7 +167,7 @@ Regression (reports in `test-results/aihub-154/`, baseline in `test-results/loca
 | `Test-AgentSmoke.ps1` core | 14 / 0 | 14 / 0 |
 | `Test-AgentSmoke.ps1` integration | 19 / 0 | 19 / 0 |
 
-The first integration smoke run on build 154 ended with HTTP 504 from the web gateway (`Server_Response_Timeout` and `Queued_Request_Timeout` are 60 s) and no request reached the production; one rerun passed (14 s for the integration suite). The cause was not confirmed; the integration smoke runs in a single HTTP request, and IT-14 can wait up to 120 s for the audit buffer, so a slow flush can exceed the gateway limit.
+The first integration smoke run on build 154 ended with HTTP 504 from the web gateway (`Server_Response_Timeout` and `Queued_Request_Timeout` are 60 s) and no request reached the production; one rerun passed (14 s for the integration suite). The cause was confirmed and fixed on 2026-10-24: IT-14 waited inside that single request for the audit buffer (see "Web gateway 504 fixed").
 
 `%AI.Agent`, `%AI.Provider`, `%AI.Tool`, `%AI.ToolSet` and the `%AI.Policy` package exist in build 154 (details in `AI-HUB-NOTES.md`).
 
@@ -231,6 +231,10 @@ Pending recording: none. S2 to S4, S8 and S9 come from the T03 calls, whose cont
 The Agents screen and the overview card show the badge "Replay of recorded real decisions" while `MYOWN_AI_MODE=replay` (UI-REPLAY-BADGE: shown in replay on build 154, absent in live on 2026.2). The secret scan pattern for configured keys no longer crosses a line break (an empty `MYOWN_AI_API_KEY=` in a diff matched the next line).
 
 Real calls: 3 (S5, S6, S7), all answered within the 20 s deadline: 11.6, 13.3 and 16.4 s; tokens in/out/total 418/71/571, 418/85/702, 418/78/628. Compared with T03 (12.6 to 83.3 s, totals 741 to 2,947 for about 300 prompt tokens), the hidden reasoning is much smaller (total minus input and output: 82 to 199 tokens against 384 to 2,522), which suggests `reasoning_effort` low is honored; the prompt is larger because it now includes the tool catalog. Three calls at another time of day are not a benchmark. Regression after the change: 2026.2 all seven suites pass; build 154 (replay) all pass, with one rerun of `Test-AgentSmoke.ps1` and `Test-Agents-AIHub.ps1` after HTTP 504 from the 60 s web gateway (both run as one long SQL request; the AI Hub suite takes about 60 s, at that limit).
+
+## Web gateway 504 fixed (2026-10-24)
+
+Cause found, not retried away: IT-14 and AH-07 waited inside one SQL request for agent audit records, which IRIS makes visible only when it writes its audit buffer (46 to 60 s later, on 2026.2 and build 154), so the suite request sometimes passed the Web Gateway's 60 s `Server_Response_Timeout` (Apache allows 300 s). Cold start was ruled out (first requests after a restart: 55 to 421 ms). The suites now return those two checks as pending and the scripts poll a short check every 2 s; the longest suite request went from about 58 s to 6.9 s. On a fresh image and volume the full regression passed on its first and only run with no gateway warning. Details and before/after timings in `AI-HUB-NOTES.md` ("Web gateway HTTP 504 on the first run"). The suites also report `durationMs` per check and `requestMs` per suite.
 
 ## Next verified milestone
 

@@ -4,26 +4,31 @@
 Class MyOwn.AIHub.Test.EngineTest
 {
 
-ClassMethod Smoke() As %String [ SqlName = AIHubEngineSmoke, SqlProc ]
+/// waitAudit=1 waits here for the ToolDenied audit record (IRIS flushes audit records with a
+/// delay of up to about a minute); waitAudit=0 returns AH-07 as "pending" with a short check to
+/// poll (MyOwn_AIHub_Test.AIHubDeniedAuditCheck), keeping every request well under 60 s.
+ClassMethod Smoke(waitAudit As %Boolean = 1) As %String [ SqlName = AIHubEngineSmoke, SqlProc ]
 {
     Set report = {"suite": "aihub-engine-smoke", "results": [], "pass": 0, "fail": 0}
+    Set %MyOwnCheckAt = $ZHorolog
     Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
     If $$$ISERR(tSC) Quit {"suite": (report.suite), "error": ($System.Status.GetErrorText(tSC))}.%ToJSON()
     Set saved = {"preference": (config.EnginePreference), "kill": (config.KillSwitch), "calls": (config.MaxAgentCallsPerHour)}
     Kill config
     Set ^||MyOwnAI("mode") = "replay"
     Try {
-        Do ..Checks(report)
+        Do ..Checks(report, waitAudit)
     } Catch exception {
         Do ..Add(report, "AH-EXCEPTION", 0, exception.DisplayString())
     }
     Kill ^||MyOwnAI
     Do ..Configure(saved.preference, saved.kill, saved.calls)
     Set report.summary = {"pass": (report.pass), "fail": (report.fail)}
+    If +report.%Get("pending") Set report.summary.pending = report.pending
     Quit report.%ToJSON()
 }
 
-ClassMethod Checks(report As %DynamicObject) [ Private ]
+ClassMethod Checks(report As %DynamicObject, waitAudit As %Boolean = 1) [ Private ]
 {
     Set engine = "MyOwn.AIHub.Engine"
 
@@ -64,7 +69,15 @@ ClassMethod Checks(report As %DynamicObject) [ Private ]
     Set ^IRIS.Temp.MyOwnAIHubWriteTool = 0
     Set tSC = ..Service("write-tool", .decided)
     Set calls = ..ToolCallsFor(decided.%Get("traceId"))
-    Do ..Add(report, "AH-07-WRITE-BLOCKED", $$$ISOK(tSC) && (calls [ "SuspendTask:denied") && (calls [ "GetTaskRuns:ok") && (^IRIS.Temp.MyOwnAIHubWriteTool = 0) && ..DeniedAudit(decided.%Get("traceId")), "The read-only policy denies a write tool (never executed), the denial is stored as a tool call and audited, and the allowed tool still runs.")
+    Set blocked = $$$ISOK(tSC) && (calls [ "SuspendTask:denied") && (calls [ "GetTaskRuns:ok") && (^IRIS.Temp.MyOwnAIHubWriteTool = 0)
+    Set ledgerId = ..LedgerIdFor(decided.%Get("traceId"))
+    Set audited = ..DeniedAudit(ledgerId, $Username, $Select(waitAudit: 120, 1: 1))
+    Set details = "The read-only policy denies a write tool (never executed), the denial is stored as a tool call and audited, and the allowed tool still runs."
+    If blocked && (ledgerId > 0) && 'audited && 'waitAudit {
+        Do ..AddPending(report, "AH-07-WRITE-BLOCKED", details, {"proc": "MyOwn_AIHub_Test.AIHubDeniedAuditCheck", "args": [(ledgerId), ($Username)]})
+    } Else {
+        Do ..Add(report, "AH-07-WRITE-BLOCKED", blocked && audited, details)
+    }
     Kill ^IRIS.Temp.MyOwnAIHubWriteTool
 
     Do ..Configure("auto", 0, 0)
@@ -215,25 +228,36 @@ ClassMethod ToolCallsFor(traceId As %String) As %String [ Private ]
     Quit list
 }
 
-/// Whether a ToolDenied audit event for SuspendTask points to the AI ledger row of the trace.
-ClassMethod DeniedAudit(traceId As %String) As %Boolean [ Private ]
+ClassMethod LedgerIdFor(traceId As %String) As %Integer [ Private ]
 {
     Set statement = ##class(%SQL.Statement).%New()
     If $$$ISERR(statement.%Prepare("SELECT ID FROM MyOwn_Agent.Ledger WHERE TraceId = ? AND Engine = 'aihub'")) Quit 0
     Set rows = statement.%Execute(traceId)
-    If 'rows.%Next() Quit 0
-    Set ledgerId = rows.%Get("ID")
+    Quit $Select(rows.%Next(): +rows.%Get("ID"), 1: 0)
+}
+
+/// One poll of AH-07 (for callers that run the smoke with waitAudit=0): {"done", "pass"}.
+ClassMethod DeniedAuditCheck(ledgerId As %Integer, actor As %String) As %String [ SqlName = AIHubDeniedAuditCheck, SqlProc ]
+{
+    Set found = ..DeniedAudit(ledgerId, actor, 1)
+    Quit {"done": (found), "pass": (found)}.%ToJSON()
+}
+
+/// Whether a ToolDenied audit event for SuspendTask by actor points to the AI ledger row,
+/// polled up to attempts times, 0.5 s apart.
+ClassMethod DeniedAudit(ledgerId As %Integer, actor As %String, attempts As %Integer) As %Boolean [ Private ]
+{
+    If ledgerId < 1 Quit 0
     New $Namespace
     Set $Namespace = "%SYS"
     Set audit = ##class(%SQL.Statement).%New()
     If $$$ISERR(audit.%Prepare("SELECT COUNT(*) AS Matches FROM %SYS.Audit WHERE EventSource = 'MyOwn' AND EventType = 'Agent' AND Event = 'ToolDenied' AND EventData [ ?")) Quit 0
-    ; Audit records are written asynchronously: wait up to 60 s.
     Set found = 0
-    For attempt = 1:1:120 {
-        Set matches = audit.%Execute(";target=SuspendTask;outcome=Failure;actor=" _ $Username _ ";detail=ledger " _ ledgerId)
+    For attempt = 1:1:attempts {
+        Set matches = audit.%Execute(";target=SuspendTask;outcome=Failure;actor=" _ actor _ ";detail=ledger " _ ledgerId)
         If matches.%Next() && (matches.%Get("Matches") > 0) Set found = 1
         Quit:found
-        Hang 0.5
+        If attempt < attempts Hang 0.5
     }
     Quit found
 }
@@ -245,9 +269,21 @@ ClassMethod RealCallsLastHour() As %Integer [ Private ]
     Quit recent
 }
 
+/// A check whose result is known only later: the caller polls poll.proc(poll.args).
+ClassMethod AddPending(report As %DynamicObject, id As %String, details As %String, poll As %DynamicObject) [ Private ]
+{
+    Set now = $ZHorolog
+    Do report.results.%Push({"id": (id), "status": "pending", "details": (details), "poll": (poll), "durationMs": ((now - $Get(%MyOwnCheckAt, now)) * 1000 \ 1)})
+    Set %MyOwnCheckAt = now
+    Set report.pending = +report.%Get("pending") + 1
+}
+
 ClassMethod Add(report As %DynamicObject, id As %String, passed As %Boolean, details As %String) [ Private ]
 {
-    Do report.results.%Push({"id": (id), "status": ($Select(passed: "pass", 1: "fail")), "details": (details)})
+    ; durationMs: time since the previous check (or the start of the suite).
+    Set now = $ZHorolog
+    Do report.results.%Push({"id": (id), "status": ($Select(passed: "pass", 1: "fail")), "details": (details), "durationMs": ((now - $Get(%MyOwnCheckAt, now)) * 1000 \ 1)})
+    Set %MyOwnCheckAt = now
     If passed {
         Set report.pass = report.pass + 1
     } Else {

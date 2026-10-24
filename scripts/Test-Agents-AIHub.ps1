@@ -48,6 +48,33 @@ function Invoke-IrisSql {
     return $response.result.content
 }
 
+# Checks returned as "pending" (audit records appear only after IRIS flushes its audit buffer)
+# are resolved here with short polls, so no single request has to outlast the 60 s web gateway.
+function Resolve-PendingChecks {
+    param([object[]]$Results, [int]$TimeoutSeconds = 120, [int]$IntervalSeconds = 2)
+    foreach ($item in @($Results | Where-Object { $_.status -eq 'pending' })) {
+        $started = Get-Date
+        while ($true) {
+            $arguments = @($item.poll.args)
+            $placeholders = ($arguments | ForEach-Object { '?' }) -join ', '
+            $raw = (Invoke-IrisSql -Query "SELECT $($item.poll.proc)($placeholders) AS r" -Parameters $arguments)[0].r
+            $check = if ($raw -is [string]) { $raw | ConvertFrom-Json } else { $raw }
+            $elapsed = [int]((Get-Date) - $started).TotalSeconds
+            if ($check.done) {
+                $item.status = if ($check.pass) { 'pass' } else { 'fail' }
+                $item.details = "$($item.details) (audit record visible $elapsed s after the suite returned)"
+                break
+            }
+            if ($elapsed -ge $TimeoutSeconds) {
+                $item.status = 'fail'
+                $item.details = "$($item.details) Audit record not visible after $TimeoutSeconds s."
+                break
+            }
+            Start-Sleep -Seconds $IntervalSeconds
+        }
+    }
+}
+
 function Add-Result {
     param([string]$Id, [string]$Status, [string]$Details, [object]$Data = $null)
     $item = [ordered]@{ id = $Id; status = $Status; details = $Details }
@@ -66,8 +93,12 @@ if (-not $installed) {
 } else {
     Add-Result -Id 'AH-00-CONFIG' -Status $(if ($config.aiConfigSource -eq 'environment') { 'pass' } else { 'fail' }) -Details "Provider settings come from the environment: provider '$($config.provider)', model '$($config.model)', mode $($config.aiMode), timeout $($config.aiTimeoutSeconds) s, key configured: $([bool][int]$config.apiKeyConfigured)."
 
-    $raw = (Invoke-IrisSql -Query 'SELECT MyOwn_AIHub_Test.AIHubEngineSmoke() AS r')[0].r
+    $request = [Diagnostics.Stopwatch]::StartNew()
+    $raw = (Invoke-IrisSql -Query 'SELECT MyOwn_AIHub_Test.AIHubEngineSmoke(0) AS r')[0].r
+    $request.Stop()
+    $smokeRequestMs = [int]$request.ElapsedMilliseconds
     $smoke = if ($raw -is [string]) { $raw | ConvertFrom-Json } else { $raw }
+    Resolve-PendingChecks -Results $smoke.results
     if ($smoke.error) { Add-Result -Id 'AH-SMOKE' -Status 'fail' -Details $smoke.error }
     foreach ($item in $smoke.results) { Add-Result -Id $item.id -Status $item.status -Details $item.details }
 
@@ -113,7 +144,9 @@ $report = [ordered]@{
     startedAt = $startedAt.ToString('o')
     finishedAt = [DateTimeOffset]::Now.ToString('o')
     iris = [ordered]@{ version = $version; image = $IrisImage; edition = $Edition; namespace = $Namespace; aiHubInstalled = $installed }
-    source = 'SELECT MyOwn_AIHub_Test.AIHubEngineSmoke()' + $(if ($Live) { ' and POST /agent/simulate (live)' } else { '' })
+    source = 'SELECT MyOwn_AIHub_Test.AIHubEngineSmoke(0)' + $(if ($Live) { ' and POST /agent/simulate (live)' } else { '' })
+    # Duration of the engine suite request itself (must stay well under the 60 s web gateway limit).
+    requestMs = $smokeRequestMs
     results = $results
     summary = [ordered]@{ pass = $pass; fail = $fail; skip = $skip }
 }
