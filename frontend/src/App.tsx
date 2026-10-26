@@ -28,6 +28,7 @@ export default function App() {
   const [accessLevel, setAccessLevel] = useState<'Administrator' | 'Viewer' | 'None'>('None')
   const [pendingApprovals, setPendingApprovals] = useState(0)
   const canManage = accessLevel === 'Administrator'
+  const [demo, setDemo] = useState({ demoMode: false, isDemoUser: false })
   const visibleSections = canManage ? sections : sections.filter((section) => section === 'Overview' || section === 'Logs' || section === 'Agents')
 
   useEffect(() => {
@@ -76,6 +77,7 @@ export default function App() {
       const [session, healthResult] = await Promise.all([getSession(), getHealth()])
       setCurrentUser(session.data.username || username.trim())
       setAccessLevel(session.data.accessLevel)
+      setDemo({ demoMode: Boolean(Number(session.data.demoMode)), isDemoUser: Boolean(Number(session.data.isDemoUser)) })
       setActiveSection('Overview')
       setHealth(healthResult)
       setPassword('')
@@ -150,7 +152,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <button className="sidebar-footer account-button" type="button" onClick={handleLogout} title="Sign out"><span className="avatar">{currentUser.slice(0, 2).toUpperCase()}</span><div><strong>{currentUser}</strong><small>{accessLevel} · Sign out</small></div></button>
+        <button className="sidebar-footer account-button" type="button" onClick={handleLogout} title="Sign out"><span className="avatar">{currentUser.slice(0, 2).toUpperCase()}</span><div><strong>{currentUser}</strong><small>{demo.isDemoUser ? 'Public demo' : accessLevel} · Sign out</small></div></button>
       </aside>
 
       <main>
@@ -247,7 +249,7 @@ export default function App() {
         {activeSection === 'Security' && <SecurityPage />}
         {activeSection === 'Tasks' && <TasksPage />}
         {activeSection === 'Logs' && <LogsPage />}
-        {activeSection === 'Agents' && <AgentsPage canManage={canManage} />}
+        {activeSection === 'Agents' && <AgentsPage canManage={canManage} demoMode={demo.demoMode} isDemoUser={demo.isDemoUser} />}
       </main>
     </div>
   )

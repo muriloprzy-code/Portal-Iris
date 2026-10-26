@@ -208,3 +208,4 @@ tbody tr:hover td { background: #f6f8fb; }
 @media (max-width: 720px) { .decision-drawer { padding: 18px; }.decision-drawer dl { grid-template-columns: 1fr; } }
 .settings-note { margin: 8px 0 0; color: #5b6b82; font-size: 12px; line-height: 1.45; }
 .replay-badge { display: inline-block; margin: 4px 0 0 8px; color: #6b3fa0; background: #efe6fa; vertical-align: middle; }
+.agent-toolbar-actions { display: flex; gap: 8px; align-items: center; }.demo-banner { margin: 8px 0; color: #4a3a8a; background: #efe9fb; }

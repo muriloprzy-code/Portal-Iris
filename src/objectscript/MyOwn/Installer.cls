@@ -8,6 +8,9 @@ Parameter SystemAdminRole = "MyOwnSystemAdmin";
 
 Parameter DemoTaskName = "MyOwn Portal health snapshot";
 
+/// Application role of the public demo account (see EnsureAccessControl).
+Parameter DemoDataRole = "MyOwnDemoData";
+
 Parameter AgentRetentionTaskName = "MyOwn Agent retention";
 
 /// SQL wrapper used by the one-click installer. Returns "OK" or an error message.
@@ -64,13 +67,14 @@ ClassMethod Setup() As %Status
         New $Namespace
         Set $Namespace = "%SYS"
 
-        Set tSC = ..EnsureAccessControl()
+        Set tSC = ..EnsureAccessControl(targetNamespace)
         $$$ThrowOnError(tSC)
         Set tSC = ..EnsureAuditEvent()
         $$$ThrowOnError(tSC)
 
-        // Grant %SYS database roles only while /myown/api handles a request.
-        Set matchRoles = "MyOwnViewer:" _ ..#SystemReadRole _ ",MyOwnAdministrator:" _ ..#SystemAdminRole
+        // Grant %SYS database roles only while /myown/api handles a request. The public demo
+        // account also gets the namespace databases there, and nowhere else.
+        Set matchRoles = "MyOwnViewer:" _ ..#SystemReadRole _ ",MyOwnAdministrator:" _ ..#SystemAdminRole _ ",MyOwnDemo:" _ ..#SystemReadRole _ ":" _ ..#DemoDataRole
 
         Set exists = ##class(Security.Applications).Exists(application, .applicationObject, .tSC)
         If exists {
@@ -106,6 +110,11 @@ ClassMethod Setup() As %Status
         Set $Namespace = targetNamespace
         Set productionStatus = ..EnsureAgentProduction()
         If $$$ISERR(productionStatus) Write !, "MyOwn Portal: the agent production was not started: ", $System.Status.GetErrorText(productionStatus), !
+        // Synthetic demo targets always exist; the demo account and reset task follow MYOWN_DEMO_MODE.
+        Set demoStatus = ..EnsureDemoSqlPrivileges()
+        If $$$ISOK(demoStatus) Set demoStatus = ##class(MyOwn.Demo.Seed).EnsureSeeded()
+        If $$$ISOK(demoStatus) Set demoStatus = ##class(MyOwn.Demo.Setup).Apply(targetNamespace)
+        If $$$ISERR(demoStatus) Write !, "MyOwn Portal: the demo settings were not applied: ", $System.Status.GetErrorText(demoStatus), !
     } Catch exception {
         Set tSC = exception.AsStatus()
     }
@@ -200,7 +209,7 @@ ClassMethod AddHealthPattern(code As %String, title As %String, severity As %Str
     Quit $$$OK
 }
 
-ClassMethod EnsureAccessControl() As %Status [ Private ]
+ClassMethod EnsureAccessControl(targetNamespace As %String) As %Status [ Private ]
 {
     Set tSC = $$$OK
     Try {
@@ -232,6 +241,18 @@ ClassMethod EnsureAccessControl() As %Status [ Private ]
         $$$ThrowOnError(tSC)
         Set tSC = ..EnsureRole("MyOwnAgentRunner", "Runtime identity for MyOwn agent interoperability workflows.", "MyOwn.Agent:U,MyOwn.View:U")
         $$$ThrowOnError(tSC)
+
+        // Public demo: the MyOwnDemo login role only opens the portal and the demo actions;
+        // database access comes from the application role MyOwnDemoData inside /myown/api.
+        Set exists = ##class(Security.Resources).Exists("MyOwn.Demo", .resource, .checkStatus)
+        If 'exists {
+            Set tSC = ##class(Security.Resources).Create("MyOwn.Demo", "Allows the public demo actions of MyOwn Portal (scenarios, confirmations on synthetic targets, reset).", "")
+            $$$ThrowOnError(tSC)
+        }
+        Set tSC = ..EnsureRole("MyOwnDemo", "Public demo account of MyOwn Portal: view, run scenarios, confirm or reject proposals on synthetic targets.", "MyOwn.View:U,MyOwn.Demo:U")
+        $$$ThrowOnError(tSC)
+        Set tSC = ..EnsureRole(..#DemoDataRole, "Namespace database access for the MyOwn Portal demo account, granted only inside /myown/api.", ..NamespaceDatabaseResources(targetNamespace))
+        $$$ThrowOnError(tSC)
     } Catch exception {
         Set tSC = exception.AsStatus()
     }
@@ -239,6 +260,36 @@ ClassMethod EnsureAccessControl() As %Status [ Private ]
 }
 
 /// Creates the role, or updates its description and resources when it already exists.
+/// Dynamic SQL checks SQL privileges for accounts without %All: the demo application role may
+/// read the portal tables (writes go through objects). Runs in the portal namespace.
+ClassMethod EnsureDemoSqlPrivileges() As %Status [ Private ]
+{
+    Set tSC = $$$OK
+    For schema = "MyOwn", "MyOwn_Agent", "MyOwn_Demo", "MyOwn_Production_Msg", "MyOwn_Production_Process", "Ens_Config" {
+        Set result = ##class(%SQL.Statement).%ExecDirect(, "GRANT SELECT ON SCHEMA " _ schema _ " TO " _ ..#DemoDataRole)
+        If result.%SQLCODE < 0 Set tSC = $$$ERROR($$$GeneralError, "GRANT on " _ schema _ ": " _ result.%Message)  Quit
+    }
+    Quit tSC
+}
+
+/// "%DB_x:RW,%DB_y:R" for the global (read-write) and routine (read) databases of a namespace.
+ClassMethod NamespaceDatabaseResources(namespace As %String) As %String [ Private ]
+{
+    Set resources = ""
+    Set tSC = ##class(Config.Namespaces).Get(namespace, .properties)
+    If $$$ISERR(tSC) Quit resources
+    For pair = $ListBuild("Globals", "RW"), $ListBuild("Routines", "R") {
+        Set database = $Get(properties($List(pair, 1)))
+        If database = "" Continue
+        If $$$ISERR(##class(Config.Databases).Get(database, .databaseProperties)) Continue
+        Set handle = ##class(SYS.Database).%OpenId($Get(databaseProperties("Directory")))
+        If '$IsObject(handle) || (handle.ResourceName = "") Continue
+        If resources [ (handle.ResourceName _ ":") Continue
+        Set resources = resources _ $Select(resources = "": "", 1: ",") _ handle.ResourceName _ ":" _ $List(pair, 2)
+    }
+    Quit resources
+}
+
 ClassMethod EnsureRole(name As %String, description As %String, resources As %String) As %Status [ Private ]
 {
     Set exists = ##class(Security.Roles).Exists(name, .role, .checkStatus)
@@ -345,7 +396,7 @@ ClassMethod PrepareForContainerBundling() As %Status
 /// are not visible. UT-14-AUDIT fails if the two lists differ.
 Parameter AgentAuditType = "Agent";
 
-Parameter AgentAuditEvents = "Decision,ProposalCreated,ProposalConfirmed,ProposalRejected,ProposalExpired,ExecutionResult,ConfigChange,KillSwitch,ToolDenied";
+Parameter AgentAuditEvents = "Decision,ProposalCreated,ProposalConfirmed,ProposalRejected,ProposalExpired,ExecutionResult,ConfigChange,KillSwitch,ToolDenied,DemoRefused,DemoReset";
 
 /// Registers the audit events outside a full Setup (idempotent). Switches to %SYS itself.
 ClassMethod RegisterAuditEvents() As %Status

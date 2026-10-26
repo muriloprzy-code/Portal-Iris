@@ -27,7 +27,7 @@ RUN ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
 RUN printf '%s' "${MYOWN_DEMO_PASSWORD}" > /home/irisowner/dev/docker/.runtime-password.txt
 
 USER root
-RUN chmod +x /home/irisowner/dev/docker/start-iris.sh
+RUN chmod +x /home/irisowner/dev/docker/start-iris.sh /home/irisowner/dev/docker/demo-start.sh
 RUN mkdir -p /durable && \
     chown ${ISC_PACKAGE_MGRUSER}:${ISC_PACKAGE_IRISGROUP} /durable
 USER ${ISC_PACKAGE_MGRUSER}

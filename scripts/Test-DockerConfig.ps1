@@ -11,6 +11,7 @@ $requiredFiles = @(
     'docker\merge.cpf',
     'docker\iris.script',
     'docker\start-iris.sh',
+    'docker\demo-start.sh',
     'module.xml',
     'aihub\module.xml',
     'aihub\src\MyOwn\AIHub\Engine.cls',
@@ -43,6 +44,8 @@ $checks = [ordered]@{
     # The core load must not halt the session (third zpm argument), or the AI Hub line never runs.
     'AI Hub module load' = $init -match '(?s)zpm "load /home/irisowner/dev -v":1:0.*%ExistsId\("%AI\.Agent"\) zpm "load /home/irisowner/dev/aihub -v"'
     'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($start -match '--password-file') -and ($start -match 'iris\.cpf') -and ($start -match 'CSPpwd')
+    # Demo settings (MYOWN_DEMO_*) are applied after every start; the demo password is never in the image.
+    'Demo setup after start' = ($start -match '-a "\$\{after_start\}"') -and ($start -match 'demo-start\.sh') -and ($compose -match 'MYOWN_DEMO_MODE') -and ($dockerfile -notmatch 'MYOWN_DEMO_USER_PASSWORD')
     'Web port mapping' = $compose -match '52774.*:52773'
     'Durable IRIS data' = ($compose -match 'ISC_DATA_DIRECTORY: /durable/iris') -and ($compose -match 'myown-portal-data:/durable')
     'AI provider environment' = ($compose -match 'MYOWN_AI_API_KEY') -and ($compose -match 'MYOWN_AI_PROVIDER') -and ($compose -match 'MYOWN_AI_MODEL') -and ($compose -match 'MYOWN_AI_MODE') -and ($compose -match 'MYOWN_AI_TIMEOUT_SECONDS')

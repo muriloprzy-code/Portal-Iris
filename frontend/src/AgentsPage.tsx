@@ -15,6 +15,7 @@ import {
   getAgentTrace,
   getTasks,
   rejectAgentProposal,
+  resetDemo,
   setAgentKillSwitch,
   simulateAgentScenario,
   submitAgentAccessRequest,
@@ -32,7 +33,7 @@ import {
   type AgentTrace,
 } from './api/client'
 
-type AgentsPageProps = { canManage: boolean }
+type AgentsPageProps = { canManage: boolean; demoMode?: boolean; isDemoUser?: boolean }
 type AgentTab = 'Overview' | 'Decisions' | 'Approvals' | 'Access' | 'Observability' | 'Production' | 'Guardrails' | 'Settings'
 
 const allTabs: AgentTab[] = ['Overview', 'Decisions', 'Approvals', 'Access', 'Observability', 'Production', 'Guardrails', 'Settings']
@@ -49,8 +50,10 @@ function display(value: unknown) {
   return String(value)
 }
 
-export default function AgentsPage({ canManage }: AgentsPageProps) {
-  const tabs = canManage ? allTabs : allTabs.filter((tab) => !administratorTabs.has(tab))
+export default function AgentsPage({ canManage, demoMode = false, isDemoUser = false }: AgentsPageProps) {
+  // The public demo account runs scenarios and confirms or rejects proposals (on synthetic targets only).
+  const canOperate = canManage || isDemoUser
+  const tabs = canManage ? allTabs : allTabs.filter((tab) => (tab === 'Approvals' && canOperate) || (!administratorTabs.has(tab) && !(tab === 'Access' && isDemoUser)))
   const [activeTab, setActiveTab] = useState<AgentTab>('Overview')
   const [status, setStatus] = useState<AgentStatus | null>(null)
   const [config, setConfig] = useState<AgentConfig | null>(null)
@@ -86,11 +89,13 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
         const [configResponse, proposalsResponse] = await Promise.all([getAgentConfig(), getAgentProposals()])
         setConfig(configResponse.data)
         setProposals(proposalsResponse.data)
+      } else if (canOperate) {
+        setProposals((await getAgentProposals()).data)
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Agent information could not be loaded.')
     }
-  }, [canManage])
+  }, [canManage, canOperate])
 
   useEffect(() => {
     refresh()
@@ -131,8 +136,9 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
   function handleSimulation() {
     return runAction('simulate', async () => {
       // S2 and S3 act on a real task: use the demonstration task created by the installer.
+      // In the public demo the server uses its synthetic tasks instead.
       let taskId = 0
-      if (taskScenarios.has(scenario)) {
+      if (taskScenarios.has(scenario) && !demoMode) {
         const tasksResponse = await getTasks()
         const demoTask = tasksResponse.data.tasks.find((task) => task.name === demoTaskName)
         if (!demoTask) throw new Error(`${scenario} needs the "${demoTaskName}" task. Run the installer again to create it.`)
@@ -198,8 +204,12 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
           <div className="tabs agent-tabs" role="tablist" aria-label="Agent management">
             {tabs.map((tab) => <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'active' : ''} type="button" key={tab} onClick={() => setActiveTab(tab)}>{tab}{tab === 'Approvals' && proposals.filter((item) => item.state === 'pending').length > 0 && <b>{proposals.filter((item) => item.state === 'pending').length}</b>}</button>)}
           </div>
-          <button className="row-action" type="button" onClick={refresh} disabled={Boolean(busy)}>Refresh</button>
+          <div className="agent-toolbar-actions">
+            {isDemoUser && <button className="row-action" type="button" onClick={() => runAction('reset-demo', async () => { await resetDemo() }, 'The demo was reset to its initial synthetic state.')} disabled={Boolean(busy)}>Reset demo</button>}
+            <button className="row-action" type="button" onClick={refresh} disabled={Boolean(busy)}>Refresh</button>
+          </div>
         </div>
+        {demoMode && <div className="agent-banner demo-banner" role="note">Public demo: confirmations change only the synthetic demo tasks, users and roles; IRIS itself is never changed. The synthetic state is reset automatically and with “Reset demo”.</div>}
 
         {(error || notice) && <div className={`agent-banner ${error ? 'error' : ''}`} role={error ? 'alert' : 'status'}>{error || notice}</div>}
 
@@ -207,13 +217,13 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
           <div className="agent-stat-grid">
             <article><small>ENGINE</small><strong>{status?.activeEngine ?? '—'}</strong><p>{yes(status?.aiHubAvailable) ? 'AI Hub module available' : 'Rules fallback available'}</p></article>
             <article><small>DECISIONS</small><strong>{ledger?.decisions ?? '—'}</strong><p>Recorded in the audit ledger</p></article>
-            <article><small>PENDING</small><strong>{canManage ? proposals.filter((item) => item.state === 'pending').length : 'Protected'}</strong><p>Human confirmation required</p></article>
+            <article><small>PENDING</small><strong>{canOperate ? proposals.filter((item) => item.state === 'pending').length : 'Protected'}</strong><p>Human confirmation required</p></article>
             <article><small>TOKEN BUDGET</small><strong>{status ? `${status.tokensUsedToday}/${status.dailyTokenBudget}` : '—'}</strong><p>Used today</p></article>
           </div>
-          {canManage && <div className="agent-simulator">
+          {canOperate && <div className="agent-simulator">
             <div><p className="eyebrow">DEMONSTRATION</p><h3>Run a deterministic scenario</h3><p>The event follows the real Business Service → Business Process → Business Operation flow.</p></div>
-            <div className="agent-action-line"><select aria-label="Demonstration scenario" value={scenario} onChange={(event) => setScenario(event.target.value)}>{scenarios.map((item) => <option key={item}>{item}</option>)}</select><button type="button" onClick={handleSimulation} disabled={busy === 'simulate' || !yes(config?.demoMode)}>{busy === 'simulate' ? 'Running…' : 'Run scenario'}</button></div>
-            {!yes(config?.demoMode) && <small className="agent-help">Enable Demo mode in Settings to use the built-in scenarios.</small>}
+            <div className="agent-action-line"><select aria-label="Demonstration scenario" value={scenario} onChange={(event) => setScenario(event.target.value)}>{scenarios.map((item) => <option key={item}>{item}</option>)}</select><button type="button" onClick={handleSimulation} disabled={busy === 'simulate' || !(demoMode || yes(config?.demoMode))}>{busy === 'simulate' ? 'Running…' : 'Run scenario'}</button></div>
+            {!(demoMode || yes(config?.demoMode)) && <small className="agent-help">Enable Demo mode in Settings to use the built-in scenarios.</small>}
             {simulation && <div className="simulation-result"><span className="status-chip enabled">{simulation.outcome}</span><strong>{display(simulation.decision?.action)}</strong><p>Engine: <span className={`status-chip ${simulation.engine === 'aihub' ? 'enabled' : 'neutral'}`}>{engineLabel(simulation.engine, simulation.fallbackReason)}</span> · Trace: {simulation.traceId}</p><button className="row-action" type="button" onClick={() => openTrace(simulation.traceId)}>Open trace</button></div>}
           </div>}
         </div>}
@@ -223,7 +233,7 @@ export default function AgentsPage({ canManage }: AgentsPageProps) {
           {selectedDecision && <DecisionDrawer decision={selectedDecision} onClose={() => setSelectedDecision(null)} onOpenTrace={(traceId) => { setActiveTab('Observability'); void openTrace(traceId) }} />}
         </>}
 
-        {activeTab === 'Approvals' && canManage && <div className="agent-card-list">{proposals.map((item) => <article key={item.id}><div className="agent-card-heading"><div><small>PROPOSAL #{item.id}</small><h3>{item.kind}</h3></div><span className={`status-chip ${item.state === 'pending' ? 'warning' : item.state === 'executed' ? 'enabled' : ''}`}>{item.state}</span></div><dl><div><dt>Target</dt><dd>{item.targetType}: {item.targetId}</dd></div><div><dt>Expires</dt><dd>{item.expiresAt}</dd></div><div><dt>Required privilege</dt><dd>{item.requiredPrivilege || '—'}</dd></div><div><dt>Undo</dt><dd>{item.undoHint || '—'}</dd></div></dl>{item.resultMessage && <p>{item.resultMessage}</p>}{item.state === 'pending' && <div className="agent-card-actions"><button type="button" onClick={() => runAction(`confirm-${item.id}`, async () => { await confirmAgentProposal(item.id) }, `Proposal #${item.id} was confirmed and verified.`)} disabled={Boolean(busy)}>Confirm</button><button className="danger" type="button" onClick={() => runAction(`reject-${item.id}`, async () => { await rejectAgentProposal(item.id, 'Rejected by the administrator in MyOwn Portal.') }, `Proposal #${item.id} was rejected.`)} disabled={Boolean(busy)}>Reject</button></div>}</article>)}{!proposals.length && <div className="data-state">No proposals have been created.</div>}</div>}
+        {activeTab === 'Approvals' && canOperate && <div className="agent-card-list">{proposals.map((item) => <article key={item.id}><div className="agent-card-heading"><div><small>PROPOSAL #{item.id}</small><h3>{item.kind}</h3></div><span className={`status-chip ${item.state === 'pending' ? 'warning' : item.state === 'executed' || item.state === 'simulated' ? 'enabled' : ''}`}>{item.state}</span></div><dl><div><dt>Target</dt><dd>{item.targetType}: {item.targetId}</dd></div><div><dt>Expires</dt><dd>{item.expiresAt}</dd></div><div><dt>Required privilege</dt><dd>{item.requiredPrivilege || '—'}</dd></div><div><dt>Undo</dt><dd>{item.undoHint || '—'}</dd></div></dl>{item.resultMessage && <p>{item.resultMessage}</p>}{item.state === 'pending' && <div className="agent-card-actions"><button type="button" onClick={() => runAction(`confirm-${item.id}`, async () => { await confirmAgentProposal(item.id) }, demoMode ? `Proposal #${item.id} was confirmed; the change was applied to the synthetic demo target only.` : `Proposal #${item.id} was confirmed and verified.`)} disabled={Boolean(busy)}>Confirm</button><button className="danger" type="button" onClick={() => runAction(`reject-${item.id}`, async () => { await rejectAgentProposal(item.id, 'Rejected by the administrator in MyOwn Portal.') }, `Proposal #${item.id} was rejected.`)} disabled={Boolean(busy)}>Reject</button></div>}</article>)}{!proposals.length && <div className="data-state">No proposals have been created.</div>}</div>}
 
         {activeTab === 'Access' && <div className="agent-content two-column-agent"><form className="agent-form" onSubmit={handleAccessRequest}><p className="eyebrow">NEW REQUEST</p><h3>Request an IRIS role</h3><label>Role<input value={role} onChange={(event) => setRole(event.target.value)} maxLength={160} required /></label><label>Business justification<textarea value={justification} onChange={(event) => setJustification(event.target.value)} maxLength={500} required /></label><button type="submit" disabled={busy === 'access'}>{busy === 'access' ? 'Submitting…' : 'Submit for analysis'}</button><small>{justification.length}/500 characters</small></form><div className="agent-card-list compact">{requests.map((item) => <article key={item.id}><div className="agent-card-heading"><div><small>REQUEST #{item.id}</small><h3>{item.roleRequested}</h3></div><span className={`status-chip ${item.status === 'decided' ? 'enabled' : item.status === 'queued' ? 'warning' : ''}`}>{item.status}</span></div><p>{item.justification}</p>{item.recommendation && <p>Agent recommendation: <b>{item.recommendation}</b>{item.riskLevel ? ` · risk ${item.riskLevel}` : ''}{item.proposalId ? ` · proposal #${item.proposalId}` : ''}</p>}<small>{item.requester} · {item.createdAt}</small></article>)}{!requests.length && <div className="data-state">No access requests are visible to this account.</div>}</div></div>}
 

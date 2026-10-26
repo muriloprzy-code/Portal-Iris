@@ -64,6 +64,8 @@ XData UrlMap
   <Route Url="/agent/guardrails" Method="GET" Call="AgentGuardrails" />
   <Route Url="/agent/simulate" Method="POST" Call="SimulateAgentScenario" />
   <Route Url="/agent/analyze" Method="POST" Call="AnalyzeWithAgent" />
+  <Route Url="/demo/state" Method="GET" Call="DemoState" />
+  <Route Url="/demo/reset" Method="POST" Call="DemoReset" />
 </Routes>
 }
 
@@ -95,6 +97,8 @@ ClassMethod CurrentSession() As %Status
     Set payload.data.accessLevel = access.level
     Set payload.data.canView = access.canView
     Set payload.data.canManage = access.canManage
+    Set payload.data.demoMode = ##class(MyOwn.Demo.Mode).Enabled()
+    Set payload.data.isDemoUser = payload.data.demoMode && ##class(MyOwn.Demo.Mode).IsDemoUser()
     Set payload.meta = {}
     Set payload.meta.timestamp = $ZDateTime($Horolog, 3, 1)
 
@@ -677,7 +681,7 @@ ClassMethod AgentDecisionDetail(id As %Integer) As %Status
 
 ClassMethod AgentProposals() As %Status
 {
-    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '..CanOperateProposals() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set state = $Get(%request.Data("state", 1))
     Set tSC = ##class(MyOwn.Agent.Service.Agent).ListProposals(state, .data)
     If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_PROPOSALS_UNAVAILABLE", "Agent proposals are temporarily unavailable.")
@@ -686,7 +690,7 @@ ClassMethod AgentProposals() As %Status
 
 ClassMethod ConfirmAgentProposal(id As %Integer) As %Status
 {
-    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '..CanOperateProposals() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set tSC = ##class(MyOwn.Agent.Service.Agent).ConfirmProposal(id, $Username, ..GetForwardedAuthorization(), .data)
     If $$$ISERR(tSC) Quit ..WriteAgentError(tSC, "PROPOSAL_CONFIRM_FAILED", "The proposal could not be confirmed.")
     Quit ..WriteSuccess(data)
@@ -694,7 +698,7 @@ ClassMethod ConfirmAgentProposal(id As %Integer) As %Status
 
 ClassMethod RejectAgentProposal(id As %Integer) As %Status
 {
-    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    If '..CanOperateProposals() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set parseError = 0
     Set reason = ""
     If %request.Content '= "" {
@@ -827,10 +831,15 @@ ClassMethod AgentGuardrails() As %Status
 
 ClassMethod SimulateAgentScenario() As %Status
 {
-    If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
+    Set demo = ##class(MyOwn.Demo.Mode).Enabled()
+    If '##class(MyOwn.Service.Access).CanManage() && '(demo && ##class(MyOwn.Demo.Mode).IsDemoUser()) Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Set tSC = ##class(MyOwn.Agent.Config).GetOrCreate(.config)
     If $$$ISERR(tSC) Quit ..WriteError(500, "AGENT_CONFIG_UNAVAILABLE", "The agent configuration is temporarily unavailable.")
-    If 'config.DemoMode Quit ..WriteError(403, "AGENT_DISABLED", "Demonstration scenarios are disabled.")
+    If 'config.DemoMode && 'demo Quit ..WriteError(403, "AGENT_DISABLED", "Demonstration scenarios are disabled.")
+    If demo && '..DemoRateAllowed(.retryAfter) {
+        Set %response.Headers("Retry-After") = retryAfter
+        Quit ..WriteError(429, "RATE_LIMITED", "Too many demonstration scenarios; try again in a minute.")
+    }
     Set parseError = 0
     Try {
         Set body = {}.%FromJSON(%request.Content)
@@ -866,6 +875,7 @@ ClassMethod WriteAgentError(tSC As %Status, defaultCode As %String, defaultMessa
     If text [ "EXECUTION_READBACK_FAILED" Quit ..WriteError(500, "EXECUTION_READBACK_FAILED", "The requested change could not be verified after execution.")
     If text [ "SEPARATION_OF_DUTIES" Quit ..WriteError(403, "SEPARATION_OF_DUTIES", "The requester cannot confirm the same access request.")
     If text [ "PROHIBITED_TARGET" Quit ..WriteError(403, "PROHIBITED_TARGET", "The requested target is protected by a guardrail.")
+    If text [ "DEMO_TARGET_REFUSED" Quit ..WriteError(403, "DEMO_TARGET_REFUSED", "In the public demo only the synthetic demo targets can be changed.")
     If text [ "INVALID_REQUEST" Quit ..WriteError(400, "INVALID_REQUEST", "The request is invalid.")
     Quit ..WriteError(500, defaultCode, defaultMessage)
 }
@@ -951,8 +961,67 @@ ClassMethod OnPreDispatch(pUrl As %String, pMethod As %String, ByRef pContinue A
     If (pMethod '= "OPTIONS") && ('##class(MyOwn.Service.Access).CanView()) {
         Set pContinue = 0
         Do ..WriteError(403, "PORTAL_ACCESS_REQUIRED", "Your IRIS account is not authorized to use MyOwn Portal.")
+        Quit tSC
+    }
+    If (pMethod '= "OPTIONS") && ##class(MyOwn.Demo.Mode).Enabled() {
+        Set reason = ..DemoRefusal(pUrl, pMethod)
+        If reason '= "" {
+            Set pContinue = 0
+            Do ##class(MyOwn.Service.Audit).RecordAgent("DemoRefused", 0, pMethod _ " " _ $Extract(pUrl, 1, 80), 0, reason, 0)
+            Do ..WriteError(403, "DEMO_MODE_FORBIDDEN", $Select(reason = "real-system": "The public demo does not change the real system.", 1: "The demo account cannot use this function."))
+        }
     }
     Quit tSC
+}
+
+/// Demo mode rules, "" when allowed. Changes to the real system (users and roles, web
+/// applications, tasks, the API explorer) are refused for everyone; the demo account may only
+/// read, run scenarios, confirm or reject proposals and reset the demo, and sees no settings.
+ClassMethod DemoRefusal(url As %String, method As %String) As %String
+{
+    If (method '= "GET") && $Match(url, "/(permissions/.*|applications/state|tasks/action|apis/test)") Quit "real-system"
+    If '##class(MyOwn.Demo.Mode).IsDemoUser() Quit ""
+    If method = "GET" Quit $Select($Match(url, "/agent/(config|pricing)"): "demo-account", 1: "")
+    If $Match(url, "/(agent/simulate|agent/proposals/\d+/(confirm|reject)|demo/reset)") Quit ""
+    Quit "demo-account"
+}
+
+ClassMethod CanOperateProposals() As %Boolean [ Private ]
+{
+    If ##class(MyOwn.Service.Access).CanManage() Quit 1
+    Quit ##class(MyOwn.Demo.Mode).Enabled() && ##class(MyOwn.Demo.Mode).IsDemoUser()
+}
+
+/// One scenario for this client address and this session in the current minute.
+ClassMethod DemoRateAllowed(Output retryAfter As %Integer) As %Boolean [ Private ]
+{
+    Set limit = ##class(MyOwn.Demo.Mode).SimulationsPerMinute()
+    Set address = $Get(%request.CgiEnvs("REMOTE_ADDR"))
+    Set session = $Select($IsObject($Get(%session)): %session.SessionId, 1: "")
+    If '##class(MyOwn.Demo.RateLimit).Allow("ip:" _ address, limit, .retryAfter) Quit 0
+    If session = "" Quit 1
+    Quit ##class(MyOwn.Demo.RateLimit).Allow("session:" _ session, limit, .retryAfter)
+}
+
+ClassMethod DemoState() As %Status
+{
+    Set data = {"demoMode": (##class(MyOwn.Demo.Mode).Enabled()), "isDemoUser": (##class(MyOwn.Demo.Mode).IsDemoUser()), "resetHours": (##class(MyOwn.Demo.Mode).ResetHours()), "simulationsPerMinute": (##class(MyOwn.Demo.Mode).SimulationsPerMinute())}
+    If data.demoMode Set data.targets = ##class(MyOwn.Demo.Seed).Summary()
+    Quit ..WriteSuccess(data)
+}
+
+/// "Reset demo" button (demo account, or an administrator) in demo mode only.
+ClassMethod DemoReset() As %Status
+{
+    If '##class(MyOwn.Demo.Mode).Enabled() Quit ..WriteError(409, "DEMO_MODE_OFF", "The portal is not running in demo mode.")
+    If '..CanOperateProposals() Quit ..WriteError(403, "FORBIDDEN", "Only the demo account can reset the demo.")
+    If '##class(MyOwn.Demo.RateLimit).Allow("reset:" _ $Get(%request.CgiEnvs("REMOTE_ADDR")), 2, .retryAfter) {
+        Set %response.Headers("Retry-After") = retryAfter
+        Quit ..WriteError(429, "RATE_LIMITED", "The demo was reset recently; try again in a minute.")
+    }
+    Set tSC = ##class(MyOwn.Demo.Seed).Reset("button by " _ $Username)
+    If $$$ISERR(tSC) Quit ..WriteError(500, "DEMO_RESET_FAILED", "The demo could not be reset.")
+    Quit ..WriteSuccess({"reset": 1, "targets": (##class(MyOwn.Demo.Seed).Summary())})
 }
 
 }

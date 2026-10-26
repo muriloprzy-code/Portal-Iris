@@ -16,6 +16,7 @@ $patterns = [ordered]@{
     'Private key' = '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
     # [ \t]* rather than \s*: an empty value must not reach into the next line.
     'Configured AI key' = '(?im)^[ \t]*(?:MYOWN_AI_API_KEY|OPENAI_API_KEY)[ \t]*[:=][ \t]*["'']?[^\s"''#${][^\r\n#]*'
+    'Configured demo password' = '(?im)^[ \t]*MYOWN_DEMO_USER_PASSWORD[ \t]*[:=][ \t]*["'']?[^\s"''#${][^\r\n#]*'
     'Configured IRIS password' = '(?im)^[ \t]*IRIS_PASSWORD[ \t]*[:=][ \t]*["'']?(?!SUA_SENHA|CHANGE[-_]?ME|YOUR_PASSWORD|<PASSWORD>)[^\s"''#${][^\r\n#]*'
 }
 

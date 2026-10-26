@@ -83,7 +83,7 @@ For the IRIS edition, load `iris-community-2026.3.0AI.154.0-docker.tar.gz`, tag 
 | `MYOWN_AI_TIMEOUT_SECONDS` | the portal's own deadline per decision, 5 to 55 (default 20) |
 | `MYOWN_DEMO_PASSWORD` | initial `_SYSTEM` password of a new container volume; choose your own |
 
-The defaults in `.env.example` are OpenAI / `gpt-4.1-mini`. The only provider tested so far is Gemini (`gemini-3.8-flash`); see [Limitations](#limitations). Without a key the portal starts and uses the Rules engine.
+The defaults in `.env.example` are the tested provider, Gemini (`gemini-3.8-flash`). OpenAI (for example `gpt-4.1-mini`), Anthropic and Bedrock are accepted by the same `%AI.Provider` path but untested; see [Limitations](#limitations). Without a key the portal starts and uses the Rules engine.
 
 **Start:**
 
@@ -113,7 +113,23 @@ The online demo runs with `MYOWN_AI_MODE=replay`: each AI answer is a **real mod
 
 Running the agent live requires a local installation with your own key (`MYOWN_AI_MODE=live`).
 
-Planned for the online demo: a dedicated low-privilege account instead of `_SYSTEM`, with read access to the portal and permission to run the demonstration scenarios only, no administrative roles. **[TODO: not created yet; today running scenarios requires the administrator role.]**
+With `MYOWN_DEMO_MODE=1` the portal is safe to expose:
+
+- **Demo account.** A user `demo` with the role `MyOwnDemo`: it can view the portal, run the demonstration scenarios, and confirm or reject proposals. It has no IRIS administration privileges, no Settings, no access to the provider configuration or key, and every administration route answers 403. Database and SQL read access are granted only inside `/myown/api` (application role `MyOwnDemoData`).
+- **Synthetic targets only.** The scenarios use seeded demo tasks (9001, 9002), users (`demo.alice`, `demo.bob`) and roles (`DemoOperator`, `DemoAuditor`). A confirmation revalidates as usual and then changes only that synthetic record; the proposal ends as `simulated`, and **IRIS is never changed**. A confirmation on any other target is refused (`DEMO_TARGET_REFUSED`) and audited (`MyOwn/Agent/DemoRefused`). Prohibited targets such as `%All` stay blocked.
+- **Real-system routes are off for everyone** in this mode (users and roles, web applications, task actions, the API explorer), administrators included.
+- **Reset.** The synthetic state is restored every `MYOWN_DEMO_RESET_HOURS` (default 6) by the task `MyOwn Demo reset`, and by the "Reset demo" button that only the demo account sees; both are audited (`MyOwn/Agent/DemoReset`).
+- **Rate limit.** `MYOWN_DEMO_SIMULATIONS_PER_MINUTE` (default 6) scenarios per minute per client address and per session; beyond that the API answers 429 with `Retry-After`.
+
+**Instructions for whoever hosts the demo:**
+
+```powershell
+.\scripts\New-DemoPassword.ps1   # random password, written only to .env (MYOWN_DEMO_USER_PASSWORD), never printed
+# then set MYOWN_DEMO_MODE=1 and MYOWN_AI_MODE=replay in .env
+docker compose -f compose.yaml -f compose.aihub.yaml up --build -d
+```
+
+At every start `docker/demo-start.sh` creates or updates the `demo` account from the environment, and disables it when demo mode is off. Give visitors the user `demo` and the password from `.env`. Never publish the `_SYSTEM` password; set your own in `MYOWN_DEMO_PASSWORD` before the first start.
 
 ## Tests
 
@@ -126,6 +142,7 @@ Planned for the online demo: a dedicated low-privilege account instead of `_SYST
 | Core and interoperability smoke | `scripts/Test-AgentSmoke.ps1` | 14 / 14, 19 / 19 | 14 / 14, 19 / 19 |
 | AI Hub engine (replay: timeouts, invalid JSON, provider error, budget, kill switch, blocked write tool, fixtures) | `scripts/Test-Agents-AIHub.ps1` | skipped (no `%AI`) | 18 / 18 |
 | Agents UI (isolated browser) | `scripts/Test-AgentsUI.ps1` | 15 / 15 | 15 / 15 |
+| Public demo (synthetic targets, refusals, reset, rate limit; REST checks with the real demo account) | `scripts/Test-AgentDemo.ps1` | 8 / 8 in-IRIS (REST part needs demo mode) | 16 / 16 with `MYOWN_DEMO_MODE=1` |
 | Secret scan (tracked and staged files) | `scripts/Test-AgentSecretScan.ps1` | pass | — |
 
 Reports are written to `test-results/`. The full regression passed on a fresh build 154 container on its first run.
@@ -138,7 +155,9 @@ Reports are written to `test-results/`. The full regression passed on a fresh bu
 - Some replay fixtures come from equivalent rather than identical contexts (see [Demo mode](#demo-mode)).
 - Agent audit records become visible in the audit log about a minute after the event (IRIS writes its audit buffer periodically).
 - The portal has no audit viewer yet, so there is no "agent events only" filter.
-- The online demo and its low-privilege account do not exist yet.
+- The online demo is not deployed yet. The demo account exists only where `MYOWN_DEMO_MODE=1` and a password are set.
+- The `MyOwnViewer` role alone was not tested without `%All`; the demo account needed explicit database and SQL read grants, which the viewer role does not have.
+- The demo rate limit uses the client address seen by IRIS; behind a reverse proxy all visitors share one address.
 
 ## AI Hub experience
 

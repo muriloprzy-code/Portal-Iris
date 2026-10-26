@@ -17,12 +17,17 @@ services:
     environment:
       ISC_DATA_DIRECTORY: /durable/iris
       MYOWN_AI_API_KEY: ${MYOWN_AI_API_KEY:-}
-      MYOWN_AI_PROVIDER: ${MYOWN_AI_PROVIDER:-openai}
-      MYOWN_AI_MODEL: ${MYOWN_AI_MODEL:-gpt-4.1-mini}
+      MYOWN_AI_PROVIDER: ${MYOWN_AI_PROVIDER:-gemini}
+      MYOWN_AI_MODEL: ${MYOWN_AI_MODEL:-gemini-3.8-flash}
       MYOWN_AI_MODE: ${MYOWN_AI_MODE:-live}
       MYOWN_AI_TIMEOUT_SECONDS: ${MYOWN_AI_TIMEOUT_SECONDS:-20}
       MYOWN_AI_MAX_OUTPUT_TOKENS: ${MYOWN_AI_MAX_OUTPUT_TOKENS:-400}
       MYOWN_AI_THINKING: ${MYOWN_AI_THINKING:-low}
+      # Public demo (off unless MYOWN_DEMO_MODE=1). The demo password exists only in .env.
+      MYOWN_DEMO_MODE: ${MYOWN_DEMO_MODE:-0}
+      MYOWN_DEMO_USER_PASSWORD: ${MYOWN_DEMO_USER_PASSWORD:-}
+      MYOWN_DEMO_RESET_HOURS: ${MYOWN_DEMO_RESET_HOURS:-6}
+      MYOWN_DEMO_SIMULATIONS_PER_MINUTE: ${MYOWN_DEMO_SIMULATIONS_PER_MINUTE:-6}
     volumes:
       - myown-portal-data:/durable
     healthcheck:

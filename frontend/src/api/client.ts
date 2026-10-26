@@ -15,6 +15,10 @@ export type SessionResponse = {
     accessLevel: 'Administrator' | 'Viewer' | 'None'
     canView: boolean | number
     canManage: boolean | number
+    /** MYOWN_DEMO_MODE=1 on the server. */
+    demoMode?: boolean | number
+    /** The public demo account (role MyOwnDemo): scenarios, confirmations on synthetic targets, reset. */
+    isDemoUser?: boolean | number
   }
   meta: { timestamp: string }
 }
@@ -638,6 +642,22 @@ export async function getAgentGuardrails() {
 
 export async function simulateAgentScenario(scenario: string, taskId = 0) {
   return apiRequest<{ data: AgentSimulation }>('/agent/simulate', undefined, { method: 'POST', body: JSON.stringify({ scenario, taskId }) })
+}
+
+export type DemoState = {
+  demoMode: boolean | number
+  isDemoUser: boolean | number
+  resetHours: number
+  simulationsPerMinute: number
+  targets?: { tasks: Array<Record<string, unknown>>; users: Array<Record<string, unknown>>; roles: Array<Record<string, unknown>> }
+}
+
+export async function getDemoState() {
+  return apiRequest<{ data: DemoState }>('/demo/state')
+}
+
+export async function resetDemo() {
+  return apiRequest<{ data: { reset: number } }>('/demo/reset', undefined, { method: 'POST' })
 }
 
 export async function analyzeCurrentHealth() {

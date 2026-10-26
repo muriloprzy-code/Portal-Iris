@@ -8,7 +8,7 @@ ClassMethod Run(name As %String, authorization As %String, taskId As %Integer, r
     If $$$ISERR(tSC) Quit tSC
     Set traceId = $System.Util.CreateGUID()
     Set context.simulationRunId = traceId
-    If workflow = "access-request" Quit ..RunAccess(name, requester, context, .response)
+    If workflow = "access-request" Quit ..RunAccess(name, context.requester, context, .response)
     Set request = ##class(MyOwn.Production.Msg.IncidentEvent).%New()
     Set request.Source = "simulate"
     Set request.ContextJSON = context.%ToJSON()
@@ -40,6 +40,12 @@ ClassMethod BuildContext(name As %String, authorization As %String, taskId As %I
         Set anomaly.zScore = 3.4
         Set anomaly.severity = "critical"
         Do context.anomalies.%Push(anomaly)
+    } ElseIf ((name = "S2") || (name = "S3")) && ##class(MyOwn.Demo.Mode).Enabled() {
+        ; Public demo: the synthetic tasks, never a real one.
+        Set task = ##class(MyOwn.Demo.Seed).Task($Select(name = "S2": ##class(MyOwn.Demo.Seed).#FailingTaskId, 1: ##class(MyOwn.Demo.Seed).#RecoveredTaskId))
+        If '$IsObject(task) Quit $$$ERROR($$$GeneralError, "The synthetic demo task is missing; reset the demo.")
+        Set context.task = task
+        Do context.candidates.%Push(##class(MyOwn.Agent.Context.Tasks).Candidate(task))
     } ElseIf (name = "S2") || (name = "S3") {
         ; The portal screen sends no taskId: use the demonstration task created by the installer.
         If taskId < 1 {
@@ -61,6 +67,8 @@ ClassMethod BuildContext(name As %String, authorization As %String, taskId As %I
         Set context.anomalies = []
     } ElseIf (name = "S5") || (name = "S6") || (name = "S7") || (name = "S9") {
         Set workflow = "access-request"
+        ; Public demo: a synthetic requester, so the demo account confirms someone else's request.
+        If ##class(MyOwn.Demo.Mode).Enabled() Set requester = ##class(MyOwn.Demo.Seed).#Requester
         Set context.requester = requester
         Set context.roleRequested = $Select(name="S7":"%All", 1:"DemoOperator")
         Set context.currentRoles = []

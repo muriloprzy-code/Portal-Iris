@@ -827,6 +827,13 @@ ClassMethod ConfirmProposalLocked(id As %Integer, actor As %String, authorizatio
         If $$$ISERR(tSC) Quit tSC
         Quit $$$ERROR($$$GeneralError, "PROPOSAL_EXPIRED")
     }
+    ; Public demo: only the seeded synthetic targets can be confirmed; anything else is refused and audited.
+    Set demo = ##class(MyOwn.Demo.Mode).Enabled()
+    If demo && '##class(MyOwn.Demo.Seed).IsSynthetic(proposal) {
+        Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("DemoRefused", proposal.DecisionId, "proposal " _ id, 0, proposal.Kind _ " on a non-synthetic target", 0)
+        If $$$ISERR(tSC) Quit tSC
+        Quit $$$ERROR($$$GeneralError, "DEMO_TARGET_REFUSED")
+    }
 
     Set requester = ""
     Set statement = ##class(%SQL.Statement).%New()
@@ -891,11 +898,12 @@ ClassMethod ConfirmProposalLocked(id As %Integer, actor As %String, authorizatio
         Set feedbackStatus = ..PublishExecutionFeedback(proposal, "failed", proposal.ResultMessage)
         Quit tSC
     }
-    Set proposal.State = "executed"
+    ; In demo mode the change went to the synthetic target only: the state says so.
+    Set proposal.State = $Select(demo: "simulated", 1: "executed")
     Set proposal.ResultMessage = execution.%Get("message", "The confirmed action was executed.")
     Set tSC = proposal.%Save()
     If $$$ISERR(tSC) Quit tSC
-    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ExecutionResult", proposal.DecisionId, "proposal " _ id, 1, "executed")
+    Set tSC = ##class(MyOwn.Service.Audit).RecordAgent("ExecutionResult", proposal.DecisionId, "proposal " _ id, 1, proposal.State)
     If $$$ISERR(tSC) Quit tSC
     Set feedbackStatus = ..PublishExecutionFeedback(proposal, "executed", proposal.ResultMessage)
     Set data = ..ProposalView(proposal)
@@ -1304,6 +1312,7 @@ ClassMethod ResponseFromMessage(message As MyOwn.Production.Msg.AgentResponse) A
 
 ClassMethod ReadCurrentTarget(proposal As MyOwn.Agent.Proposal, authorization As %String, Output current As %DynamicObject, Output manageable As %Boolean) As %Status [ Private ]
 {
+    If ##class(MyOwn.Demo.Mode).Enabled() Quit ##class(MyOwn.Demo.Seed).ReadTarget(proposal, .current, .manageable)
     Set manageable = 1
     If proposal.TargetType = "task" {
         Set tSC = ##class(MyOwn.Service.Tasks).GetTask(+proposal.TargetId, authorization, .task, .source)
@@ -1326,6 +1335,7 @@ ClassMethod ReadCurrentTarget(proposal As MyOwn.Agent.Proposal, authorization As
 
 ClassMethod ExecuteProposal(proposal As MyOwn.Agent.Proposal, authorization As %String, Output result As %DynamicObject) As %Status [ Private ]
 {
+    If ##class(MyOwn.Demo.Mode).Enabled() Quit ##class(MyOwn.Demo.Seed).Apply(proposal, .result)
     If $Extract(proposal.Kind, 1, 5) = "task." {
         Set action = $Piece(proposal.Kind, ".", 2)
         Set tSC = ##class(MyOwn.Service.Tasks).PerformAction(+proposal.TargetId, action, authorization, .result, .source)
