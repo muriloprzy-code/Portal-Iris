@@ -1,24 +1,68 @@
-# MyOwn Portal
+# MyOwn Portal — AI Agents in Interoperability Workflows
 
-MyOwn Portal is a compact, English-language administration interface for InterSystems IRIS and IRIS for Health. It was created for the **InterSystems Programming Contest: Build Your Own Management Portal**.
+MyOwn Portal is an administration portal for InterSystems IRIS and IRIS for Health. This entry adds an interoperability production in which an AI agent triages incidents and access requests: it reads the instance, decides and explains, and proposes a change, while a person confirms it.
 
-The browser application uses React and TypeScript. The REST backend, authorization, auditing, and access to IRIS administration data are implemented in ObjectScript. Administrative inventories require the official SysAdmin API v2. Vite and Node.js are development and build tools only; the production React bundle is served by the private IRIS web server.
+- **What it does:** health anomalies, failing tasks, log alerts and role requests become events in an IRIS production; the agent returns a decision (ignore, notify, escalate, propose a task action, approve or deny a role) with a rationale, evidence and a confidence value.
+- **How it fits the theme:** the agent is a step inside a real interoperability workflow (Business Services → Business Processes → Business Operations), built on IRIS AI Hub (`%AI.Agent`, ToolSets, policies) in build `2026.3.0AI.154.0`.
+- **What is technically interesting:** the agent never writes. Every decision passes a schema Validator and a deterministic Gate; a human confirms with their own credentials; the change is revalidated, executed and read back. Read-only tools are enforced by an allow-list policy, every AI call lands in a token/cost/latency ledger, and when the model is slow, wrong or unavailable the deterministic Rules engine decides instead and the screen says why.
 
-**Official API compliance.** Processes, users, roles, resources, tasks, web applications, X.509 credentials, OAuth configuration, and Secure Wallet metadata are all read and written through the official `/api/admin/v2/...` endpoints — not through direct calls to native classes. Two areas intentionally stay outside the SysAdmin API because it has no equivalent endpoint for them: host-level CPU/memory/disk metrics (Overview) and general system logging (`messages.log`, the Logs page). This isn't an oversight — other teams who built against the same specification for this same contest independently hit and documented the same two gaps. See [SysAdmin API integration](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#sysadmin-api-integration) and the [Design note](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#design-note) in the reference doc for the full detail, including which native `%Admin_*` privileges each area requires.
+## Links
 
-**Automated tests.** `scripts/Test-MyOwn.ps1` runs a full smoke-test suite against a running instance, and `scripts/Test-SysAdminMutations.ps1` exercises real SysAdmin API v2 mutations (create/assign/remove/delete) end to end, cleaning up after itself. See [Tests](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#tests) in the reference doc.
+- Online demo: **[TODO: URL]** (replay mode, see [Demo mode](#demo-mode))
+- Video: **[TODO: URL]**
+- Article on the Developer Community: **[TODO: URL]**
 
-Read the write-up on the InterSystems Developer Community: [English](https://community.intersystems.com/post/myown-portal-compact-management-portal-intersystems-iris) · [Português](https://pt.community.intersystems.com/post/myown-portal-um-portal-de-gerenciamento-compacto-para-o-intersystems-iris)
+## Why this design
 
-**Online demo (temporary, for contest evaluation):** [https://163-176-71-47.sslip.io/myown/index.html](https://163-176-71-47.sslip.io/myown/index.html) — sign in with `_SYSTEM` / `ChangeMe2026!`. Hosted on a free Oracle Cloud Always Free instance with a free Let's Encrypt HTTPS certificate; every page is pre-populated with sample data to review. This instance is shared and temporary, kept online only for the duration of the contest.
+- **The agent only decides.** It has read-only tools and no write path. A state change exists only as a proposal that expires.
+- **Validator.** The model output must be a single JSON object matching schema v1: strict types, an allow-list of fields and actions, bounded text, and targets taken from the candidate list the server supplied.
+- **Gate.** Kill switch, read-only mode, prohibited targets (for example the `%All` role), downgrade of high-risk decisions to escalation, one open proposal per target and action, budget and cooldown.
+- **Human confirmation revalidates everything:** state, expiry, separation of duties (a requester cannot confirm their own request), prohibited targets, the target fingerprint (`TARGET_CHANGED`) and the confirming user's live permission. The change runs with that user's credentials and is read back.
+- **Untrusted data stays data.** Log lines, task errors and justifications reach the model only inside delimiters, sanitized and with the delimiter characters escaped.
+- **Always a working system.** Without AI Hub, without a key, with the kill switch on, over budget, or when the provider fails, the Rules engine decides. The reason is recorded and shown as a badge such as `Rules (provider_timeout)`.
 
-## Quick Start
+## Architecture
 
-MyOwn Portal has no login of its own — it authenticates directly against the IRIS instance it is installed on. See [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#how-it-works-in-plain-terms) for the full explanation.
+```
+HealthMonitor · TaskWatcher · LogWatcher · AccessRequestService      Business Services
+        │  event (context with untrusted data delimited)
+        ▼
+TriageProcess · AccessProcess                                       Business Processes
+   1. decide (AgentGateway)  2. Gate  3. proposal (ProposalStore)
+        │
+        ▼
+AgentGateway ─┬─ AI Hub engine: %AI.Agent + read-only ToolSet,      Business Operations
+              │  allow-list policy, audit policy, own deadline
+              └─ Rules engine (fallback, always available)
+        │  Validator → Gate → proposal → human confirmation → read-back → audit
+        ▼
+REST /myown/api/agent/*  →  React UI: Decisions, Approvals, Access, Production, Guardrails, Settings
+```
 
-### Run the AI Hub build
+The AI Hub module (`aihub/`, IPM `myown-portal-aihub`) installs only where the `%AI` package exists; elsewhere the portal runs on Rules.
 
-The AI-agent workflow targets **InterSystems IRIS AI Hub Community build `2026.3.0AI.154.0`**. Both the IRIS and IRIS for Health editions are accepted; this repository defaults to IRIS for Health. Download the x64 or ARM64 Community container image from the [InterSystems AI Hub Early Access portal](https://evaluation.intersystems.com/Eval/early-access/AIHub), then load and give it the short local tag expected by Compose:
+## Demonstration scenarios
+
+Run them from the **Agents** page or with `POST /myown/api/agent/simulate` (administrator role and demo mode required).
+
+| # | Scenario | Rules engine | Recorded AI decision (replay) |
+|---|---|---|---|
+| S1 | Critical disk anomaly | `notify` | `escalate` |
+| S2 | Task failing repeatedly | proposal: suspend task | proposal: suspend task |
+| S3 | Suspended task whose last run succeeded | proposal: resume task | proposal: resume task |
+| S4 | Normal conditions | `ignore` | `ignore` |
+| S5 | Low-risk role request | `approve`, proposal created | `approve` |
+| S6 | High-risk role request | `escalate` | `escalate` |
+| S7 | Request for the prohibited `%All` role | blocked by the Gate | `deny` |
+| S8 | Prompt injection in a log line | treated as data, `notify` | `escalate` |
+| S9 | Prompt injection in a justification | treated as data, `escalate` | `deny` |
+| S10 | Budget exhausted | Rules decide (`budget`) | not applicable: no AI call is made |
+
+The Gate and the confirmation step apply to both engines.
+
+## Run it locally
+
+**Image.** InterSystems IRIS AI Hub Community build **`2026.3.0AI.154.0`** (IRIS and IRIS for Health are both accepted; this repository defaults to IRIS for Health). Download it from the [AI Hub Early Access portal](https://evaluation.intersystems.com/Eval/early-access/AIHub), then load and retag it once per machine:
 
 ```shell
 docker image load -i irishealth-community-2026.3.0AI.154.0-docker.tar.gz
@@ -26,108 +70,111 @@ docker images
 docker tag <loaded-image-name> irishealth-community:2026.3.0AI.154.0
 ```
 
-For the IRIS edition, load `iris-community-2026.3.0AI.154.0-docker.tar.gz`, tag it as `iris-community:2026.3.0AI.154.0`, and set that value as `IRIS_IMAGE` in `.env`.
+For the IRIS edition, load `iris-community-2026.3.0AI.154.0-docker.tar.gz`, tag it `iris-community:2026.3.0AI.154.0` and set `IRIS_IMAGE` in `.env`.
 
-Copy `.env.example` to the git-ignored `.env`. The expected official provider is **OpenAI**, the default model is **`gpt-4.1-mini`**, and the key belongs in `MYOWN_AI_API_KEY`. You may change `MYOWN_AI_PROVIDER` and `MYOWN_AI_MODEL`. When no key is provided, the portal still starts and uses its deterministic Rules engine.
+**Configuration.** Copy `.env.example` to the git-ignored `.env` and set:
 
-Start the app and open `http://localhost:52774/myown/index.html`:
+| Variable | Meaning |
+|---|---|
+| `MYOWN_AI_PROVIDER` | `openai`, `anthropic`, `gemini` or `bedrock` |
+| `MYOWN_AI_MODEL` | model name accepted by your key |
+| `MYOWN_AI_API_KEY` | your key; never committed, never shown by the portal |
+| `MYOWN_AI_MODE` | `live` (default) or `replay` (recorded decisions, no key, no network) |
+| `MYOWN_AI_TIMEOUT_SECONDS` | the portal's own deadline per decision, 5 to 55 (default 20) |
+| `MYOWN_DEMO_PASSWORD` | initial `_SYSTEM` password of a new container volume; choose your own |
+
+The defaults in `.env.example` are OpenAI / `gpt-4.1-mini`. The only provider tested so far is Gemini (`gemini-3.8-flash`); see [Limitations](#limitations). Without a key the portal starts and uses the Rules engine.
+
+**Start:**
 
 ```shell
 docker compose -f compose.yaml -f compose.aihub.yaml up --build -d
 ```
 
-Verify the deployment with the health and agent-status endpoints, then run the reproducible agent suite:
+Open `http://localhost:52774/myown/index.html` (the full path: the container's web server serves no default page for `/myown/`) and sign in with `_SYSTEM` and the password you set in `MYOWN_DEMO_PASSWORD`.
+
+**Verify:**
 
 ```powershell
 Invoke-RestMethod http://localhost:52774/myown/api/health -Credential (Get-Credential)
 Invoke-RestMethod http://localhost:52774/myown/api/agent/status -Credential (Get-Credential)
 .\scripts\Test-Agents.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential) -IrisImage irishealth-community:2026.3.0AI.154.0 -Edition irisforhealth
-.\scripts\Test-AgentSecretScan.ps1
 .\scripts\Test-Agents-AIHub.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential)
+.\scripts\Test-AgentSecretScan.ps1
 ```
 
-> **Do not push the AI Hub image or images built on it to a public registry.** The Early Access image must be loaded locally on each machine. Commit only this repository's Dockerfile and Compose files.
+> **Do not push the AI Hub image, or any image built on it, to a public registry.** Share only the Dockerfile and Compose files.
 
-### The easy way: one double-click
+Other installation paths (a local IRIS instance, `Instalar.bat`) are described in [docs/REFERENCE.md](docs/REFERENCE.md).
 
-Double-click **`Instalar.bat`** at the project root. It figures out the rest on its own:
+## Demo mode
 
-- **Docker path:** if Docker Desktop is installed, it builds and starts the demo container and opens `http://localhost:52774/myown/index.html` for you. **Docker Desktop needs to already be open before you run the installer** — if it isn't running yet, start it first, wait for it to finish starting up, then run `Instalar.bat`.
-- **Local IRIS path:** if you already have IRIS installed locally instead, it asks which namespace to install into (press Enter for the default, `MYOWN`, or type the name of a namespace you already use), builds the frontend (downloading a local copy of Node.js first if needed, no admin rights required for that part), deploys the files, restarts the private web server, and installs the backend — fully automatically, over IRIS's own Atelier REST API, no terminal to paste into. It asks once for your IRIS username and password for that last step; they are used only in memory and never written to disk. It then opens `http://localhost:52773/myown/index.html`.
-- If both Docker and a local IRIS are found, it asks once which one you want.
+The online demo runs with `MYOWN_AI_MODE=replay`: each AI answer is a **real model decision recorded earlier**, not generated live. Every fixture in `aihub/fixtures/` names the provider, model and recording date; the screen shows the badge "Replay of recorded real decisions". S1, S5, S6 and S7 were recorded with the exact scenario context; S2, S3, S4, S8 and S9 come from earlier real calls with equivalent contexts, as each fixture header states. Replay still goes through the tool manager, policies, Validator, Gate and ledger.
 
-It will ask Windows for administrator permission once (needed only to restart the IRIS private web server on the local-install path) — approve that, and everything else runs by itself. The one thing it cannot do for you is the one-time creation of the namespace if it does not already exist on your IRIS instance; if that is the case, it stops and tells you exactly where to click (Management Portal → System Administration → Configuration → System Configuration → Namespaces → New Namespace) — then just run `Instalar.bat` again.
+Running the agent live requires a local installation with your own key (`MYOWN_AI_MODE=live`).
 
-<details>
-<summary>Prefer to run the commands yourself, or run outside Windows? (click to expand)</summary>
+Planned for the online demo: a dedicated low-privilege account instead of `_SYSTEM`, with read access to the portal and permission to run the demonstration scenarios only, no administrative roles. **[TODO: not created yet; today running scenarios requires the administrator role.]**
 
-<br>
+## Tests
 
-**Docker, by hand:**
+| Suite | Script | IRIS 2026.2 (local) | Build 154 (IRIS for Health) |
+|---|---|---|---|
+| Portal smoke | `scripts/Test-MyOwn.ps1` | pass | pass |
+| SysAdmin API mutations | `scripts/Test-SysAdminMutations.ps1` | pass | pass |
+| Agent REST scenarios | `scripts/Test-Agents.ps1` | 24 pass, 1 optional skip | 24 pass, 1 optional skip |
+| Adversarial corpus (92 hostile model outputs) | `scripts/Test-AgentAdversarial.ps1` | 92 / 92 | 92 / 92 |
+| Core and interoperability smoke | `scripts/Test-AgentSmoke.ps1` | 14 / 14, 19 / 19 | 14 / 14, 19 / 19 |
+| AI Hub engine (replay: timeouts, invalid JSON, provider error, budget, kill switch, blocked write tool, fixtures) | `scripts/Test-Agents-AIHub.ps1` | skipped (no `%AI`) | 18 / 18 |
+| Agents UI (isolated browser) | `scripts/Test-AgentsUI.ps1` | 15 / 15 | 15 / 15 |
+| Secret scan (tracked and staged files) | `scripts/Test-AgentSecretScan.ps1` | pass | — |
 
-Make sure Docker Desktop is already open, then:
+Reports are written to `test-results/`. The full regression passed on a fresh build 154 container on its first run.
 
-```shell
-docker compose up --build -d
-```
+## Limitations
 
-Open `http://localhost:52774/myown/index.html` and sign in with `_SYSTEM` / `ChangeMe2026!`. This password is intentionally provided as a convenient default for local demonstration only. The container uses its own isolated IRIS data volume and does not modify an IRIS instance installed directly on the host. Change the password before exposing the container to another computer or network; see [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#path-a--try-it-in-docker-no-iris-installation-needed).
+- **Live calls are fragile on a free tier.** Gemini (`gemini-3.8-flash`, free tier) answered in 11 to 18 s when available, but it also returned HTTP 429 (quota) and 503 ("high demand"). The `%AI` provider retries those internally, so they often look like a slow provider. The portal stops waiting at its own deadline and the Rules engine decides, with the badge `Rules (provider_timeout)` or `Rules (provider_error)`.
+- Only Gemini was tested. OpenAI, Anthropic and Bedrock go through the same `%AI.Provider` code path but have not been run.
+- Only the IRIS for Health edition of build 154 was tested; the IRIS edition image was not available here.
+- Some replay fixtures come from equivalent rather than identical contexts (see [Demo mode](#demo-mode)).
+- Agent audit records become visible in the audit log about a minute after the event (IRIS writes its audit buffer periodically).
+- The portal has no audit viewer yet, so there is no "agent events only" filter.
+- The online demo and its low-privilege account do not exist yet.
 
-**Local IRIS, by hand:**
+## AI Hub experience
 
-1. If the namespace you want to use does not exist yet, create it once (Management Portal → System Administration → Configuration → System Configuration → Namespaces → New Namespace). The installer's default is `MYOWN`, but any existing namespace works — it is only a name.
-2. Build the frontend:
-   ```powershell
-   cd frontend
-   npm install
-   npm run build
-   cd ..
-   ```
-   No Node.js on your `PATH`? Run `install-node-local.bat` once first (downloads a local copy of Node.js, no admin rights needed), then repeat the commands above.
-3. From the project root, run the installer script directly (this is the same script `Instalar.bat` runs for the local-IRIS path — running it yourself is only useful if you want to pass explicit parameters, e.g. `-IrisInstallDir`, `-Instance`, or `-Namespace`):
-   ```powershell
-   .\scripts\Install-All.ps1
-   ```
-   It deploys the frontend you just built, restarts the private web server, then asks which namespace to use and for your IRIS username/password once — used only for that step, never stored — and installs the backend automatically over IRIS's built-in Atelier REST API (the same mechanism the VS Code ObjectScript extension uses). The exact HTTP calls it makes are all in [scripts/Install-All.ps1](https://github.com/muriloprzy-code/Portal-Iris/blob/master/scripts/Install-All.ps1), if you want to see or adapt them.
-4. Open `http://localhost:52773/myown/index.html` and sign in with `_SYSTEM` — or grant your own account the `MyOwnAdministrator` role first, a one-time step explained in [docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md#signing-in--which-account-to-use).
+What worked well:
 
-</details>
+- `%AI.Agent`, sessions and `GetStats()` gave a working agent loop quickly; per-session token statistics feed the ledger.
+- ToolSets declared in XML, and authorization and audit policies attached to the tool manager, made "read-only tools" enforceable: a denied tool is logged through `%LogDenial` and never runs.
+- `ToolMgr.ExecuteTool` runs a tool through the same policies without a model, which made an offline replay mode and policy tests possible.
 
-Everything else — architecture, every install detail, the API reference, and troubleshooting — is in **[docs/REFERENCE.md](https://github.com/muriloprzy-code/Portal-Iris/blob/master/docs/REFERENCE.md)** in this repository.
+What was hard:
 
-## Features
+- There is no structured-output API in ObjectScript, so the JSON schema is requested in the prompt and enforced by our own Validator.
+- The session `timeout_ms` does not interrupt a provider call in progress; the portal runs each decision in a separate job and stops it at its own deadline.
+- Provider options pass through `extra_params` at the top level of the request; Gemini rejected a native `generationConfig` and accepted `reasoning_effort`.
+- The provider retries 429 and 503 internally before reporting them, which hides the cause unless the `%AI` trace log is enabled.
+- `ListModels()` reports zero pricing, so cost needs a local price table.
 
-- System overview, operating-system metrics, and active IRIS processes.
-- Embedded Python health scoring with a concise instance-health summary.
-- AI-Powered Instance Monitor: flags any CPU, memory, disk, lock, or process metric that is statistically unusual compared to its own recent history.
-- Native IRIS Vector Search against stored health patterns and recommendations.
-- Users, roles, resources, effective permissions, and controlled role assignment.
-- Web application and REST API inventory with protected enable/disable actions.
-- A bounded local REST API Explorer with an OpenAPI view.
-- Sanitized certificate, OAuth, Secure Wallet, and credential-reference metadata.
-- IRIS Task Manager inventory with protected Run, Suspend, and Resume actions.
-- Sanitized `messages.log` browsing with search, filters, pagination, and details.
-- Native IRIS role-based access control and audit events for state changes.
-- Interoperability agent workflows for incident triage and access requests, with deterministic fallback, human approvals, budgets, traces, guardrails, and a kill switch.
-- Official SysAdmin API v2 integration for processes, permissions, tasks, web applications, X.509, OAuth, and Secure Wallet metadata, with automatic capability detection. Host metrics and system logs stay native, since the API has no endpoint for either.
-- A demonstration Task Manager task (`MyOwn Portal health snapshot`) so that Run, Suspend, and Resume can be tried on a fresh instance.
-- Responsive English user interface.
+IRIS Agentic Dev (MCP server `iris-agentic-dev`) was used to compile classes, run SQL and read the `%AI` signatures on the build 154 container. Details in [docs/AI-HUB-NOTES.md](docs/AI-HUB-NOTES.md).
 
-## Contest technology bonuses
+## The portal underneath
 
-- **Embedded Python:** the instance health score and the host memory and disk metrics are computed in `Language = python` methods.
-- **Vector Search:** health patterns are stored in a `%Vector` property and matched with `VECTOR_COSINE`.
-- **Docker:** `Dockerfile` and `compose.yaml` build and run the portal on IRIS Community Edition.
-- **IPM package:** `module.xml` defines the `myown-portal` module.
-- **Implement Community Opportunity idea:** implemented [DPI-I-512, "add AI to Instance Monitor to prevent major incident"](https://ideas.intersystems.com/ideas/DPI-I-512) as the AI Instance Monitor on the Overview page. `MyOwn.Task.HealthSnapshot` now records CPU, memory, disk, lock, and process metrics on every run; `MyOwn.Service.HealthAnalysis.DetectAnomalies` (Embedded Python) flags a metric once it sits more than two standard deviations from its own recent average, and needs at least 5 recorded snapshots before it evaluates anything. On a fresh instance, open the Tasks page and click Run on the demonstration task (`MyOwn Portal health snapshot`) a handful of times to build that history. With no anomaly, the Overview page shows "✓ AI Instance Monitor: no unusual patterns in recent history" — that quiet state is the expected, correct result on a healthy instance, not a missing feature.
-- **Online demo (temporary, for contest evaluation):** [https://163-176-71-47.sslip.io/myown/index.html](https://163-176-71-47.sslip.io/myown/index.html) — sign in with `_SYSTEM` / `ChangeMe2026!`.
-- **Embedded Python bug report:** found and reported an upstream Embedded Python bug — a `[Language = python]` ClassMethod declared to return `%BigInt` silently returns `-1` for any Python `int` of `2**63` or greater (the same value returned as `%String` round-trips correctly), instead of the correct value or an error. See [python-bugreports issue #19](https://github.com/intersystems-community/python-bugreports/issues/19) for the full report and a minimal reproduction.
+The agent workflow sits on MyOwn Portal, built for the earlier *Build Your Own Management Portal* contest: system overview and metrics, an AI Instance Monitor (Ideas Portal [DPI-I-512](https://ideas.intersystems.com/ideas/DPI-I-512)), users, roles and permissions, web applications, tasks, logs and certificates, all through the official SysAdmin API v2 where an endpoint exists. See [docs/REFERENCE.md](docs/REFERENCE.md).
 
-## License
+## Built with AI assistance
 
-[MIT](https://github.com/muriloprzy-code/Portal-Iris/blob/master/LICENSE)
+> **[TODO Murilo: escrever com suas palavras]**
+>
+> 1. Which decisions did I make (design, safety model, scope)?
+> 2. What did the AI assistants implement?
+> 3. What did I change or reject from what they produced?
 
 ## Team
 
-- [Murilo Przybyloviecz](https://community.intersystems.com/user/murilo-przyby) — Developer Community profile
-- [Andre Larsen Barbosa](https://community.intersystems.com/user/andre-larsenbarbosa) — Developer Community profile
+- Murilo Przybyloviecz — **[TODO: Developer Community profile link and role]**
+- Andre Larsen Barbosa — **[TODO: Developer Community profile link and role]**
+
+## License
+
+[MIT](LICENSE)
