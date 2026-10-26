@@ -249,6 +249,16 @@ Verified on build 154 without a provider (no network) unless stated otherwise. S
 
 Three recordings of replay fixtures (S5, S6, S7, exact scenario contexts, worker with the 20 s deadline, `max_tokens` 400, `reasoning_effort` low, tool catalog sent): 11.6, 13.3 and 16.4 s; prompt 418 tokens each, output 71 to 85, total 571 to 702. All three passed the Validator; no tool was called. The gap between the total and input plus output (82 to 199 tokens, against 384 to 2,522 in T03) suggests `reasoning_effort` is honored by the `gemini` provider; not confirmed in the provider source.
 
+### Why S2 and S3 never recorded (2026-10-26)
+
+A second recording run (deadline raised to 55 s for the recording window only, engine preference set to `rules` so the production made no calls of its own) stopped after 2 of the 6 allowed calls:
+
+- S2 through the worker: no answer within 55 s, no tool executed.
+- The tool path was then checked without real calls. `GetTaskRuns` on the real demonstration task takes 10 to 105 ms in the foreground and in a `JOB`. The full agent loop (tools, policies, `MyOwn.AIHub.Agent` in a `JOB`) against a local OpenAI-shaped mock that first asks for `GetTaskRuns` finishes in 67 ms with the tool call audited. The worker and the tool loop are not the cause.
+- S2 in the foreground with the `%AI` trace at `info` (`%AI.System.SetLogFile`/`SetLogLevel`; the key was checked absent from the log before reading it): one chat completion request, then after 15.4 s "Rate limit exceeded: Overloaded (HTTP 503) ... This model is currently experiencing high demand". The provider retries such errors internally, which is why earlier attempts showed only a timeout. The trace module name (`openai: [gemini] Creating chat completion`) also suggests the `gemini` provider uses the OpenAI-style chat completion path, consistent with the rejected native `generationConfig`.
+
+The run stopped there. S2, S3, S4, S8 and S9 keep their T03 recordings (equivalent contexts, stated in each header).
+
 ## Web gateway HTTP 504 on the first run (2026-10-24)
 
 Symptom: `Test-AgentSmoke.ps1` and `Test-Agents-AIHub.ps1` sometimes ended with HTTP 504, usually on the first regression run after a container start, and passed when repeated.
