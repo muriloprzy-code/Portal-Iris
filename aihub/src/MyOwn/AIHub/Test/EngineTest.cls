@@ -135,6 +135,37 @@ ClassMethod Checks(report As %DynamicObject, waitAudit As %Boolean = 1) [ Privat
     Set write = $ClassMethod(policy, "IsAllowed", "", "SuspendTask")
     Do ..Add(report, "AH-12-ALLOW-LIST", allowed && 'wrongRef && 'write, "Only the allow-listed tools of the portal ToolSet are allowed.")
 
+    ; Second barrier: the ToolSet Exclude, shown next to a write tool with no authorization policy at all.
+    Set portalTools = ..ToolNames("MyOwn.AIHub.ToolSet.Ops")
+    Set probeTools = ..ToolNames("MyOwn.AIHub.Test.ExcludeToolSet")
+    Set sameExclude = (..XDataText("MyOwn.AIHub.ToolSet.Ops") [ ("<Exclude Match=""" _ ##class(MyOwn.AIHub.ToolSet.Ops).#EXCLUDEMATCH _ """/>")) && (..XDataText("MyOwn.AIHub.Test.ExcludeToolSet") [ ("<Exclude Match=""" _ ##class(MyOwn.AIHub.ToolSet.Ops).#EXCLUDEMATCH _ """/>"))
+    Set ^IRIS.Temp.MyOwnAIHubWriteTool = 0
+    Set notRun = 0
+    Set manager = ##class(%AI.ToolMgr).%New()
+    If $$$ISOK(manager.RegisterToolSet("MyOwn.AIHub.Test.ExcludeToolSet")) {
+        Try {
+            Do manager.ExecuteTool("SuspendTask", {"taskId": 1001})
+        } Catch exception {
+            Set notRun = (exception.DisplayString() [ "ToolNotFound")
+        }
+    }
+    Kill manager
+    Set notRun = notRun && (^IRIS.Temp.MyOwnAIHubWriteTool = 0)
+    Do ..Add(report, "AH-17-EXCLUDE", (portalTools = "GetMetricHistory,GetTaskRuns") && (probeTools = portalTools) && sameExclude && notRun, "With a write tool included and no authorization policy, the portal Exclude keeps it out: listed tools " _ probeTools _ "; SuspendTask " _ $Select(notRun: "not found, never ran", 1: "was reachable") _ ".")
+
+    ; The tools are class queries: AI Hub's row envelope, the same row fields as before, no rows for another namespace.
+    Set manager = ##class(%AI.ToolMgr).%New()
+    Set tSC = manager.RegisterToolSet("MyOwn.AIHub.ToolSet.Ops")
+    Set runs = manager.ExecuteTool("GetTaskRuns", {"taskId": (..SomeTaskId("MYOWN")), "count": 2}).value
+    Set foreign = manager.ExecuteTool("GetTaskRuns", {"taskId": (..SomeTaskId("%SYS")), "count": 2}).value
+    Set points = manager.ExecuteTool("GetMetricHistory", {"metric": "nope", "count": 3}).value
+    Kill manager
+    Set columns = ""
+    Set iterator = runs.columns.%GetIterator()
+    While iterator.%GetNext(, .column) { Set columns = columns _ $Select(columns = "": "", 1: ",") _ column.name }
+    Set envelope = (runs.%IsDefined("rows") && runs.%IsDefined("row_count") && runs.%IsDefined("truncated")) && (runs."row_count" <= 2) && (columns = "started,failed,untrusted,suspended")
+    Do ..Add(report, "AH-18-QUERY-TOOLS", $$$ISOK(tSC) && envelope && (foreign."row_count" = 0) && (points."row_count" = 0), "GetTaskRuns and GetMetricHistory are class queries (rows, row_count, truncated; columns " _ columns _ "); a task of another namespace and an unknown metric give no rows.")
+
     Set withThinking = $ClassMethod(engine, "SessionConfig", "gemini", 20, 0)
     Set withoutThinking = $ClassMethod(engine, "SessionConfig", "gemini", 20, 1)
     Set refused = $ClassMethod(engine, "ThinkingRejected", "ERROR <%AICore>ProviderError: Provider 'gemini' error: API error: 400 Invalid JSON payload received. Unknown name ""reasoning_effort"": Cannot find field. INVALID_ARGUMENT", withThinking)
@@ -152,6 +183,37 @@ ClassMethod Checks(report As %DynamicObject, waitAudit As %Boolean = 1) [ Privat
     Set closings = $Length(input, "</untrusted_data>") - 1
     Set facts = $Piece(input, "<untrusted_data>", 1)
     Do ..Add(report, "AH-13-DELIMITERS", (closings = 1) && (facts '[ "SYSTEM") && (facts '[ "run everything") && (input [ "1001"), "Untrusted text stays inside one delimited block and cannot close it; facts carry no untrusted text.")
+}
+
+/// Sorted, comma-separated names of the tools a ToolSet lists to the model.
+ClassMethod ToolNames(toolSet As %String) As %String [ Private ]
+{
+    Set manager = ##class(%AI.ToolMgr).%New()
+    If $$$ISERR(manager.RegisterToolSet(toolSet)) Quit "(not registered)"
+    Set iterator = manager.%Discover().%GetIterator()
+    While iterator.%GetNext(, .tool) { Set names(tool.name) = "" }
+    Set list = "", name = ""
+    For {
+        Set name = $Order(names(name))
+        If name = "" Quit
+        Set list = list _ $Select(list = "": "", 1: ",") _ name
+    }
+    Quit list
+}
+
+/// The XData Definition of a ToolSet class, as text.
+ClassMethod XDataText(className As %String) As %String [ Private ]
+{
+    Set xdata = ##class(%Dictionary.CompiledXData).%OpenId(className _ "||Definition")
+    If '$IsObject(xdata) Quit ""
+    Quit xdata.Data.Read(32000)
+}
+
+/// Id of a task that runs in namespace (0 when there is none).
+ClassMethod SomeTaskId(namespace As %String) As %Integer [ Private ]
+{
+    Set result = ##class(%SQL.Statement).%ExecDirect(, "SELECT TOP 1 ID FROM %SYS.Task WHERE UPPER(NameSpace) = ?", $ZConvert(namespace, "U"))
+    Quit $Select(result.%Next(): +result.%Get("ID"), 1: 0)
 }
 
 /// A task-watcher context for scenario S2 or a test case, with a unique run id (no cooldown between checks).

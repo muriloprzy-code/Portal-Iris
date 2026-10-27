@@ -1,5 +1,6 @@
 /// Test only: a tool with a write intent. It is not in the ToolSet; the replay case "write-tool"
-/// registers it next to the ToolSet to prove that MyOwn.AIHub.Policy.ReadOnlyAuth denies it.
+/// registers it next to the ToolSet to prove that MyOwn.AIHub.Policy.ReadOnlyAuth denies it, and
+/// MyOwn.AIHub.Test.ExcludeToolSet includes it to prove the ToolSet Exclude hides it (AH-17).
 /// It changes nothing: if it ever ran, it would only leave a mark the test looks for.
 Class MyOwn.AIHub.Test.WriteTool Extends %AI.Tool
 {

@@ -166,7 +166,7 @@ At every start `docker/demo-start.sh` creates or updates the `demo` account from
 | Agent REST scenarios | `scripts/Test-Agents.ps1` | 24 pass, 1 optional skip | 24 pass, 1 optional skip |
 | Adversarial corpus (92 hostile model outputs) | `scripts/Test-AgentAdversarial.ps1` | 92 / 92 | 92 / 92 |
 | Core and interoperability smoke | `scripts/Test-AgentSmoke.ps1` | 14 / 14, 19 / 19 | 14 / 14, 19 / 19 |
-| AI Hub engine (replay: timeouts, invalid JSON, provider error, budget, kill switch, blocked write tool, fixtures) | `scripts/Test-Agents-AIHub.ps1` | skipped (no `%AI`) | 18 / 18 |
+| AI Hub engine (replay: timeouts, invalid JSON, provider error, budget, kill switch, blocked write tool, ToolSet Exclude, query tools, fixtures) | `scripts/Test-Agents-AIHub.ps1` | skipped (no `%AI`) | 20 / 20 |
 | Agents UI (isolated browser) | `scripts/Test-AgentsUI.ps1` | 15 / 15 | 15 / 15 |
 | Viewer role without `%All` (screens allowed, administration refused) | `scripts/Test-PortalViewer.ps1` | 5 / 5 | 5 / 5 |
 | Public demo (synthetic targets, refusals, reset, rate limit; REST checks with the real demo account) | `scripts/Test-AgentDemo.ps1` | 8 / 8 in-IRIS (REST part needs demo mode) | 16 / 16 with `MYOWN_DEMO_MODE=1` |

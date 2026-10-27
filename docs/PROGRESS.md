@@ -13,7 +13,7 @@ This file records verified progress against `SPEC-AI-AGENTS.md` and its first ad
 - Agents UI (isolated browser): **14 passed, 0 failed** (`scripts/Test-AgentsUI.ps1`), report in `test-results/agents-ui.json`, screenshots in `test-results/ui/`.
 - Adversarial corpus: **92 passed, 0 failed** (`scripts/Test-AgentAdversarial.ps1`), report in `test-results/agents-adversarial.json`.
 - Secret scan: **SEC-11 passed** across the 113 tracked or staged files and the last 20 commits (`scripts/Test-AgentSecretScan.ps1`; `.env` and untracked files are out of scope).
-- AI Hub engine suite (replay, no key, no network): **18 passed, 0 failed** on build 154 (16 engine checks, configuration and the fixture inventory) (`scripts/Test-Agents-AIHub.ps1`, `SELECT MyOwn_AIHub_Test.AIHubEngineSmoke()`); skipped on 2026.2, where the module is not installed.
+- AI Hub engine suite (replay, no key, no network): **20 passed, 0 failed** on build 154 (18 engine checks, configuration and the fixture inventory) (`scripts/Test-Agents-AIHub.ps1`, `SELECT MyOwn_AIHub_Test.AIHubEngineSmoke()`); skipped on 2026.2, where the module is not installed.
 - Frontend TypeScript type-check passed; Vite production bundle generated and served successfully by local IRIS at `/myown/`.
 - Current 2026.2 instance does not contain `%AI.*`, so the AI Hub module (`aihub/`, `myown-portal-aihub`) is not installed there and Rules decide (`not_installed`).
 - AI Hub build 154 (IRIS for Health, `irishealth-community:2026.3.0AI.154.0`) runs on port 52774 from a fresh volume: installation completes unattended and the same regression passes as on 2026.2 (see "AI Hub build 154 regression"). The IRIS Community edition of build 154 is not loaded on this machine yet.
@@ -272,6 +272,21 @@ Tests: `MyOwn.Test.Demo` (DM-01..08, in-IRIS, demo mode forced per process) and 
 
 Full regression on that fresh container, first and only run: Test-MyOwn, SysAdminMutations, REST 24/0/1, corpus 92/0, smokes 14/0 and 19/0, AI Hub 18/0, demo 8/0 (REST part needs demo mode), viewer 5/0, UI 15/0. Local 2026.2: same (AI Hub skipped; the viewer suite first failed there on the missing resource, then passed after the fix).
 
+## AI Hub API review and tool hardening (T13, 2026-10-27)
+
+Checked more of the `%AI` API on build 154 and recorded it in `docs/AI-HUB-NOTES.md` ("More of the `%AI` API"), each item marked verified on build 154 or signature only (read from the build 154 class dictionary, not run). Facts that differ from what one might assume: placeholders are `@{env:NAME}` (a dot fails with `SettingUnknownPrefix`), `[ WebMethod ]` is not needed for a tool, `StreamChat` has three arguments, and `%AI.SubAgent`, `%AI.Skill` and `%AI.System.StreamRenderer` do not exist (`%AI.Agent.SubAgent`, `%AI.Agent.Skill`, `%AI.Shell.StreamRenderer`). The repository had no `@{env.` and no `AddTool` without `iris:`.
+
+Changes:
+- `GetTaskRuns` and `GetMetricHistory` are class queries (`%Query`, `[ SqlProc ]`, `QUERYMAXROWS = 20`): AI Hub returns `columns`, `rows`, `row_count`, `truncated`, `elapsed_ms`. Row fields, arguments and limits are unchanged; unknown or foreign tasks and unknown metrics give no rows. The Gate, the Validator and the UI are unchanged (none reads tool results). AH-18.
+- `MyOwn.AIHub.ToolSet.Ops` has `<Exclude Match="^(?!Get[A-Z])"/>` behind the allow-list. AH-17 includes the test write tool next to the read-only tools, with the same Exclude and no authorization policy: it is not listed and `ExecuteTool` gives `ToolNotFound` without running it. Without the Exclude the same ToolSet lists it (checked once by hand).
+- Not adopted: MCP service, RAG, LangChain, sub-agents, skills.
+
+Regression on build 154, first and only run: Test-MyOwn, SysAdminMutations, REST 24/0/1, corpus 92/92, smokes 14/14 and 19/19, AI Hub 20/0, demo 8/1 skip (demo mode off), viewer 5/5, UI 15/15. Secret scan: pass.
+
 ## Next verified milestone
 
-Load `iris-community:2026.3.0AI.154.0` and `irishealth-community:2026.3.0AI.154.0`, point `iris-agentic-dev` to that container, introspect `%AI.*`, and implement T02 plus T12–T14 against the signatures actually present in build 154.
+T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:
+
+1. Re-record the replay fixtures S2 to S4, S8 and S9 with real calls when Gemini is available again (`scripts/Record-ReplayFixtures.ps1`, at most 6 calls, 15 s apart; they still come from T03).
+2. Publish the online demo in replay mode (`MYOWN_AI_MODE=replay`, `MYOWN_DEMO_MODE=1`).
+3. Review the contest bonus items against what is done.

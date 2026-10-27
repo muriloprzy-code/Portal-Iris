@@ -98,7 +98,7 @@ The full member lists (public signatures of all 60 classes) were extracted to a 
 </ToolSet>
 ```
 
-  Other elements [Source]: `<Exclude Class>`, `<Filter Tool Match As>`, `<Tool Name Class Method Policy Timeout Ref>` (single method or `Ref="rust:..."` built-in), `<Query Name Description Arguments MaxRows>SQL</Query>` (inline SQL tool), `<Requirement Name Value>` (metadata visible to policies), MCP servers. Child elements of a policy element set properties on the policy instance [Verified: `Allowed`].
+  Other elements [Source]: `<Exclude Class Tool Match>` (top level, see T13), `<Filter Tool Match As>`, `<Tool Name Class Method Policy Timeout Ref>` (single method or `Ref="rust:..."` built-in), `<Query Name Description Arguments MaxRows>SQL</Query>` (inline SQL tool), `<Requirement Name Value>` (metadata visible to policies), MCP servers. Child elements of a policy element set properties on the policy instance [Verified: `Allowed`].
 - Registration: `Method %AI.ToolMgr.AddTool(tool) As %Status` with `"iris:Class.Name"` [Verified]; `Method %AI.Agent.UseToolSet(className As %String) As %Status`, or `Parameter TOOLSETS` / `Property ToolSets` on the agent [Verified via `%Init`].
 - `%AI.Tools.SQL` restricts `RunQuery` to SELECT by statement type, but its source states it cannot detect a SELECT that calls a side-effecting function, and it exposes every table of the namespace. Not suitable for the portal.
 
@@ -287,6 +287,63 @@ IT-14 and AH-07 poll `%SYS.Audit` until the agent audit records (`Decision`/`Pro
 
 Regression on the fresh container, first and only run: Test-MyOwn 4 s, SysAdminMutations 2 s, REST 24/0/1 in 5 s, adversarial 92/92 in 1 s, smokes 14/14 and 19/19, AI Hub 18/18, UI 15/15 in 19 s; no warning in `CSP.log`.
 
+## More of the `%AI` API, checked on build 154 (T13, 2026-10-27)
+
+Each item says how it was checked: **verified on build 154** (run or compiled there, no network and no LLM call) or **signature only / not verified** (the class and method exist with this signature; nothing was run).
+
+### Correct class names
+
+| Purpose | Class on build 154 | Names that do **not** exist |
+|---|---|---|
+| Sub-agent | `%AI.Agent.SubAgent` (abstract, extends `%AI.Tool`) | `%AI.SubAgent` |
+| Skill | `%AI.Agent.Skill` (extends `%AI.ToolSet`); built-in example `%AI.Skills.Planning` | `%AI.Skill` |
+| Stream renderer | `%AI.Shell.StreamRenderer` | `%AI.System.StreamRenderer` |
+| MCP service | `%AI.MCP.Service` (extends `%CSP.REST` and `%CSP.WebSocket`) | |
+| RAG | `%AI.RAG.KnowledgeBase`, `%AI.RAG.VectorStore.IRIS`, `%AI.RAG.Embedding.FastEmbed`, `%AI.RAG.Embedding.OpenAI` | |
+| Settings and secrets | `%AI.Utils.SettingStore`, `%AI.Utils.ConfigStore`, `%AI.Utils.WalletStore`; `%ConfigStore.Configuration`, `%Wallet.Collection`, `%Wallet.KeyValue` | |
+| Console audit | `%AI.Policy.ConsoleAudit` | |
+
+Present classes: verified on build 154 (the class exists). Missing names: verified on build 154 (no such class).
+
+### Placeholders: `@{prefix:key}`
+
+- The syntax is `@{env:NAME}`, with a **colon**. `@{env.HOME}` (with a dot) fails with `SettingUnknownPrefix: No SettingStore registered for prefix 'env.HOME'`; `@{env:HOME}` expands. Verified on build 154.
+- `env` is built in. `wallet` (`%AI.Utils.WalletStore`) and `config` (`%AI.Utils.ConfigStore`, which reads `%ConfigStore.Configuration`) are registered by `%AI.Utils.SettingStore.RegisterDefaults()`; any other prefix (for example `vault`) exists only after `Register(prefix, className)` with a class that implements `Lookup(key)`. Signature only / not verified.
+- No `secret://...` form was found in the setting store classes. Signature only / not verified.
+- The repository has no `@{env.`, and every `AddTool` call uses the `iris:` prefix (searched 2026-10-27). `AddTool("Class.Name")` without the prefix fails with "URI must contain scheme"; `AddTool("iris:Class.Name")` works. Verified on build 154.
+
+### Tools
+
+- Every public method that is not `Internal` becomes a tool, class methods and instance methods alike; `[ WebMethod ]` is not needed (three test methods, all three ran through `ExecuteTool`). Verified on build 154.
+- `Parameter DESCRIPTION` exists on `%AI.Agent.Skill`, not on `%AI.Tool`; a tool's description is its `///` comment. Verified on build 154 (class parameters).
+- A class query becomes a tool only with `[ SqlProc ]` (without it: "Stored Procedure ... not found"). AI Hub runs it and returns `{"columns": [{name, type}], "rows": [...], "row_count", "truncated", "elapsed_ms"}`, cut at the class `Parameter QUERYMAXROWS` (default 100). A custom `%Query` (Execute/Fetch/Close) works the same way; its Execute/Fetch/Close methods must be `Internal`, or they are listed as tools too. `%Boolean` columns come out as JSON `true`/`false`. Verified on build 154.
+- `ExecuteTool` returns `{"timing", "value"}`; `value` is the method result or the query envelope. Verified on build 154.
+
+### ToolSet XML
+
+- `<Exclude>` is a top-level element of the ToolSet with `Class` (exact origin class), `Tool` (exact name, or `Class:Method`), `Match` (regular expression searched in the tool name with `$LOCATE`, so a look-ahead such as `^(?!Get[A-Z])` works) and child `<Filter>` elements (OR-list). `Tool` and `Match` on the same element are rejected at compile time; `As="..."` renames a tool and needs an exact `Tool`. `Exclude Match`: verified on build 154 (a write tool included next to the read-only tools is listed without it and absent with it; test AH-17). The other attributes: signature only / not verified.
+- `<Query>` has `Name`, `Description`, `Arguments`, `MaxRows`, `Type` and the SQL as content; `<Requirement Name Value>` can sit on `<Include>` and `<Tool>`; `<Tool>` also has `Ref`, `Policy`, `Timeout` and `Configs`. Signature only / not verified (properties of the specification classes).
+
+### Agents, sub-agents, skills
+
+- `%AI.Agent.StreamChat(session, input, callbackObj = "")` takes **three** arguments. Signature only / not verified.
+- `%AI.Agent.CreateSubAgent(systemPrompt = "")` and `%AI.Agent.SubAgent.Create(parentAgent, systemPrompt = "", config = "")`; `%AI.Agent.UseSkill(skillOrClassName)`; `%AI.Agent.Skill` has `Parameter TOOLS`, `DESCRIPTION` and `QUERYMAXROWS`, `Method ExportSkill(target)` and `ClassMethod GetSkillFromURI(uri, subpath = "", cacheDir = "", authProvider = "")`. Signature only / not verified.
+- `%AI.ToolMgr` also has `SetDiscoveryPolicy`, `EnableSmartDiscovery`, `FindTools(package, includeToolSets, .sc)` and `%Discover()` (the tools the model would see). `%Discover()`: verified on build 154 (used by AH-17). The others: signature only / not verified.
+- How a ToolSet policy combines with a global one (which runs first, whether both must allow) was not tested; the portal attaches its policies globally only.
+
+### Config store, MCP service, RAG
+
+- `%ConfigStore.Configuration`: `Create(area, type, subtype, name, details, displayName, description, readResource, editResource, enabled, validateDetails)`, `Get(fqn, .config)`, `Delete(fqn)`; the read and edit resources default to the admin config store resource. Signature only / not verified.
+- `%AI.MCP.Service`: `Parameter SPECIFICATION` (empty by default). It needs a web application and a bridge to MCP clients; not run here, and the portal does not use it. Signature only / not verified.
+- RAG: `KnowledgeBase.Build(embedding, vectorStore)`, `AddDocument(text, metadata)`, `AddDocuments(docs)`, `ReindexDocument(source, text, baseMetadata)`, `AddToAgent(agent)`; `VectorStore.IRIS.Build(promotedFields)`; `FastEmbed.Create()` (model `AllMiniLML6V2`, 384 dimensions); `Embedding.OpenAI.Create(provider, model, dimensions)` (default `text-embedding-3-small`, 1536). Parameter values verified on build 154; running not verified (it may download a model or call a provider).
+- The Python package `langchain_intersystems` is not installed in the build 154 container (`ModuleNotFoundError`). Verified on build 154.
+
+### What the portal took from this
+
+- `MyOwn.AIHub.Tools.Ops`: `GetTaskRuns` and `GetMetricHistory` are now class queries (`%Query`, `[ SqlProc ]`, `QUERYMAXROWS = 20`) instead of JSON built by hand. Same names, arguments, limits (1 to 10 runs, 1 to 20 points) and row fields (`started`, `failed`, `untrusted`, plus `suspended` on each run; `at`, `value`). An unknown task, a task of another namespace or an unknown metric now gives no rows instead of an `error` field. The Validator and the UI never read tool results (the UI shows the ledger summary of each call), so neither changed. Test AH-18.
+- `MyOwn.AIHub.ToolSet.Ops`: `<Exclude Match="^(?!Get[A-Z])"/>` as a second barrier behind the `ReadOnlyAuth` allow-list. Test AH-17 includes the test-only write tool next to the read-only tools, with the same Exclude and no authorization policy: only the two read tools are listed, and `SuspendTask` fails with `ToolNotFound` without running.
+- Not adopted: MCP service, RAG, LangChain, sub-agents and skills (more model calls or more surface, nothing the Gate needs).
+
 ## Commands for the build 154 environment
 
 ```text
@@ -306,7 +363,7 @@ The IRIS edition uses the corresponding `iris-community` archive and local tag. 
 - [x] `%AI.LLM.Response` content, tool calls and usage fields (from source).
 - [x] Session token/tool/duration statistics (`GetStats()` fields verified).
 - [x] `%AI.Tool` declaration syntax (verified).
-- [x] `%AI.ToolSet` definition, inclusion/exclusion and policy syntax (verified for Include and policies).
+- [x] `%AI.ToolSet` definition, inclusion/exclusion and policy syntax (verified for Include, policies and `Exclude Match`, T13).
 - [x] Authorization and audit policy method signatures (verified, including denial).
 - [x] Structured-output or repair mechanism: none exists; our Validator stays.
 - [ ] AI Hub tracing/telemetry support (only Rust log file and OTel traceparent found; not exercised).
