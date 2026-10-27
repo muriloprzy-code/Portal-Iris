@@ -41,6 +41,23 @@ REST /myown/api/agent/*  →  React UI: Decisions, Approvals, Access, Production
 
 The AI Hub module (`aihub/`, IPM `myown-portal-aihub`) installs only where the `%AI` package exists; elsewhere the portal runs on Rules.
 
+## Technologies used
+
+**Embedded Python** (`[ Language = python ]` methods, standard library only), called on every health report: the Overview screen, the `MyOwn Portal health snapshot` task and the `HealthMonitor` Business Service of the production all go through `MyOwn.Service.HealthAnalysis.GetReport`.
+
+| Method | File | What it does |
+|---|---|---|
+| `AnalyzeWithPython` | `src/objectscript/MyOwn/Service/HealthAnalysis.cls:49` | Weighted health score 0–100 from five normalized risks (disk, database, locks, alerts, processes), status Healthy / Attention / Critical, and the main risk factor |
+| `DetectAnomaliesWithPython` | `src/objectscript/MyOwn/Service/HealthAnalysis.cls:176` | z-score of each current metric against its own history (at least 5 snapshots); above 2 is a warning, above 3 critical. These anomalies are what the `HealthMonitor` sends to the agent |
+| `GetDiskUsage` | `src/objectscript/MyOwn/Service/System.cls:62` | Disk total, free and used percent of the data directory (`shutil.disk_usage`) |
+| `GetPhysicalMemoryKB` | `src/objectscript/MyOwn/Service/System.cls:75` | Physical memory, on Linux containers and on Windows |
+
+**Vector Search.** `MyOwn.HealthPattern` (`src/objectscript/MyOwn/HealthPattern.cls:14`) stores six known health patterns (healthy, disk pressure, database capacity, lock contention, active alerts, process pressure; written by the installer, `Installer.cls:187-197`), each as a `%Vector(DOUBLE, 6)` of the same normalized risks plus a healthy reserve, with a recommendation. `GetReport` turns the current metrics into the same six-dimension vector and picks the closest pattern with `VECTOR_COSINE(MetricVector, TO_VECTOR(?, DOUBLE))` (`HealthAnalysis.cls:87`). The match and its similarity appear on the Overview and are part of the health context the agent receives. It is a small, explainable nearest-pattern lookup, not a document or embedding index.
+
+**Docker.** `Dockerfile` builds on the build 154 image (`ARG IMAGE`), installs IPM, enables interoperability on namespace `MYOWN`, loads both modules (`docker/iris.script`) and refuses an image whose installation did not finish. `compose.yaml` publishes the web port 52774 and keeps data in a named volume; `compose.aihub.yaml` adds the AI Hub settings.
+
+**IPM modules.** `myown-portal` (`module.xml`) installs the `MyOwn` package, copies the built React UI from `web/` to the `/myown` web application and runs `MyOwn.Installer.Setup`. Setup enables interoperability on the namespace, seeds the health patterns and agent defaults, creates the `MyOwn.*` resources, roles and the `/myown/api` REST application, registers the agent audit events, schedules the health snapshot and agent retention tasks, sets the agent production to start automatically, and grants SQL read access to the portal schemas. `myown-portal-aihub` (`aihub/module.xml`) depends on it and installs `MyOwn.AIHub` (the engine, read-only tools and ToolSet, policies, replay fixtures); the Docker build loads it only when `%AI` is present. The registry currently has `myown-portal` 1.0.3; 1.1.0 is not published yet.
+
 ## Demonstration scenarios
 
 Run them from the **Agents** page or with `POST /myown/api/agent/simulate` (administrator role and demo mode required).
