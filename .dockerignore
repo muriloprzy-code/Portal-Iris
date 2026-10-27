@@ -15,3 +15,4 @@ backups/
 extras/
 tests/ui/node_modules
 test-results/
+docker/.install-complete

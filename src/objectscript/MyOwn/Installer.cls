@@ -8,8 +8,12 @@ Parameter SystemAdminRole = "MyOwnSystemAdmin";
 
 Parameter DemoTaskName = "MyOwn Portal health snapshot";
 
-/// Application role of the public demo account (see EnsureAccessControl).
-Parameter DemoDataRole = "MyOwnDemoData";
+/// Application role for portal accounts without %All (viewer and demo): namespace databases
+/// and SQL read access, granted only while /myown/api handles a request (see EnsureAccessControl).
+Parameter PortalDataRole = "MyOwnPortalData";
+
+/// Earlier name of PortalDataRole, removed on upgrade.
+Parameter FormerDemoDataRole = "MyOwnDemoData";
 
 Parameter AgentRetentionTaskName = "MyOwn Agent retention";
 
@@ -72,9 +76,9 @@ ClassMethod Setup() As %Status
         Set tSC = ..EnsureAuditEvent()
         $$$ThrowOnError(tSC)
 
-        // Grant %SYS database roles only while /myown/api handles a request. The public demo
-        // account also gets the namespace databases there, and nowhere else.
-        Set matchRoles = "MyOwnViewer:" _ ..#SystemReadRole _ ",MyOwnAdministrator:" _ ..#SystemAdminRole _ ",MyOwnDemo:" _ ..#SystemReadRole _ ":" _ ..#DemoDataRole
+        // Grant %SYS database roles only while /myown/api handles a request. Viewer and demo
+        // accounts also get the namespace databases and SQL read access there, and nowhere else.
+        Set matchRoles = "MyOwnViewer:" _ ..#SystemReadRole _ ":" _ ..#PortalDataRole _ ",MyOwnAdministrator:" _ ..#SystemAdminRole _ ",MyOwnDemo:" _ ..#SystemReadRole _ ":" _ ..#PortalDataRole
 
         Set exists = ##class(Security.Applications).Exists(application, .applicationObject, .tSC)
         If exists {
@@ -111,7 +115,7 @@ ClassMethod Setup() As %Status
         Set productionStatus = ..EnsureAgentProduction()
         If $$$ISERR(productionStatus) Write !, "MyOwn Portal: the agent production was not started: ", $System.Status.GetErrorText(productionStatus), !
         // Synthetic demo targets always exist; the demo account and reset task follow MYOWN_DEMO_MODE.
-        Set demoStatus = ..EnsureDemoSqlPrivileges()
+        Set demoStatus = ..EnsurePortalSqlPrivileges()
         If $$$ISOK(demoStatus) Set demoStatus = ##class(MyOwn.Demo.Seed).EnsureSeeded()
         If $$$ISOK(demoStatus) Set demoStatus = ##class(MyOwn.Demo.Setup).Apply(targetNamespace)
         If $$$ISERR(demoStatus) Write !, "MyOwn Portal: the demo settings were not applied: ", $System.Status.GetErrorText(demoStatus), !
@@ -242,8 +246,8 @@ ClassMethod EnsureAccessControl(targetNamespace As %String) As %Status [ Private
         Set tSC = ..EnsureRole("MyOwnAgentRunner", "Runtime identity for MyOwn agent interoperability workflows.", "MyOwn.Agent:U,MyOwn.View:U")
         $$$ThrowOnError(tSC)
 
-        // Public demo: the MyOwnDemo login role only opens the portal and the demo actions;
-        // database access comes from the application role MyOwnDemoData inside /myown/api.
+        // Login roles without %All (MyOwnViewer, MyOwnDemo) only open the portal; database access
+        // comes from the application role MyOwnPortalData inside /myown/api.
         Set exists = ##class(Security.Resources).Exists("MyOwn.Demo", .resource, .checkStatus)
         If 'exists {
             Set tSC = ##class(Security.Resources).Create("MyOwn.Demo", "Allows the public demo actions of MyOwn Portal (scenarios, confirmations on synthetic targets, reset).", "")
@@ -251,8 +255,16 @@ ClassMethod EnsureAccessControl(targetNamespace As %String) As %Status [ Private
         }
         Set tSC = ..EnsureRole("MyOwnDemo", "Public demo account of MyOwn Portal: view, run scenarios, confirm or reject proposals on synthetic targets.", "MyOwn.View:U,MyOwn.Demo:U")
         $$$ThrowOnError(tSC)
-        Set tSC = ..EnsureRole(..#DemoDataRole, "Namespace database access for the MyOwn Portal demo account, granted only inside /myown/api.", ..NamespaceDatabaseResources(targetNamespace))
+        // The health score and host metrics are Embedded Python methods; recent builds (such as
+        // 2026.3 AI Hub) require %Service_EmbeddedPython for them, older ones have no such resource.
+        Set portalResources = ..NamespaceDatabaseResources(targetNamespace)
+        If ##class(Security.Resources).Exists("%Service_EmbeddedPython") Set portalResources = portalResources _ ",%Service_EmbeddedPython:U"
+        Set tSC = ..EnsureRole(..#PortalDataRole, "Namespace database access for MyOwn Portal accounts without %All, granted only inside /myown/api.", portalResources)
         $$$ThrowOnError(tSC)
+        If ##class(Security.Roles).Exists(..#FormerDemoDataRole) {
+            Set tSC = ##class(Security.Roles).Delete(..#FormerDemoDataRole)
+            $$$ThrowOnError(tSC)
+        }
     } Catch exception {
         Set tSC = exception.AsStatus()
     }
@@ -260,13 +272,13 @@ ClassMethod EnsureAccessControl(targetNamespace As %String) As %Status [ Private
 }
 
 /// Creates the role, or updates its description and resources when it already exists.
-/// Dynamic SQL checks SQL privileges for accounts without %All: the demo application role may
+/// Dynamic SQL checks SQL privileges for accounts without %All: the portal application role may
 /// read the portal tables (writes go through objects). Runs in the portal namespace.
-ClassMethod EnsureDemoSqlPrivileges() As %Status [ Private ]
+ClassMethod EnsurePortalSqlPrivileges() As %Status [ Private ]
 {
     Set tSC = $$$OK
     For schema = "MyOwn", "MyOwn_Agent", "MyOwn_Demo", "MyOwn_Production_Msg", "MyOwn_Production_Process", "Ens_Config" {
-        Set result = ##class(%SQL.Statement).%ExecDirect(, "GRANT SELECT ON SCHEMA " _ schema _ " TO " _ ..#DemoDataRole)
+        Set result = ##class(%SQL.Statement).%ExecDirect(, "GRANT SELECT ON SCHEMA " _ schema _ " TO " _ ..#PortalDataRole)
         If result.%SQLCODE < 0 Set tSC = $$$ERROR($$$GeneralError, "GRANT on " _ schema _ ": " _ result.%Message)  Quit
     }
     Quit tSC

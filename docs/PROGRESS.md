@@ -240,7 +240,7 @@ Cause found, not retried away: IT-14 and AH-07 waited inside one SQL request for
 
 `MYOWN_DEMO_MODE=1` makes the portal safe to expose (design choice: simulated execution).
 
-- **Demo account.** Role `MyOwnDemo` (resources `MyOwn.View`, `MyOwn.Demo`) and user `demo`, created or updated at every container start by `docker/demo-start.sh` (`iris-main -a`) from `MYOWN_DEMO_USER_PASSWORD`; disabled when demo mode is off. `scripts/New-DemoPassword.ps1` generates the password into `.env` only. Database access (`%DB_MYOWN_DATA:RW`, `%DB_MYOWN_CODE:R`) and SQL `SELECT` on the portal schemas come from the application role `MyOwnDemoData`, granted only inside `/myown/api`. Testing with the real account found that dynamic SQL needs these grants for any account without `%All`; the `MyOwnViewer` role has never been tested that way.
+- **Demo account.** Role `MyOwnDemo` (resources `MyOwn.View`, `MyOwn.Demo`) and user `demo`, created or updated at every container start by `docker/demo-start.sh` (`iris-main -a`) from `MYOWN_DEMO_USER_PASSWORD`; disabled when demo mode is off. `scripts/New-DemoPassword.ps1` generates the password into `.env` only. Database access (`%DB_MYOWN_DATA:RW`, `%DB_MYOWN_CODE:R`) and SQL `SELECT` on the portal schemas come from an application role granted only inside `/myown/api` (since T12 `MyOwnPortalData`, shared with `MyOwnViewer`). Testing with the real account found that dynamic SQL needs these grants for any account without `%All`; the `MyOwnViewer` role has never been tested that way.
 - **Synthetic targets.** `MyOwn.Demo.Target` holds two tasks (9001, 9002), two users and two roles seeded by `MyOwn.Demo.Seed`; in demo mode S2/S3 use the synthetic tasks and access scenarios use the synthetic requester `demo.alice`. A confirmation revalidates as before and then applies the change to the synthetic record only (state `simulated`, read back from that record); IRIS is never changed. Any other target is refused (`DEMO_TARGET_REFUSED`) and audited (`DemoRefused`); `Prohibited` is unchanged.
 - **Routes.** The demo account may read, run scenarios, list, confirm and reject proposals, and reset the demo; settings, pricing, kill switch, production control, analysis, access requests and all administration routes answer 403. Routes that change the real system (users and roles, web applications, task actions, API explorer) are refused for everyone in demo mode.
 - **Reset.** Task `MyOwn Demo reset` every `MYOWN_DEMO_RESET_HOURS` (default 6; the Task Manager starts a new task tomorrow unless `StartDate` is today, and then skips past slots) and the "Reset demo" button shown only to the demo account; both audited (`DemoReset`).
@@ -248,6 +248,29 @@ Cause found, not retried away: IT-14 and AH-07 waited inside one SQL request for
 - `.env.example` and the Compose defaults now use the tested provider (Gemini, `gemini-3.8-flash`); OpenAI is documented as an untested alternative.
 
 Tests: `MyOwn.Test.Demo` (DM-01..08, in-IRIS, demo mode forced per process) and `scripts/Test-AgentDemo.ps1` (DM-10..17 over REST with the real demo account: view allowed, 11 administration and real-system routes refused, administrator refused on real tasks, S2 + confirmation ends `simulated` on task 9001, a real-target confirmation refused and audited, reset restores and is audited, rate limit). Fresh image and volume on build 154: full regression passed on its first run with demo mode off (REST 24/0/1, corpus 92, smokes 14 and 19, AI Hub 18, demo in-IRIS 8, UI 15); then, on the same volume with demo mode on, the demo account was created at start and `Test-AgentDemo.ps1` passed 16/16. Local 2026.2: same results (AI Hub skipped).
+
+## Evaluator robustness (T12, 2026-10-27)
+
+**Viewer role without `%All`.** A temporary `MyOwnViewer`-only account (`scripts/Test-PortalViewer.ps1`) could not even sign in: every route answered 403 because the role had no access to the namespace databases. Fix: the application role (renamed `MyOwnPortalData`, granted only inside `/myown/api`, shared with the demo account) now also applies to `MyOwnViewer`; it carries the namespace databases, SQL `SELECT` on the portal schemas and, where the resource exists, `%Service_EmbeddedPython` (the Overview health score is Embedded Python; build 154 requires that resource, 2026.2 has none, which first made `Setup` fail there with ERROR #892). Documented, not fixed: a viewer cannot file an access request, because SysAdmin API v2 refuses it even its own account; granting `%Admin_Secure` to a read-only role is the wrong trade. The route now answers 403 `ACCESS_REQUEST_NEEDS_SECURITY_READ` instead of 500 and the Access tab explains it. Result 5/5 on build 154 and on 2026.2.
+
+**Build memory.** Measured with a sampler reading the Docker VM `/proc/meminfo` every 2 s: about 0.96 GB in use before the build, 1.6 to 1.7 GB during the FHIR load of `EnableNamespace`, peak 2.29 GB while the portal compiles and installs, no swap; Windows free memory fell to about 430 MB (16 GB machine, WSL limited to 8 GB). A first measurement was distorted by the machine suspending the VM for hours. No safe reduction was found: the Foundation and FHIR load are part of enabling interoperability on IRIS for Health and cannot be skipped. Instead: the README states the tested memory setup and what to do when `docker compose up` is stopped, and an incomplete installation can no longer run silently (`docker/finish-build.script` writes `docker/.install-complete` only when the portal, and on AI Hub builds its engine, compiled; the Dockerfile fails without it; `start-iris.sh` refuses to start an image without it).
+
+**Clean installation following only the README** (folder `C:\Projetos\PortalIris-clean` copied from the working tree, no `.env`, no volume, no `.git`):
+
+| Step | Time | Note |
+|---|---|---|
+| `docker image load` of the 5 GB archive | 250 s | prints `Loaded image: docker.iscinternal.com/.../irishealth-community:2026.3.0AI.154.0` |
+| `docker tag` | 0.1 s | README did not say which name to tag; now it does |
+| `.env` from `.env.example` | — | the default volume `myown-portal-data` already existed on this machine (older data): used a new name; README now warns |
+| `docker compose ... up --build -d` | build 6 min 13 s; container started 6 min 18 s after the command | the compose client was stopped by Claude Code for low Windows memory, but the build and the start completed; `compose build` saw the local image |
+| health check | healthy on first look | marker present, demo mode off, production running |
+| `Invoke-RestMethod -Credential` (README) | — | 401: Windows PowerShell sends Basic only after a challenge; README now uses `curl.exe -u` and a `$cred` for the scripts |
+| `curl` `/health`, `/agent/status` | < 1 s | `ok`; `aiHubAvailable` 1, `activeEngine` rules (no key) |
+| `Test-Agents.ps1` | 4 s | 24 / 0 / 1 skip |
+| `Test-Agents-AIHub.ps1` | 43 s | 18 / 0 |
+| `Test-AgentSecretScan.ps1` | 2 s | failed without `.git`; now falls back to scanning every text file of the folder (152 files), `.env` excluded |
+
+Full regression on that fresh container, first and only run: Test-MyOwn, SysAdminMutations, REST 24/0/1, corpus 92/0, smokes 14/0 and 19/0, AI Hub 18/0, demo 8/0 (REST part needs demo mode), viewer 5/0, UI 15/0. Local 2026.2: same (AI Hub skipped; the viewer suite first failed there on the missing resource, then passed after the fix).
 
 ## Next verified milestone
 

@@ -35,13 +35,29 @@ function Get-RelativePath {
 
 # Scope: what git tracks (git ls-files, which includes the index) plus what is staged for the next
 # commit. Untracked and ignored files are out of scope, and .env files never count: they are
-# git-ignored and hold the local key by design.
+# git-ignored and hold the local key by design. Outside a git repository (for example a ZIP
+# download) every text file of the folder is scanned instead, with the same exclusions.
 $excludedDirectories = @('.tools', 'node_modules', 'dist', 'web\assets', 'test-results')
 $textExtensions = @('.cls', '.mac', '.int', '.inc', '.ps1', '.psm1', '.bat', '.cmd', '.sh', '.json', '.xml', '.yaml', '.yml', '.toml', '.md', '.txt', '.env', '.example', '.ts', '.tsx', '.mjs')
 $git = Get-Command git -ErrorAction SilentlyContinue
-if (-not $git) { throw 'git is required: the scan covers tracked and staged files only.' }
-$listed = @(& $git.Source -C $root ls-files) + @(& $git.Source -C $root diff --cached --name-only --diff-filter=ACMR)
-if ($LASTEXITCODE -ne 0) { throw 'git could not list the tracked files.' }
+$inRepository = $false
+if ($git) {
+    # git writes to stderr outside a repository; Windows PowerShell would turn that into an error.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & $git.Source -C $root rev-parse --is-inside-work-tree 2>&1 | Out-Null
+    $inRepository = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $previous
+}
+if ($inRepository) {
+    $scope = 'tracked or staged'
+    $listed = @(& $git.Source -C $root ls-files) + @(& $git.Source -C $root diff --cached --name-only --diff-filter=ACMR)
+    if ($LASTEXITCODE -ne 0) { throw 'git could not list the tracked files.' }
+} else {
+    $scope = 'working-tree (no git repository)'
+    $listed = Get-ChildItem -LiteralPath $root -Recurse -File -Force | ForEach-Object { (Get-RelativePath $_.FullName).Replace('\', '/') } | Where-Object { $_ -notlike '.git/*' }
+    Write-Host 'No git repository here: scanning every text file of the folder (except .env and the excluded folders).' -ForegroundColor Yellow
+}
 $files = $listed | Where-Object { $_ } | Sort-Object -Unique | ForEach-Object {
     $relative = $_.Replace('/', '\')
     $fullPath = Join-Path $root $relative
@@ -65,7 +81,7 @@ foreach ($file in $files) {
     }
 }
 
-if ($HistoryDepth -gt 0) {
+if ($inRepository -and $HistoryDepth -gt 0) {
     $history = & $git.Source -C $root log -p -n $HistoryDepth -- . 2>$null | Out-String
     foreach ($entry in $patterns.GetEnumerator()) {
         if ([regex]::IsMatch($history, $entry.Value)) {
@@ -95,5 +111,5 @@ if ($findings.Count -gt 0) {
     throw "$($findings.Count) possible secret finding(s) require review. Secret values were intentionally not printed."
 }
 
-Write-Host "PASS  SEC-11  No high-confidence secrets were found in $(@($files).Count) tracked or staged files or the last $HistoryDepth commits." -ForegroundColor Green
+Write-Host "PASS  SEC-11  No high-confidence secrets were found in $(@($files).Count) $scope files$(if ($inRepository) { " or the last $HistoryDepth commits" })." -ForegroundColor Green
 Write-Host "Report written to $resolvedOutput" -ForegroundColor Cyan

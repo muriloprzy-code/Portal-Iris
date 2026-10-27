@@ -46,6 +46,8 @@ $checks = [ordered]@{
     'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($start -match '--password-file') -and ($start -match 'iris\.cpf') -and ($start -match 'CSPpwd')
     # Demo settings (MYOWN_DEMO_*) are applied after every start; the demo password is never in the image.
     'Demo setup after start' = ($start -match '-a "\$\{after_start\}"') -and ($start -match 'demo-start\.sh') -and ($compose -match 'MYOWN_DEMO_MODE') -and ($dockerfile -notmatch 'MYOWN_DEMO_USER_PASSWORD')
+    # An incomplete install fails the build and never starts silently.
+    'Install completion check' = ($dockerfile -match 'install-complete') -and ($start -match 'install-complete') -and ((Get-Content -LiteralPath (Join-Path $projectRoot 'docker\finish-build.script') -Raw) -match 'install-complete')
     'Web port mapping' = $compose -match '52774.*:52773'
     'Durable IRIS data' = ($compose -match 'ISC_DATA_DIRECTORY: /durable/iris') -and ($compose -match 'myown-portal-data:/durable')
     'AI provider environment' = ($compose -match 'MYOWN_AI_API_KEY') -and ($compose -match 'MYOWN_AI_PROVIDER') -and ($compose -match 'MYOWN_AI_MODEL') -and ($compose -match 'MYOWN_AI_MODE') -and ($compose -match 'MYOWN_AI_TIMEOUT_SECONDS')

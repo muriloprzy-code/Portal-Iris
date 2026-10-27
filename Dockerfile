@@ -19,7 +19,8 @@ RUN ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
     iris start IRIS && \
     iris session IRIS < /home/irisowner/dev/docker/iris.script && \
     iris session IRIS < /home/irisowner/dev/docker/finish-build.script && \
-    iris stop IRIS quietly
+    iris stop IRIS quietly && \
+    { test -f /home/irisowner/dev/docker/.install-complete || { echo "MyOwn Portal did not finish installing in this image (see the log above). Rebuild it; if the build was stopped for lack of memory, see 'Memory' in README.md."; exit 1; }; }
 
 # Durable %SYS is created at runtime, so the build-time account database is not
 # retained. The startup wrapper passes this credential to iris-main only on the

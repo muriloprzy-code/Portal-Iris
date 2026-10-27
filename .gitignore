@@ -31,3 +31,6 @@ test-results/*
 # Local scratch material, not part of the portal
 extras/
 tests/ui/node_modules/
+
+# Written inside the image by docker/finish-build.script only
+docker/.install-complete

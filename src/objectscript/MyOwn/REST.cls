@@ -717,6 +717,9 @@ ClassMethod RejectAgentProposal(id As %Integer) As %Status
 
 ClassMethod SubmitAgentAccessRequest() As %Status
 {
+    ; The privilege delta is read through SysAdmin API v2 with the requester's own credentials,
+    ; which needs %Admin_Secure even for one's own account: say so instead of failing with 500.
+    If '$System.Security.Check("%Admin_Secure", "USE") Quit ..WriteError(403, "ACCESS_REQUEST_NEEDS_SECURITY_READ", "Filing an access request reads your own privileges through the SysAdmin API, which requires %Admin_Secure:USE. Ask an administrator to file it.")
     Set parseError = 0
     Try {
         Set body = {}.%FromJSON(%request.Content)

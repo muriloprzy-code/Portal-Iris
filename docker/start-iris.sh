@@ -6,6 +6,14 @@ password_file="/home/irisowner/dev/docker/.runtime-password.txt"
 # Applied after every start: the demo settings come from the environment (MYOWN_DEMO_*).
 after_start="/home/irisowner/dev/docker/demo-start.sh"
 
+# An image whose MyOwn Portal installation did not complete must not start silently.
+if [[ ! -f /home/irisowner/dev/docker/.install-complete ]]; then
+    echo "MyOwn Portal is not installed in this image (the image build did not finish)." >&2
+    echo "Rebuild it: docker compose -f compose.yaml -f compose.aihub.yaml build --no-cache" >&2
+    echo "If the build stopped for lack of memory, see 'Memory' in README.md." >&2
+    exit 1
+fi
+
 # Do not repeat first-start credential setup on an existing durable %SYS.
 if [[ -f "${data_directory}/iris.cpf" ]]; then
     exec /iris-main -a "${after_start}" "$@"

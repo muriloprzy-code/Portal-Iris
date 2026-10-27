@@ -66,9 +66,11 @@ The Gate and the confirmation step apply to both engines.
 
 ```shell
 docker image load -i irishealth-community-2026.3.0AI.154.0-docker.tar.gz
-docker images
-docker tag <loaded-image-name> irishealth-community:2026.3.0AI.154.0
+# prints: Loaded image: docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2026.3.0AI.154.0
+docker tag docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2026.3.0AI.154.0 irishealth-community:2026.3.0AI.154.0
 ```
+
+If `docker image load` prints a different name, tag that name instead (`docker images` lists it). Loading the 5 GB archive took about 4 minutes here.
 
 For the IRIS edition, load `iris-community-2026.3.0AI.154.0-docker.tar.gz`, tag it `iris-community:2026.3.0AI.154.0` and set `IRIS_IMAGE` in `.env`.
 
@@ -93,15 +95,39 @@ docker compose -f compose.yaml -f compose.aihub.yaml up --build -d
 
 Open `http://localhost:52774/myown/index.html` (the full path: the container's web server serves no default page for `/myown/`) and sign in with `_SYSTEM` and the password you set in `MYOWN_DEMO_PASSWORD`.
 
-**Verify:**
+**Verify** (replace `<password>` with your `MYOWN_DEMO_PASSWORD`; `Invoke-RestMethod -Credential` does not work here, because Windows PowerShell sends the credential only after a challenge that IRIS does not send):
 
 ```powershell
-Invoke-RestMethod http://localhost:52774/myown/api/health -Credential (Get-Credential)
-Invoke-RestMethod http://localhost:52774/myown/api/agent/status -Credential (Get-Credential)
-.\scripts\Test-Agents.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential) -IrisImage irishealth-community:2026.3.0AI.154.0 -Edition irisforhealth
-.\scripts\Test-Agents-AIHub.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential)
+curl.exe -s -u "_SYSTEM:<password>" http://localhost:52774/myown/api/health
+curl.exe -s -u "_SYSTEM:<password>" http://localhost:52774/myown/api/agent/status
+$cred = Get-Credential _SYSTEM
+.\scripts\Test-Agents.ps1 -BaseUrl http://localhost:52774 -Credential $cred -IrisImage irishealth-community:2026.3.0AI.154.0 -Edition irisforhealth
+.\scripts\Test-Agents-AIHub.ps1 -BaseUrl http://localhost:52774 -Credential $cred
 .\scripts\Test-AgentSecretScan.ps1
 ```
+
+`/health` answers `"status":"ok"`; `/agent/status` shows `aiHubAvailable` 1 on build 154 and `activeEngine` `rules` until a key (or replay mode) is set. The secret scan covers tracked files in a git clone and every text file in a folder without git (a ZIP download), never `.env`.
+
+**Reinstalling over an earlier version.** IRIS keeps its accounts, passwords and data in the Docker volume named by `MYOWN_DATA_VOLUME` (default `myown-portal-data`). An existing volume keeps the old accounts and passwords, and a new `MYOWN_DEMO_PASSWORD` is not applied to it. For a clean install, either set a new `MYOWN_DATA_VOLUME` in `.env` or remove the old volume first (this deletes its data):
+
+```shell
+docker compose -f compose.yaml -f compose.aihub.yaml down
+docker volume rm myown-portal-data
+```
+
+### Memory
+
+The image build starts IRIS for Health, enables interoperability (which also loads the FHIR packages) and compiles the portal. Measured inside the Docker VM: about 1 GB in use before the build and about 2.3 GB at its peak; the running container uses about 1 GB. Tested with WSL limited to 8 GB on a machine with 16 GB of RAM; lower limits are not tested. With other programs open, the build can leave Windows with very little free memory, so close what you can before building.
+
+The WSL limits live in `%UserProfile%\.wslconfig` (run `wsl --shutdown` and restart Docker Desktop after changing it). The tested configuration:
+
+```ini
+[wsl2]
+memory=8GB
+swap=8GB
+```
+
+**If `docker compose up` is stopped for lack of memory:** close programs or raise `memory=` in `.wslconfig`, then run the same `docker compose ... up --build -d` again; Docker reuses the layers that finished. Closing the terminal does not stop a build already running inside Docker (`docker buildx history ls` shows it), so wait for it before starting another one. An image whose installation did not finish is never used: the build writes the marker `docker/.install-complete` only after the portal compiled, fails without it, and the container refuses to start an image that lacks it, with a message saying to rebuild.
 
 > **Do not push the AI Hub image, or any image built on it, to a public registry.** Share only the Dockerfile and Compose files.
 
@@ -115,7 +141,7 @@ Running the agent live requires a local installation with your own key (`MYOWN_A
 
 With `MYOWN_DEMO_MODE=1` the portal is safe to expose:
 
-- **Demo account.** A user `demo` with the role `MyOwnDemo`: it can view the portal, run the demonstration scenarios, and confirm or reject proposals. It has no IRIS administration privileges, no Settings, no access to the provider configuration or key, and every administration route answers 403. Database and SQL read access are granted only inside `/myown/api` (application role `MyOwnDemoData`).
+- **Demo account.** A user `demo` with the role `MyOwnDemo`: it can view the portal, run the demonstration scenarios, and confirm or reject proposals. It has no IRIS administration privileges, no Settings, no access to the provider configuration or key, and every administration route answers 403. Database and SQL read access are granted only inside `/myown/api` (application role `MyOwnPortalData`, shared with the viewer role).
 - **Synthetic targets only.** The scenarios use seeded demo tasks (9001, 9002), users (`demo.alice`, `demo.bob`) and roles (`DemoOperator`, `DemoAuditor`). A confirmation revalidates as usual and then changes only that synthetic record; the proposal ends as `simulated`, and **IRIS is never changed**. A confirmation on any other target is refused (`DEMO_TARGET_REFUSED`) and audited (`MyOwn/Agent/DemoRefused`). Prohibited targets such as `%All` stay blocked.
 - **Real-system routes are off for everyone** in this mode (users and roles, web applications, task actions, the API explorer), administrators included.
 - **Reset.** The synthetic state is restored every `MYOWN_DEMO_RESET_HOURS` (default 6) by the task `MyOwn Demo reset`, and by the "Reset demo" button that only the demo account sees; both are audited (`MyOwn/Agent/DemoReset`).
@@ -142,6 +168,7 @@ At every start `docker/demo-start.sh` creates or updates the `demo` account from
 | Core and interoperability smoke | `scripts/Test-AgentSmoke.ps1` | 14 / 14, 19 / 19 | 14 / 14, 19 / 19 |
 | AI Hub engine (replay: timeouts, invalid JSON, provider error, budget, kill switch, blocked write tool, fixtures) | `scripts/Test-Agents-AIHub.ps1` | skipped (no `%AI`) | 18 / 18 |
 | Agents UI (isolated browser) | `scripts/Test-AgentsUI.ps1` | 15 / 15 | 15 / 15 |
+| Viewer role without `%All` (screens allowed, administration refused) | `scripts/Test-PortalViewer.ps1` | 5 / 5 | 5 / 5 |
 | Public demo (synthetic targets, refusals, reset, rate limit; REST checks with the real demo account) | `scripts/Test-AgentDemo.ps1` | 8 / 8 in-IRIS (REST part needs demo mode) | 16 / 16 with `MYOWN_DEMO_MODE=1` |
 | Secret scan (tracked and staged files) | `scripts/Test-AgentSecretScan.ps1` | pass | — |
 
@@ -156,7 +183,7 @@ Reports are written to `test-results/`. The full regression passed on a fresh bu
 - Agent audit records become visible in the audit log about a minute after the event (IRIS writes its audit buffer periodically).
 - The portal has no audit viewer yet, so there is no "agent events only" filter.
 - The online demo is not deployed yet. The demo account exists only where `MYOWN_DEMO_MODE=1` and a password are set.
-- The `MyOwnViewer` role alone was not tested without `%All`; the demo account needed explicit database and SQL read grants, which the viewer role does not have.
+- A viewer (`MyOwnViewer`) cannot file an access request: the privilege delta is read through SysAdmin API v2 with the requester's own credentials, and that API refuses a viewer even its own account (it needs `%Admin_Secure`, which a read-only role should not have). The portal answers `ACCESS_REQUEST_NEEDS_SECURITY_READ` and the Access tab explains it; administrators file requests.
 - The demo rate limit uses the client address seen by IRIS; behind a reverse proxy all visitors share one address.
 
 ## AI Hub experience
