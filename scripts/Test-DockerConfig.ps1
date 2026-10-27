@@ -50,6 +50,8 @@ $checks = [ordered]@{
     # An incomplete install fails the build and never starts silently.
     'Install completion check' = ($dockerfile -match 'install-complete') -and ($start -match 'install-complete') -and ((Get-Content -LiteralPath (Join-Path $projectRoot 'docker\finish-build.script') -Raw) -match 'install-complete')
     'Web port mapping' = $compose -match '52774.*:52773'
+    # Ports are published on 127.0.0.1 unless IRIS_BIND_ADDRESS says otherwise.
+    'Ports bound to localhost' = ($compose -match '"\$\{IRIS_BIND_ADDRESS:-127\.0\.0\.1\}:\$\{IRIS_WEB_PORT:-52774\}:52773"') -and ($compose -match '"\$\{IRIS_BIND_ADDRESS:-127\.0\.0\.1\}:\$\{IRIS_SUPERSERVER_PORT:-1973\}:1972"')
     'Durable IRIS data' = ($compose -match 'ISC_DATA_DIRECTORY: /durable/iris') -and ($compose -match 'myown-portal-data:/durable')
     'AI provider environment' = ($compose -match 'MYOWN_AI_API_KEY') -and ($compose -match 'MYOWN_AI_PROVIDER') -and ($compose -match 'MYOWN_AI_MODEL') -and ($compose -match 'MYOWN_AI_MODE') -and ($compose -match 'MYOWN_AI_TIMEOUT_SECONDS')
     'Static web application' = $null -ne $manifest.Export.Document.Module.WebApplication

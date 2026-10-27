@@ -346,6 +346,13 @@ IPM test on build 154 (IRIS for Health base image, new namespace without interop
 
 Docker, clean installation following only the README (new copy `C:\Projetos\PortalIris-clean4`, new volume `myown-portal-data-t20b`; image load skipped, the README says once per machine): build 202 s, healthy 16 s after start, production started at boot, 7 `MyOwn.Test` and 12 AI Hub classes, Event Log without error, warning or alert. A first `Test-All` attempt did not reach IRIS: Docker Desktop had stopped during the wait for memory (the container exited with 137); after Docker was started again and the container came back, `Test-All` from the clean copy: 243 passed, 0 failed, 3 skipped (UI: no Node.js in the copy), Event Log clean. UI suite from the main folder against that container: 15/15.
 
+## Release notes and localhost-only ports (T21, 2026-10-27)
+
+- `docs/RELEASE-NOTES-1.1.0.md`: what changed since 1.0.3, how to install (Docker with build 154; `zpm install myown-portal` once published) and the known limitations. The video, demo and article links say "to be added before release".
+- `compose.yaml` published the ports on every interface (`1973:1972`, `52774:52773`). They are now published on `${IRIS_BIND_ADDRESS:-127.0.0.1}`; `IRIS_BIND_ADDRESS` is in `.env.example`, and `Test-DockerConfig.ps1` checks the binding. `compose.aihub.yaml` publishes no ports. On the clean installation of T20, with the container recreated from the new file (same image and volume), `docker port` shows `127.0.0.1:52774` and `127.0.0.1:1973`; `/health` answers 200 through `127.0.0.1` and `localhost`, and the computer's network address does not connect.
+- README: the default `_SYSTEM` password in `.env.example` is for local use only and must be changed before exposing the portal. The hosted demo uses a different, generated password for the `demo` account (`scripts/New-DemoPassword.ps1` writes `MYOWN_DEMO_USER_PASSWORD` to `.env`; without it the account stays disabled).
+- `Test-All.ps1 -RequireUI` from the main folder against that container: 258 passed, 0 failed, 2 skipped; Event Log clean.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:

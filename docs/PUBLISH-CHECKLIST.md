@@ -21,7 +21,7 @@ gh release create v1.1.0 --title "MyOwn Portal 1.1.0" --notes-file docs/RELEASE-
 ```
 
 - [ ] The release carries only the source (GitHub attaches the archive). **Never attach or push the AI Hub image or an image built on it.**
-- [ ] `docs/RELEASE-NOTES-1.1.0.md` written (not created yet): what changed since 1.0.3, how to install (Docker with build 154, or `zpm install myown-portal`), known limitations.
+- [x] `docs/RELEASE-NOTES-1.1.0.md` written (T21; the video, demo and article links still say "to be added before release"): what changed since 1.0.3, how to install (Docker with build 154, or `zpm install myown-portal`), known limitations.
 
 ## Open Exchange (openexchange.intersystems.com)
 

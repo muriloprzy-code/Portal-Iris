@@ -126,6 +126,7 @@ For the IRIS edition, load `iris-community-2026.3.0AI.154.0-docker.tar.gz`, tag 
 | `MYOWN_AI_MODE` | `live` (default) or `replay` (recorded decisions, no key, no network) |
 | `MYOWN_AI_TIMEOUT_SECONDS` | the portal's own deadline per decision, 5 to 55 (default 20) |
 | `MYOWN_DEMO_PASSWORD` | initial `_SYSTEM` password of a new container volume; choose your own |
+| `IRIS_BIND_ADDRESS` | where the ports are published; default `127.0.0.1` (this computer only) |
 
 The defaults in `.env.example` are the tested provider, Gemini (`gemini-3.8-flash`). OpenAI (for example `gpt-4.1-mini`), Anthropic and Bedrock are accepted by the same `%AI.Provider` path but untested; see [Limitations](#limitations). Without a key the portal starts and uses the Rules engine.
 
@@ -136,6 +137,8 @@ docker compose -f compose.yaml -f compose.aihub.yaml up --build -d
 ```
 
 Open `http://localhost:52774/myown/index.html` (the full path: the container's web server serves no default page for `/myown/`) and sign in with `_SYSTEM` and the password you set in `MYOWN_DEMO_PASSWORD`.
+
+**The default password in `.env.example` is for local use only; change it before exposing the portal.** The ports are published on `127.0.0.1` only (`IRIS_BIND_ADDRESS`), so the portal is reachable from this computer and not from the network until you change that setting.
 
 **Verify** (replace `<password>` with your `MYOWN_DEMO_PASSWORD`; `Invoke-RestMethod -Credential` does not work here, because Windows PowerShell sends the credential only after a challenge that IRIS does not send):
 
