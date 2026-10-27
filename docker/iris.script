@@ -9,9 +9,13 @@ set sc = ##class(%EnsembleMgr).EnableNamespace("MYOWN", 0, , 0, 0)
 if 'sc write !, "EnableNamespace MYOWN failed: ", $System.Status.GetErrorText(sc), !
 
 zn "MYOWN"
-; zpm "...":pTerminateOnError:pHaltOnComplete. The core load must not halt the session, or the
-; AI Hub line below never runs; errors still end the build with a non-zero exit code.
-zpm "load /home/irisowner/dev -v":1:0
-; The AI Hub engine module needs the %AI package (AI Hub builds only); elsewhere Rules decide.
-if ##class(%Dictionary.CompiledClass).%ExistsId("%AI.Agent") zpm "load /home/irisowner/dev/aihub -v":1:0
+; One module. The AI Hub engine is compiled by the module itself, only where the %AI package
+; exists (MyOwn.Installer.LoadAIHub); elsewhere Rules decide. -dev keeps its test classes.
+; zpm "...":pTerminateOnError:pHaltOnComplete: errors end the build with a non-zero exit code.
+zpm "load /home/irisowner/dev -v -dev":1:0
+; The portal test classes (MyOwn.Test, Scope="test" in module.xml) are not loaded by -dev in
+; IPM 0.10, and the test scripts need them: loaded here, so the image has them and a registry
+; install does not. finish-build.script checks they compiled.
+set sc = $System.OBJ.LoadDir("/home/irisowner/dev/src/objectscript/MyOwn/Test/", "ck/multicompile=0", .errors, 1)
+if 'sc write !, "MyOwn Portal test classes did not compile: ", $System.Status.GetErrorText(sc), !
 halt

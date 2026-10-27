@@ -326,6 +326,26 @@ Memory: build started with 4.9 GB free on Windows; minimum 242 MB during the FHI
 
 `Test-All.ps1` checks before the UI suite whether Node.js is available (`PATH` or `.tools\node`) and, when the pinned Playwright package or its Chromium is missing, whether the npm registry answers. When the suite cannot run it is skipped with the reason and how to enable it (`UI: skipped (...)` under the table); `-RequireUI` turns that into a failure. Checked on the clean installation of T18: without Node, 243 passed, 0 failed, 3 skipped, exit 0; without Node and `-RequireUI`, the UI row fails, exit 1; with Node (main folder) and `-RequireUI`, 258 passed, 0 failed, 2 skipped, exit 0. The "Playwright or Chromium missing and no network" path was not exercised (both are installed here). README: the memory warning is now the first thing in "Run it locally".
 
+## One IPM module, ready to publish (T20, 2026-10-27, branch t20-ipm)
+
+Decision: one module, `myown-portal`. `aihub/module.xml` is gone; `aihub/src` travels in the package (`FileCopy`) and `MyOwn.Installer.LoadAIHub` compiles it after the core, only where `%AI.Agent` exists, so the portal still installs on IRIS without AI Hub. Resources are listed per package, with `MyOwn.Test.PKG` in `Scope="test"`: the registry package has no test classes. `MyOwn.Bootstrap` (in `preload/`, which is where IPM reads `Preload` resources from, not `SourcesRoot`) enables interoperability before the Ens-based classes compile. `MyOwn.Installer.Unconfigure` runs before uninstall: it stops the portal production, clears its auto-start, removes `/myown/api` and the AI Hub classes, and keeps roles, resources and data.
+
+Found while testing, all fixed:
+- Inside the IPM lifecycle, `$System.OBJ.LoadDir` with parallel workers waits forever: IPM compiles in one transaction and the workers block on its locks. The AI Hub load runs in process (`/multicompile=0`).
+- For the same reason a production start from Setup fails with `ErrCanNotAcquireRuntimeLock`: the transaction keeps the runtime lock taken when interoperability was enabled. Outside IPM the same Setup starts it at once. Setup now sets auto-start and, inside a transaction, starts the production from a background job as soon as the lock is free.
+- `-dev` does not load `Scope="test"` resources in IPM 0.10. The Docker build loads `MyOwn.Test` itself (`docker/iris.script`), and the install marker requires `MyOwn.Test.AgentCore`.
+
+IPM test on build 154 (IRIS for Health base image, new namespace without interoperability, `zpm` 0.10.10):
+
+| Step | Time | Result |
+|---|---|---|
+| `zpm "load"` of the code | 105 s | interoperability enabled first (FHIR load included); 84 classes, 0 `MyOwn.Test`, 9 AI Hub, 0 AI Hub test; production running within 3 s (background job); `/myown`, `/myown/api`; Event Log 0 errors |
+| `package` | 2 s | `.tgz` with `src/`, `preload/`, `aihub/src`, `web/`, LICENSE, README; no `MyOwn.Test` (the two AI Hub test sources are in `aihub/src` but are not compiled outside developer mode) |
+| `uninstall` with the production running, twice | 2 s | production stopped, auto-start cleared, `/myown`, `/myown/api` and all `MyOwn` classes removed; 0 errors |
+| reinstall from the `.tgz`, twice | 8 s | same state as the first install; 0 errors |
+
+Docker, clean installation following only the README (new copy `C:\Projetos\PortalIris-clean4`, new volume `myown-portal-data-t20b`; image load skipped, the README says once per machine): build 202 s, healthy 16 s after start, production started at boot, 7 `MyOwn.Test` and 12 AI Hub classes, Event Log without error, warning or alert. A first `Test-All` attempt did not reach IRIS: Docker Desktop had stopped during the wait for memory (the container exited with 137); after Docker was started again and the container came back, `Test-All` from the clean copy: 243 passed, 0 failed, 3 skipped (UI: no Node.js in the copy), Event Log clean. UI suite from the main folder against that container: 15/15.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:

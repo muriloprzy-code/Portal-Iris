@@ -4,7 +4,8 @@
     <Module>
       <Name>myown-portal</Name>
       <Version>1.1.0</Version>
-      <Description>Compact management portal for InterSystems IRIS and IRIS for Health.</Description>
+      <Description>Compact management portal for InterSystems IRIS and IRIS for Health, with an AI agent in an interoperability production that decides and proposes; a human confirms every change. On builds with the %AI package it also installs the AI Hub engine.</Description>
+      <Keywords>ai agents interoperability administration portal ai-hub</Keywords>
       <Author>
         <Organization>MyOwn Portal</Organization>
         <CopyrightDate>2026</CopyrightDate>
@@ -14,8 +15,23 @@
       <SystemRequirements Version=">=2024.1" />
       <SourcesRoot>src/objectscript</SourcesRoot>
 
-      <Resource Name="MyOwn.PKG" />
+      <!-- Compiled first, from preload/: enables interoperability before the Ens-based classes compile. -->
+      <Resource Name="MyOwn.Bootstrap.CLS" Preload="true" />
+      <Resource Name="MyOwn.Installer.CLS" />
+      <Resource Name="MyOwn.HealthPattern.CLS" />
+      <Resource Name="MyOwn.REST.CLS" />
+      <Resource Name="MyOwn.Agent.PKG" />
+      <Resource Name="MyOwn.Demo.PKG" />
+      <Resource Name="MyOwn.Install.PKG" />
+      <Resource Name="MyOwn.Production.PKG" />
+      <Resource Name="MyOwn.Service.PKG" />
+      <Resource Name="MyOwn.Task.PKG" />
+      <!-- Test classes: never in the registry package; the Docker build loads them itself (docker/iris.script). -->
+      <Resource Name="MyOwn.Test.PKG" Scope="test" />
+
       <FileCopy Name="web/" Target="${cspDir}myown/" Overlay="1" />
+      <!-- AI Hub engine sources: shipped in the package, compiled by LoadAIHub only where %AI exists. -->
+      <FileCopy Name="aihub/src/" Target="${mgrdir}myown-portal/aihub/src/" />
       <WebApplication
         Name="/myown"
         NameSpace="${ns}"
@@ -26,7 +42,12 @@
         Recurse="1"
         CookiePath="/myown"
       />
-      <Invoke Class="MyOwn.Installer" Method="Setup" Phase="Configure" When="After" CheckStatus="true" />
+      <Invoke Class="MyOwn.Bootstrap" Method="EnableInteroperability" Phase="Compile" When="Before" />
+      <Invoke Class="MyOwn.Installer" Method="LoadAIHub" Phase="Compile" When="After">
+        <Arg>${root}</Arg>
+      </Invoke>
+      <Invoke Class="MyOwn.Installer" Method="Setup" Phase="Configure" When="After" />
+      <Invoke Class="MyOwn.Installer" Method="Unconfigure" Phase="Unconfigure" When="Before" />
 
       <AfterInstallMessage>MyOwn Portal was installed. Open ${webroot}myown/index.html and assign MyOwnViewer or MyOwnAdministrator to authorized users.</AfterInstallMessage>
     </Module>

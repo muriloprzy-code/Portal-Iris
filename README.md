@@ -39,7 +39,7 @@ AgentGateway ─┬─ AI Hub engine: %AI.Agent + read-only ToolSet,      Busine
 REST /myown/api/agent/*  →  React UI: Decisions, Approvals, Access, Production, Guardrails, Settings
 ```
 
-The AI Hub module (`aihub/`, IPM `myown-portal-aihub`) installs only where the `%AI` package exists; elsewhere the portal runs on Rules.
+The AI Hub engine (`aihub/src`, part of the one IPM module `myown-portal`) is compiled only where the `%AI` package exists; elsewhere the portal runs on Rules.
 
 ## Technologies used
 
@@ -63,7 +63,7 @@ The AI Hub module (`aihub/`, IPM `myown-portal-aihub`) installs only where the `
 
 **Docker.** `Dockerfile` builds on the build 154 image (`ARG IMAGE`), installs IPM, enables interoperability on namespace `MYOWN`, loads both modules (`docker/iris.script`) and refuses an image whose installation did not finish. `compose.yaml` publishes the web port 52774 and keeps data in a named volume; `compose.aihub.yaml` adds the AI Hub settings.
 
-**IPM modules.** `myown-portal` (`module.xml`) installs the `MyOwn` package, copies the built React UI from `web/` to the `/myown` web application and runs `MyOwn.Installer.Setup`. Setup enables interoperability on the namespace, seeds the health patterns and agent defaults, creates the `MyOwn.*` resources, roles and the `/myown/api` REST application, registers the agent audit events, schedules the health snapshot and agent retention tasks, sets the agent production to start automatically, and grants SQL read access to the portal schemas. `myown-portal-aihub` (`aihub/module.xml`) depends on it and installs `MyOwn.AIHub` (the engine, read-only tools and ToolSet, policies, replay fixtures); the Docker build loads it only when `%AI` is present. The registry currently has `myown-portal` 1.0.3; 1.1.0 is not published yet.
+**IPM module.** One module, `myown-portal` (`module.xml`). `MyOwn.Bootstrap` (in `preload/`, compiled first) enables interoperability on the namespace before the Ens-based classes compile. The module installs the `MyOwn` package and copies the built React UI from `web/` to the `/myown` web application. `MyOwn.Installer.LoadAIHub` compiles the AI Hub engine from `aihub/src` (engine, read-only tools and ToolSet, policies, replay fixtures) only where `%AI` exists. `MyOwn.Installer.Setup` seeds the health patterns and agent defaults, creates the `MyOwn.*` resources, roles and the `/myown/api` REST application, registers the agent audit events, schedules the health snapshot and agent retention tasks, grants SQL read access to the portal schemas and sets the agent production to start automatically. The test classes are not installed from the registry: `MyOwn.AIHub.Test` comes only in developer mode (`-dev`), and `MyOwn.Test` (`Scope="test"`) is loaded by the Docker build itself (`docker/iris.script`), because the test scripts need both. The registry currently has `myown-portal` 1.0.3; 1.1.0 is not published yet (see [docs/PUBLISH-CHECKLIST.md](docs/PUBLISH-CHECKLIST.md)).
 
 ## Demonstration scenarios
 
@@ -160,6 +160,24 @@ docker volume rm myown-portal-data
 The container is always named `myown-portal-iris`. If an earlier copy of the portal, in another folder, still has its container (even a stopped one), `up` builds the image and then fails with `The container name "/myown-portal-iris" is already in use`. Run `docker compose -f compose.yaml -f compose.aihub.yaml down` in that folder first (it keeps that folder's volume), then the same `up` again; the image is not rebuilt.
 
 > **Do not push the AI Hub image, or any image built on it, to a public registry.** Share only the Dockerfile and Compose files.
+
+### Install with IPM (zpm)
+
+On any InterSystems IRIS or IRIS for Health 2024.1+ with IPM, in the namespace where the portal should live:
+
+```objectscript
+zpm "install myown-portal"
+```
+
+This installs the published version from the community registry (1.0.3 today; 1.1.0, described here, is not published yet). To install the code of a clone instead, give IPM the folder as the server sees it: `zpm "load /path/to/Portal-Iris"`. The test classes are not part of either install (the Docker build adds them; see `docker/iris.script`).
+
+- If the namespace is not interoperability-enabled yet, the install enables it first; on IRIS for Health that also loads the FHIR packages and takes a few minutes.
+- The AI Hub engine is compiled only on builds with the `%AI` package; elsewhere the Rules engine decides.
+- The agent production is set to start automatically and starts in the background once the install finishes.
+- Open `<web server>/myown/index.html` and give users `MyOwnViewer` or `MyOwnAdministrator`.
+- `zpm "uninstall myown-portal"` stops the agent production, clears its auto-start, and removes `/myown`, `/myown/api` and the classes. It keeps the roles, resources and the portal's data.
+
+Tested on build 154 (IRIS for Health) in a new namespace without interoperability: install from the code 105 s (most of it enabling interoperability), then package, uninstall with the production running and reinstall from the package twice (2 s and 8 s); the production was running after each install and the Event Log had no error.
 
 Other installation paths (a local IRIS instance, `Instalar.bat`) are described in [docs/REFERENCE.md](docs/REFERENCE.md).
 

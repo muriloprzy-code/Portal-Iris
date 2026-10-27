@@ -6,10 +6,10 @@ zn "MYOWN"
 Set tSC = ##class(MyOwn.Installer).PrepareForContainerBundling()
 Write !, "PrepareForContainerBundling: ", $Select(tSC=1:"OK", 1:$System.Status.GetErrorText(tSC))
 
-; Install check: the marker is written only when the portal compiled (and, on AI Hub builds,
+; Install check: the marker is written only when the portal and its test classes compiled (and, on AI Hub builds,
 ; its engine module too). The Dockerfile fails the build without it, and start-iris.sh refuses
 ; to start an image that lacks it, so an incomplete install never runs silently.
-Set ok = ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.REST") && ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.Production.Main")
+Set ok = ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.REST") && ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.Production.Main") && ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.Test.AgentCore")
 If ok, ##class(%Dictionary.CompiledClass).%ExistsId("%AI.Agent") Set ok = ##class(%Dictionary.CompiledClass).%ExistsId("MyOwn.AIHub.Engine")
 If ok Set marker = ##class(%Stream.FileCharacter).%New(), marker.Filename = "/home/irisowner/dev/docker/.install-complete" Do marker.Write($ZDateTime($ZTimestamp, 3, 1) _ " UTC") Do marker.%Save()
 Write !, "MyOwn Portal install check: ", $Select(ok: "complete", 1: "INCOMPLETE"), !

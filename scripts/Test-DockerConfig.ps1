@@ -13,7 +13,6 @@ $requiredFiles = @(
     'docker\start-iris.sh',
     'docker\demo-start.sh',
     'module.xml',
-    'aihub\module.xml',
     'aihub\src\MyOwn\AIHub\Engine.cls',
     'web\index.html'
 )
@@ -39,10 +38,12 @@ $checks = [ordered]@{
     # The production classes extend Ens.*; they only compile in an interoperability-enabled namespace.
     # EnableNamespace (not Interop=1, which makes an IRIS for Health Foundation namespace with its own production).
     'MYOWN interoperability' = ($merge -match 'CreateNamespace:Name=MYOWN[^\r\n]*Interop=0') -and ($init -match '(?s)EnableNamespace\("MYOWN".*zpm "load')
-    'IPM package load' = $init -match 'zpm "load /home/irisowner/dev -v"'
-    # The AI Hub module loads after the core, and only where the %AI package exists.
-    # The core load must not halt the session (third zpm argument), or the AI Hub line never runs.
-    'AI Hub module load' = $init -match '(?s)zpm "load /home/irisowner/dev -v":1:0.*%ExistsId\("%AI\.Agent"\) zpm "load /home/irisowner/dev/aihub -v"'
+    # One module, in developer mode so the test classes the scripts use are loaded too.
+    'IPM package load' = $init -match 'zpm "load /home/irisowner/dev -v -dev"'
+    # Scope="test" resources are not loaded by -dev; the image loads them and the install check requires them.
+    'Test classes in the image' = ($init -match 'LoadDir\("/home/irisowner/dev/src/objectscript/MyOwn/Test/"') -and ((Get-Content -LiteralPath (Join-Path $projectRoot 'docker\finish-build.script') -Raw) -match 'MyOwn\.Test\.AgentCore')
+    # The AI Hub engine is part of the module, compiled by the installer only where %AI exists.
+    'AI Hub engine in the module' = (@($manifest.Export.Document.Module.Invoke) | Where-Object Method -eq 'LoadAIHub') -and ($init -notmatch 'dev/aihub')
     'Non-interactive password bootstrap' = ($dockerfile -match 'MYOWN_DEMO_PASSWORD') -and ($start -match '--password-file') -and ($start -match 'iris\.cpf') -and ($start -match 'CSPpwd')
     # Demo settings (MYOWN_DEMO_*) are applied after every start; the demo password is never in the image.
     'Demo setup after start' = ($start -match '-a "\$\{after_start\}"') -and ($start -match 'demo-start\.sh') -and ($compose -match 'MYOWN_DEMO_MODE') -and ($dockerfile -notmatch 'MYOWN_DEMO_USER_PASSWORD')

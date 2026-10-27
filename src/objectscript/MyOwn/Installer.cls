@@ -44,6 +44,58 @@ ClassMethod LoadAndSetupViaSQL(dir As %String) As %String [ SqlName = MyOwnLoadA
     Quit ..SetupViaSQL()
 }
 
+/// IPM, after the core compiled: the AI Hub engine (aihub/src in the package) needs the %AI
+/// package, so it is compiled only where %AI exists; elsewhere the portal runs on Rules. Its test
+/// classes (MyOwn.AIHub.Test) are left out unless the module is loaded in developer mode (-dev).
+ClassMethod LoadAIHub(root As %String) As %Status
+{
+    If '##class(%Dictionary.CompiledClass).%ExistsId("%AI.Agent") {
+        Write !, "MyOwn Portal: no %AI package here, the AI Hub engine is not installed (Rules decide).", !
+        Quit $$$OK
+    }
+    Set source = ##class(%File).NormalizeDirectory(##class(%File).NormalizeDirectory(root) _ "aihub/src")
+    If '##class(%File).DirectoryExists(source) Quit $$$ERROR($$$GeneralError, "AI Hub sources not found in " _ source)
+    Set tests = 0
+    Try {
+        Set module = $ClassMethod("%IPM.Storage.Module", "NameOpen", "myown-portal")
+        If $IsObject(module) Set tests = +module.DeveloperMode
+    } Catch { }
+    ; In this process only: inside the IPM lifecycle, parallel load and compile workers wait forever.
+    Set tSC = $System.OBJ.LoadDir(source, "k-d/multicompile=0", .errorLog, 1, .loaded)
+    If $$$ISERR(tSC) Quit tSC
+    If 'tests {
+        Set tSC = $System.OBJ.DeletePackage("MyOwn.AIHub.Test", "-d")
+        If $$$ISERR(tSC) Quit tSC
+    }
+    Quit $System.OBJ.CompilePackage("MyOwn.AIHub", "ck-d/multicompile=0")
+}
+
+/// IPM, before uninstall: stops the portal production and clears its auto-start, removes the
+/// /myown/api application that Setup created (IPM removes /myown) and the AI Hub classes, which are
+/// not IPM resources (see LoadAIHub). Roles, resources and the portal data are kept.
+ClassMethod Unconfigure() As %Status
+{
+    Set production = "MyOwn.Production.Main"
+    If ##class(Ens.Director).GetActiveProductionName() = production {
+        Set tSC = ##class(Ens.Director).StopProduction(30, 0)
+        If $$$ISERR(tSC) Set tSC = ##class(Ens.Director).StopProduction(10, 1)
+        If $$$ISERR(tSC) Quit tSC
+    }
+    If $Get(^Ens.AutoStart) = production Kill ^Ens.AutoStart
+    Set namespace = $Namespace
+    New $Namespace
+    Set $Namespace = "%SYS"
+    If ##class(Security.Applications).Exists("/myown/api", .application) {
+        If $ZConvert(application.NameSpace, "U") = $ZConvert(namespace, "U") {
+            Set tSC = ##class(Security.Applications).Delete("/myown/api")
+            If $$$ISERR(tSC) Quit tSC
+        }
+    }
+    Set $Namespace = namespace
+    If '##class(%Dictionary.ClassDefinition).%ExistsId("MyOwn.AIHub.Engine") Quit $$$OK
+    Quit $System.OBJ.DeletePackage("MyOwn.AIHub", "-d")
+}
+
 /// Returns a compact production status for installation and smoke-test scripts.
 ClassMethod ProductionStatusViaSQL() As %String [ SqlName = MyOwnProductionStatus, SqlProc ]
 {
@@ -148,26 +200,77 @@ ClassMethod EnsureAgentProduction() As %Status [ Private ]
 {
     Set production = "MyOwn.Production.Main"
     Set active = ##class(Ens.Director).GetActiveProductionName()
-    ; In an image build the production is only set to start at boot. On IRIS for Health the
-    ; Foundation job still holds the Ens runtime lock there, so starting (or stopping) a production
-    ; would wait 30 s and leave ErrCanNotAcquireRuntimeLock errors in the Event Log of every new
-    ; installation. MYOWN_IMAGE_BUILD is set only by the Dockerfile's build step.
-    If $System.Util.GetEnviron("MYOWN_IMAGE_BUILD") = "1" {
-        If (active '= "") && (active '= production) && '..IsEmptyFoundationProduction(active) Quit $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
-        Write !, "MyOwn Portal: image build, the agent production starts automatically when IRIS starts.", !
-        Quit ##class(Ens.Director).SetAutoStart(production)
-    }
-    If (active = production) || ..IsEmptyFoundationProduction(active) {
-        Set tSC = ##class(Ens.Director).StopProduction(30, 0)
-        If $$$ISERR(tSC) Set tSC = ##class(Ens.Director).StopProduction(10, 1)
-        If $$$ISERR(tSC) Quit tSC
-        Set active = ""
-    }
-    If active '= "" Quit $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
-    ; Auto-start first: if starting now fails, IRIS still starts the production on the next boot.
+    If (active '= "") && (active '= production) && '..IsEmptyFoundationProduction(active) Quit $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
+    ; Auto-start first: if starting now is not possible, IRIS starts the production at the next boot.
     Set tSC = ##class(Ens.Director).SetAutoStart(production)
     If $$$ISERR(tSC) Quit tSC
-    Quit ##class(Ens.Director).StartProduction(production)
+    ; In an image build the production only starts at boot. On IRIS for Health the Foundation job
+    ; still holds the Ens runtime lock there, so starting (or stopping) a production would wait 30 s
+    ; and leave ErrCanNotAcquireRuntimeLock errors in the Event Log of every new installation.
+    ; MYOWN_IMAGE_BUILD is set only by the Dockerfile's build step.
+    If $System.Util.GetEnviron("MYOWN_IMAGE_BUILD") = "1" {
+        Write !, "MyOwn Portal: image build, the agent production starts automatically when IRIS starts.", !
+        Quit $$$OK
+    }
+    ; Inside the IPM lifecycle everything runs in one transaction, which keeps the runtime lock taken
+    ; when interoperability was enabled until the installation commits; a start from here would fail
+    ; the same way. A background job starts the production as soon as the lock is free.
+    If $TLevel > 0 {
+        Job ##class(MyOwn.Installer).StartAgentProduction()
+        Write !, "MyOwn Portal: the agent production starts in the background when the installation finishes (job ", $ZChild, ").", !
+        Quit $$$OK
+    }
+    Quit ..StartAgentProduction()
+}
+
+/// Stops the portal production or the empty IRIS for Health Foundation production, then starts the
+/// portal production, once the Ens runtime lock is free (up to 10 minutes). Run directly by Setup,
+/// or as a background job when Setup runs inside the IPM transaction; a job's failure goes to
+/// messages.log.
+ClassMethod StartAgentProduction() As %Status [ Internal ]
+{
+    Set production = "MyOwn.Production.Main"
+    Set tSC = $$$OK
+    Try {
+        If '..WaitForRuntimeLock(600) {
+            Set tSC = $$$ERROR($$$GeneralError, "the interoperability runtime stayed busy; the agent production starts at the next IRIS start")
+            Quit
+        }
+        Set active = ##class(Ens.Director).GetActiveProductionName()
+        If (active = production) || ..IsEmptyFoundationProduction(active) {
+            Set tSC = ##class(Ens.Director).StopProduction(30, 0)
+            If $$$ISERR(tSC) Set tSC = ##class(Ens.Director).StopProduction(10, 1)
+            If $$$ISERR(tSC) Quit
+            Set active = ""
+        }
+        If active '= "" {
+            Set tSC = $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
+            Quit
+        }
+        Set tSC = ##class(Ens.Director).StartProduction(production)
+    } Catch exception {
+        Set tSC = exception.AsStatus()
+    }
+    If $$$ISERR(tSC), $ZParent '= 0 Do ##class(%SYS.System).WriteToConsoleLog("MyOwn Portal: the agent production was not started in namespace " _ $Namespace _ ": " _ $System.Status.GetErrorText(tSC), 0, 1)
+    Quit tSC
+}
+
+/// Whether the Ens runtime lock (^Ens.Runtime) can be taken within the given seconds; it is
+/// released at once. Avoids StopProduction/StartProduction failing after 30 s with
+/// ErrCanNotAcquireRuntimeLock while another job starts or stops a production.
+ClassMethod WaitForRuntimeLock(seconds As %Integer) As %Boolean [ Private ]
+{
+    Set deadline = $ZHorolog + seconds, told = 0
+    For {
+        Lock +^Ens.Runtime:2
+        If $Test {
+            Lock -^Ens.Runtime
+            Quit
+        }
+        If 'told Write !, "MyOwn Portal: waiting for the interoperability runtime (another production is starting)...", ! Set told = 1
+        If $ZHorolog > deadline Return 0
+    }
+    Quit 1
 }
 
 /// On IRIS for Health, enabling interoperability creates and starts an empty
