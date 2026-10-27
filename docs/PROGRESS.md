@@ -283,6 +283,10 @@ Changes:
 
 Regression on build 154, first and only run: Test-MyOwn, SysAdminMutations, REST 24/0/1, corpus 92/92, smokes 14/14 and 19/19, AI Hub 20/0, demo 8/1 skip (demo mode off), viewer 5/5, UI 15/15. Secret scan: pass.
 
+## Contest bonus inventory (T14, 2026-10-27)
+
+`docs/BONUS-INVENTORY.md`: Docker, Embedded Python and Vector Search already qualify; IPM (1.0.3 published, 1.1.0 not), online demo and a custom adapter are partial or missing; Workflow is evaluated (distribution only, confirmation stays in the portal); PEX is dropped (Java or .NET only). Eight AI Hub bug candidates, B1 to B5 reproduced on build 154 without a key.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:
