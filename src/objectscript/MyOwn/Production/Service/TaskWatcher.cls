@@ -1,81 +1,22 @@
 Class MyOwn.Production.Service.TaskWatcher Extends Ens.BusinessService
 {
 
-Parameter ADAPTER = "Ens.InboundAdapter";
+Parameter ADAPTER = "MyOwn.Production.Adapter.TaskHistoryInbound";
 
-/// Failures in a row (newest first) that make a task worth triaging.
-Parameter FAILURETHRESHOLD = 3;
-
-/// Looks at tasks of the MYOWN namespace: repeated failures, or suspended tasks whose last run was ok.
+/// Receives from the adapter each task of the namespace worth triaging: repeated failures, or a
+/// suspended task whose last run was ok (the scan and its settings live in the adapter).
 /// Duplicates are absorbed by the agent cooldown (stable key = task id + state + failure band,
 /// for example "3+"), and the Gate never creates a second proposal for the same task and action.
-Method OnProcessInput(pInput As %RegisteredObject, Output pOutput As %RegisteredObject) As %Status
+Method OnProcessInput(pInput As MyOwn.Production.Adapter.TaskState, Output pOutput As %RegisteredObject) As %Status
 {
-    Set tSC = $$$OK
-    Try {
-        Set tSC = ..Scan()
-    } Catch exception {
-        Set tSC = exception.AsStatus()
-    }
-    Quit tSC
+    If '$IsObject(pInput) Quit $$$OK
+    Quit ..Emit(pInput.TaskId, pInput.Name, pInput.Namespace, pInput.Manageable, pInput.Suspended, pInput.Failures, pInput.LastError, pInput.LastOk)
 }
 
-Method Scan() As %Status [ Private ]
-{
-    // Newest history rows first; consecutive failures are counted per task name.
-    Set statement = ##class(%SQL.Statement).%New()
-    Set tSC = statement.%Prepare("SELECT TOP 200 Name, Status, Error FROM %SYS_Task.History ORDER BY ID DESC")
-    If $$$ISERR(tSC) Quit tSC
-    Set result = statement.%Execute()
-    If result.%SQLCODE < 0 Quit $$$ERROR($$$GeneralError, result.%Message)
-    While result.%Next() {
-        Set name = result.%Get("Name")
-        If name = "" Continue
-        If '$Data(seen(name)) {
-            Set seen(name) = 1
-            Set failures(name) = 0
-            Set lastError(name) = ""
-            Set lastOk(name) = '..IsFailure(result.%Get("Status"))
-            Set streak(name) = 1
-        }
-        If streak(name) {
-            If ..IsFailure(result.%Get("Status")) {
-                Set failures(name) = failures(name) + 1
-                If lastError(name) = "" Set lastError(name) = result.%Get("Error")
-            } Else {
-                Set streak(name) = 0
-            }
-        }
-    }
-    Set name = ""
-    For {
-        Set name = $Order(seen(name))
-        If name = "" Quit
-        Set taskStatement = ##class(%SQL.Statement).%New()
-        Set tSC = taskStatement.%Prepare("SELECT ID, NameSpace, Suspended FROM %SYS.Task WHERE Name = ?")
-        If $$$ISERR(tSC) Quit
-        Set taskResult = taskStatement.%Execute(name)
-        If taskResult.%SQLCODE < 0 Continue
-        If 'taskResult.%Next() Continue
-        Set taskId = taskResult.%Get("ID")
-        Set manageable = ($ZConvert(taskResult.%Get("NameSpace"), "U") = "MYOWN")
-        Set suspended = +taskResult.%Get("Suspended")
-        If 'manageable Continue
-        Set repeated = (failures(name) >= ..#FAILURETHRESHOLD)
-        Set recovered = (suspended && lastOk(name))
-        If 'repeated && 'recovered Continue
-        Set tSC = ..Emit(taskId, name, taskResult.%Get("NameSpace"), manageable, suspended, failures(name), lastError(name), lastOk(name))
-        If $$$ISERR(tSC) Quit
-    }
-    Quit tSC
-}
-
-/// A history row is a failure only when its Status is not 1. Error holds the message of every
-/// row ("Success", "Task suspended", "Task has expired ...", in the instance language), so it
-/// cannot tell a failure apart.
+/// Kept for callers outside the production (the AI Hub read-only tools); see the adapter.
 ClassMethod IsFailure(status As %String) As %Boolean
 {
-    Quit (status '= "") && ($Piece(status, " ", 1) '= "1")
+    Quit ##class(MyOwn.Production.Adapter.TaskHistoryInbound).IsFailure(status)
 }
 
 /// The task fields must match what the portal reads at confirmation time (id, name, namespace,

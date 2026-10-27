@@ -11,9 +11,14 @@ XData ProductionDefinition
   </Item>
   <Item Name="TaskWatcher" Category="Services" ClassName="MyOwn.Production.Service.TaskWatcher" PoolSize="1" Enabled="true" Foreground="false" InactivityTimeout="0" Comment="Monitors failed tasks." LogTraceEvents="false" Schedule="">
     <Setting Target="Adapter" Name="CallInterval">120</Setting>
+    <Setting Target="Adapter" Name="TaskNamespace">MYOWN</Setting>
+    <Setting Target="Adapter" Name="HistoryRows">200</Setting>
+    <Setting Target="Adapter" Name="FailureThreshold">3</Setting>
   </Item>
   <Item Name="LogWatcher" Category="Services" ClassName="MyOwn.Production.Service.LogWatcher" PoolSize="1" Enabled="true" Foreground="false" InactivityTimeout="0" Comment="Monitors serious log entries." LogTraceEvents="false" Schedule="">
     <Setting Target="Adapter" Name="CallInterval">120</Setting>
+    <Setting Target="Adapter" Name="MinSeverity">2</Setting>
+    <Setting Target="Adapter" Name="MaxEntries">10</Setting>
   </Item>
   <Item Name="AccessRequestService" Category="Services" ClassName="MyOwn.Production.Service.AccessRequest" PoolSize="1" Enabled="true" Foreground="false" InactivityTimeout="0" Comment="Accepts access request events from the portal." LogTraceEvents="false" Schedule="" />
   <Item Name="ExecutionFeedbackService" Category="Services" ClassName="MyOwn.Production.Service.ExecutionFeedback" PoolSize="1" Enabled="true" Foreground="false" InactivityTimeout="0" Comment="Closes the execution feedback loop." LogTraceEvents="false" Schedule="" />

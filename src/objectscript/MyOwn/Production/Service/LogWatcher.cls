@@ -1,13 +1,13 @@
 Class MyOwn.Production.Service.LogWatcher Extends Ens.BusinessService
 {
 
-Parameter ADAPTER = "Ens.InboundAdapter";
+Parameter ADAPTER = "MyOwn.Production.Adapter.LogEntriesInbound";
 
-Method OnProcessInput(pInput As %RegisteredObject, Output pOutput As %RegisteredObject) As %Status
+/// Receives from the adapter the serious log entries of one scan (already sanitized).
+Method OnProcessInput(pInput As MyOwn.Production.Adapter.LogBatch, Output pOutput As %RegisteredObject) As %Status
 {
-    Set tSC = ##class(MyOwn.Agent.Context.Logs).Recent(2, 10, .items)
-    If $$$ISERR(tSC) Quit tSC
-    If items.%Size() = 0 Quit $$$OK
+    If '$IsObject(pInput) Quit $$$OK
+    Set items = [].%FromJSON(pInput.ItemsJSON)
     Set context = {}
     Set context.source = "log-watcher"
     Set context.logs = items

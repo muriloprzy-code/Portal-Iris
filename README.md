@@ -54,6 +54,13 @@ The AI Hub module (`aihub/`, IPM `myown-portal-aihub`) installs only where the `
 
 **Vector Search.** `MyOwn.HealthPattern` (`src/objectscript/MyOwn/HealthPattern.cls:14`) stores six known health patterns (healthy, disk pressure, database capacity, lock contention, active alerts, process pressure; written by the installer, `Installer.cls:187-197`), each as a `%Vector(DOUBLE, 6)` of the same normalized risks plus a healthy reserve, with a recommendation. `GetReport` turns the current metrics into the same six-dimension vector and picks the closest pattern with `VECTOR_COSINE(MetricVector, TO_VECTOR(?, DOUBLE))` (`HealthAnalysis.cls:87`). The match and its similarity appear on the Overview and are part of the health context the agent receives. It is a small, explainable nearest-pattern lookup, not a document or embedding index.
 
+**Custom inbound adapters.** The `TaskWatcher` and `LogWatcher` Business Services of the production use the portal's own adapters, both derived from `Ens.InboundAdapter` and polled every `CallInterval` (120 s). The scan lives in each adapter's `OnTask`, and the service only turns what it receives into an `IncidentEvent`. A failed query is written to the Event Log and retried at the next interval; the service keeps running.
+
+| Adapter | File | What it hands the service | Settings (production) |
+|---|---|---|---|
+| `TaskHistoryInbound` | `src/objectscript/MyOwn/Production/Adapter/TaskHistoryInbound.cls` | One `TaskState` per task of the namespace that failed `FailureThreshold` times in a row (a run fails when its history `Status` is not 1), or that is suspended although its newest run succeeded | `TaskNamespace` (MYOWN), `HistoryRows` (200 newest history rows), `FailureThreshold` (3) |
+| `LogEntriesInbound` | `src/objectscript/MyOwn/Production/Adapter/LogEntriesInbound.cls` | One `LogBatch` with the newest sanitized log entries of at least `MinSeverity`, when there is any | `MinSeverity` (2), `MaxEntries` (10) |
+
 **Docker.** `Dockerfile` builds on the build 154 image (`ARG IMAGE`), installs IPM, enables interoperability on namespace `MYOWN`, loads both modules (`docker/iris.script`) and refuses an image whose installation did not finish. `compose.yaml` publishes the web port 52774 and keeps data in a named volume; `compose.aihub.yaml` adds the AI Hub settings.
 
 **IPM modules.** `myown-portal` (`module.xml`) installs the `MyOwn` package, copies the built React UI from `web/` to the `/myown` web application and runs `MyOwn.Installer.Setup`. Setup enables interoperability on the namespace, seeds the health patterns and agent defaults, creates the `MyOwn.*` resources, roles and the `/myown/api` REST application, registers the agent audit events, schedules the health snapshot and agent retention tasks, sets the agent production to start automatically, and grants SQL read access to the portal schemas. `myown-portal-aihub` (`aihub/module.xml`) depends on it and installs `MyOwn.AIHub` (the engine, read-only tools and ToolSet, policies, replay fixtures); the Docker build loads it only when `%AI` is present. The registry currently has `myown-portal` 1.0.3; 1.1.0 is not published yet.
@@ -185,6 +192,7 @@ At every start `docker/demo-start.sh` creates or updates the `demo` account from
 | Core and interoperability smoke | `scripts/Test-AgentSmoke.ps1` | 14 / 14, 19 / 19 | 14 / 14, 19 / 19 |
 | AI Hub engine (replay: timeouts, invalid JSON, provider error, budget, kill switch, blocked write tool, ToolSet Exclude, query tools, fixtures) | `scripts/Test-Agents-AIHub.ps1` | skipped (no `%AI`) | 20 / 20 |
 | Agents UI (isolated browser) | `scripts/Test-AgentsUI.ps1` | 15 / 15 | 15 / 15 |
+| Inbound adapters (failure counting, empty scan, query failure, window, hand-off; end to end: a real task fails three times and the TaskWatcher ends in a suspend proposal) | `scripts/Test-Adapters.ps1` | 7 / 7 (end to end not run) | 8 / 8 |
 | Viewer role without `%All` (screens allowed, administration refused) | `scripts/Test-PortalViewer.ps1` | 5 / 5 | 5 / 5 |
 | Public demo (synthetic targets, refusals, reset, rate limit; REST checks with the real demo account) | `scripts/Test-AgentDemo.ps1` | 8 / 8 in-IRIS (REST part needs demo mode) | 16 / 16 with `MYOWN_DEMO_MODE=1` |
 | Secret scan (tracked and staged files) | `scripts/Test-AgentSecretScan.ps1` | pass | — |
