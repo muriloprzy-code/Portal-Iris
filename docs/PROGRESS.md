@@ -285,15 +285,21 @@ Regression on build 154, first and only run: Test-MyOwn, SysAdminMutations, REST
 
 ## Contest bonus inventory (T14, 2026-10-27)
 
-`docs/BONUS-INVENTORY.md`: Docker, Embedded Python and Vector Search already qualify; IPM (1.0.3 published, 1.1.0 not), online demo and a custom adapter are partial or missing; Workflow is evaluated (distribution only, confirmation stays in the portal); PEX is dropped (Java or .NET only). Eight AI Hub bug candidates, B1 to B5 reproduced on build 154 without a key.
+`docs/BONUS-INVENTORY.md`: Docker, Embedded Python and Vector Search already qualify; IPM (1.0.3 published, 1.1.0 not), online demo and a custom adapter are partial or missing; Workflow is evaluated (distribution only, confirmation stays in the portal); PEX is dropped (Java or .NET only). Eight AI Hub bug candidates, B1 to B5 reproduced on build 154 without a key; reports for B1 to B3 are written in `docs/ai-hub-bugs`, not sent yet (T15).
 
 ## Custom inbound adapters (T16, 2026-10-27)
 
 `TaskWatcher` and `LogWatcher` now use `MyOwn.Production.Adapter.TaskHistoryInbound` and `LogEntriesInbound` (both `Ens.InboundAdapter`). The scan moved from `OnProcessInput` to each adapter's `OnTask`, with the same query (`TOP 200` of `%SYS_Task.History`), the same failure count (Status other than 1, consecutive from the newest run), the same namespace filter, the same log call (`Logs.Recent(2, 10)`) and the same `CallInterval` (120 s). The settings now show in the production: `TaskNamespace`, `HistoryRows`, `FailureThreshold`, `MinSeverity`, `MaxEntries`. Two adapters, not one: the two sources have nothing in common. Visible differences: a failed query goes to the Event Log and the adapter returns OK (the service kept running before too), and `ProcessInput` is called only when there is something to hand on.
 
-Tests: `scripts/Test-Adapters.ps1`. AD-01..07 run without a production: failure counting on synthetic rows, empty scan, window, query failure, hand-off, log adapter, production settings. AD-E2E uses the running production: a temporary task of `MYOWN` fails three times through the task manager (`RunNow`, picked up within 60 s), the TaskWatcher hands it to triage, and the Rules engine creates a pending `task.suspend` proposal. That took 162 to 197 s in two runs; the task and its proposal are removed afterwards. The query-failure checks write two test error entries to the Event Log (blank config name, text "test: ...").
+Tests: `scripts/Test-Adapters.ps1`. AD-01..07 run without a production: failure counting on synthetic rows, empty scan, window, query failure, hand-off, log adapter, production settings. AD-E2E uses the running production: a temporary task of `MYOWN` fails three times through the task manager (`RunNow`, picked up within 60 s), the TaskWatcher hands it to triage, and the Rules engine creates a pending `task.suspend` proposal. That took 162 to 197 s in two runs; the task and its proposal are removed afterwards. The query-failure checks write test entries to the Event Log, which the suite removes (AD-08).
 
 Regression on build 154, first run after a production restart: Test-MyOwn, SysAdminMutations, REST 24/0/1, corpus 92/92, smokes 14/14 and 19/19, AI Hub 20/0, demo 8/1 skip, adapters 8/8, viewer 5/5, UI 15/15. Local 2026.2: compiles, production restarted, adapters 7/7 (end to end not run).
+
+## One command for every suite (T17, 2026-10-27)
+
+`scripts/Test-All.ps1` runs the eleven suites and the secret scan in order, prints one table (passed / failed / skipped / seconds per suite), writes `test-all.json` and exits with 1 if anything failed. Its last row checks that the run wrote no error to the Event Log. The adapter suite now removes the Event Log entries its failure checks write (AD-08), and their texts start with `[TEST]` or name a `TESTIgnore...` table in case one is left.
+
+First run on build 154: 258 passed, 0 failed, 2 skipped (REST optional check, demo REST part with demo mode off); Event Log clean. The only errors in that Event Log are three `ErrCanNotAcquireRuntimeLock` entries from `Ens.Director` written during the image build (the Foundation job holds the runtime lock when the installer starts the production; IRIS starts it at boot), so a new installation shows them too.
 
 ## Next verified milestone
 

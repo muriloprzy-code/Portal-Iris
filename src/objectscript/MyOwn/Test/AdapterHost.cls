@@ -18,7 +18,7 @@ ClassMethod Recent(minSeverity As %Integer = 2, limit As %Integer = 20, Output d
 {
     Set data = []
     Set mode = $Get(^||MyOwnAdapterTest("logs"))
-    If mode = "error" Quit $$$ERROR($$$GeneralError, "test: log source unavailable")
+    If mode = "error" Quit $$$ERROR($$$GeneralError, "[TEST] log source unavailable (written by the adapter test, ignore)")
     If mode = "many" {
         For index = 1:1:limit { Do data.%Push({"severityCode": (minSeverity), "message": ("test entry " _ index)}) }
     }

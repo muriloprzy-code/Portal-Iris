@@ -183,6 +183,14 @@ At every start `docker/demo-start.sh` creates or updates the `demo` account from
 
 ## Tests
 
+Run every suite once, with a final table (passed / failed / skipped per suite) and a non-zero exit code if anything failed:
+
+```powershell
+.\scripts\Test-All.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential _SYSTEM)
+```
+
+Reports go to `test-results/all/` (one log and JSON report per suite, plus `test-all.json`). The last row checks that the run left no error in the interoperability Event Log. `-SkipEndToEnd` skips the adapter end-to-end check (a real task failing three times, about 3 to 5 minutes); `-DemoCredential` adds the REST part of the demo suite when demo mode is on.
+
 | Suite | Script | IRIS 2026.2 (local) | Build 154 (IRIS for Health) |
 |---|---|---|---|
 | Portal smoke | `scripts/Test-MyOwn.ps1` | pass | pass |
@@ -192,7 +200,7 @@ At every start `docker/demo-start.sh` creates or updates the `demo` account from
 | Core and interoperability smoke | `scripts/Test-AgentSmoke.ps1` | 14 / 14, 19 / 19 | 14 / 14, 19 / 19 |
 | AI Hub engine (replay: timeouts, invalid JSON, provider error, budget, kill switch, blocked write tool, ToolSet Exclude, query tools, fixtures) | `scripts/Test-Agents-AIHub.ps1` | skipped (no `%AI`) | 20 / 20 |
 | Agents UI (isolated browser) | `scripts/Test-AgentsUI.ps1` | 15 / 15 | 15 / 15 |
-| Inbound adapters (failure counting, empty scan, query failure, window, hand-off; end to end: a real task fails three times and the TaskWatcher ends in a suspend proposal) | `scripts/Test-Adapters.ps1` | 7 / 7 (end to end not run) | 8 / 8 |
+| Inbound adapters (failure counting, empty scan, query failure, window, hand-off, Event Log left clean; end to end: a real task fails three times and the TaskWatcher ends in a suspend proposal) | `scripts/Test-Adapters.ps1` | 8 / 8 (end to end not run) | 9 / 9 |
 | Viewer role without `%All` (screens allowed, administration refused) | `scripts/Test-PortalViewer.ps1` | 5 / 5 | 5 / 5 |
 | Public demo (synthetic targets, refusals, reset, rate limit; REST checks with the real demo account) | `scripts/Test-AgentDemo.ps1` | 8 / 8 in-IRIS (REST part needs demo mode) | 16 / 16 with `MYOWN_DEMO_MODE=1` |
 | Secret scan (tracked and staged files) | `scripts/Test-AgentSecretScan.ps1` | pass | — |

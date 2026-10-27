@@ -62,4 +62,4 @@ Ficaram fora por exigir chave ou provider real: o `generationConfig` recusado pe
 | 3 | Demo online em replay | 4–8 |
 | 4 | Workflow só para distribuir a revisão, mantendo a confirmação no portal | 8–12 |
 | — | ~~README: deixar explícitos Python embarcado e busca vetorial~~ (feito na T15, seção "Technologies used") | 0 |
-| — | Relatar os bugs aos organizadores: B1 a B3 prontos em `docs/ai-hub-bugs/` (T15); B4 e B5 ainda sem relato | 0,5–1 |
+| — | Bugs do AI Hub: relatos de B1 a B3 escritos em `docs/ai-hub-bugs`, ainda não enviados; B4 e B5 ainda sem relato | 0,5–1 |

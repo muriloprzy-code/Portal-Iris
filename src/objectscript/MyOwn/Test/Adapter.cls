@@ -10,11 +10,15 @@ Parameter TaskPrefix = "MyOwn Test failing task ";
 ClassMethod Smoke() As %String [ SqlName = AdapterSmoke, SqlProc ]
 {
     Set report = {"suite": "adapter-smoke", "results": [], "pass": 0, "fail": 0}
+    Set logStart = ..LastLogId()
     Try {
         Do ..Checks(report)
     } Catch exception {
         Do ..Add(report, "AD-EXCEPTION", 0, exception.DisplayString())
     }
+    ; The query-failure checks log on purpose; those entries are removed so the Event Log shows no false errors.
+    Set removed = ..RemoveTestLogEntries(logStart)
+    Do ..Add(report, "AD-08-EVENT-LOG", ..TestLogEntries(logStart) = 0, "The " _ removed _ " Event Log entries written on purpose by the failure checks were removed.")
     Kill ^||MyOwnAdapterTest
     Set report.summary = {"pass": (report.pass), "fail": (report.fail)}
     Quit report.%ToJSON()
@@ -56,7 +60,7 @@ ClassMethod Checks(report As %DynamicObject) [ Private ]
     ; A failed query: Collect reports it, OnTask logs it, hands nothing on and keeps the service polling.
     Set host = ##class(MyOwn.Test.AdapterHost).%New()
     Set adapter = $ClassMethod(tasks, "%New")
-    Set adapter.HistoryTable = "MyOwn_Test.NoSuchHistoryTable"
+    Set adapter.HistoryTable = "MyOwn_Test.TESTIgnoreNoSuchHistoryTable"
     Set adapter.BusinessHost = host
     Set collected = adapter.Collect(.found)
     Set onTask = adapter.OnTask()
@@ -96,6 +100,32 @@ ClassMethod Checks(report As %DynamicObject) [ Private ]
     Set item = ..ProductionItem("TaskWatcher")
     Set logItem = ..ProductionItem("LogWatcher")
     Do ..Add(report, "AD-07-PRODUCTION", ($Parameter("MyOwn.Production.Service.TaskWatcher", "ADAPTER") = tasks) && ($Parameter("MyOwn.Production.Service.LogWatcher", "ADAPTER") = logs) && (item [ "TaskNamespace=MYOWN") && (item [ "HistoryRows=200") && (item [ "FailureThreshold=3") && (item [ "CallInterval=120") && (logItem [ "MaxEntries=10") && (logItem [ "CallInterval=120"), "TaskWatcher and LogWatcher use the portal adapters; the production sets " _ item _ " and " _ logItem _ ".")
+}
+
+/// Newest Event Log id of the namespace (0 when empty).
+ClassMethod LastLogId() As %Integer [ Private ]
+{
+    Set result = ##class(%SQL.Statement).%ExecDirect(, "SELECT MAX(ID) AS id FROM Ens_Util.Log")
+    Quit $Select(result.%Next(): +result.%Get("id"), 1: 0)
+}
+
+/// Entries after afterId that the adapters wrote outside the production (no config name):
+/// only the failure checks of this suite do that.
+ClassMethod TestLogEntries(afterId As %Integer, Output ids As %List) As %Integer [ Private ]
+{
+    Set ids = ""
+    Set result = ##class(%SQL.Statement).%ExecDirect(, "SELECT ID FROM Ens_Util.Log WHERE ID > ? AND (ConfigName IS NULL OR ConfigName = '') AND SourceClass IN ('MyOwn.Production.Adapter.TaskHistoryInbound', 'MyOwn.Production.Adapter.LogEntriesInbound')", afterId)
+    While result.%Next() { Set ids = ids _ $ListBuild(result.%Get("ID")) }
+    Quit $ListLength(ids)
+}
+
+ClassMethod RemoveTestLogEntries(afterId As %Integer) As %Integer [ Private ]
+{
+    Set removed = 0
+    Do ..TestLogEntries(afterId, .ids)
+    Set pointer = 0
+    While $ListNext(ids, pointer, id) { If $$$ISOK(##class(Ens.Util.Log).%DeleteId(id)) Set removed = removed + 1 }
+    Quit removed
 }
 
 /// Rows in the task history (all namespaces).
