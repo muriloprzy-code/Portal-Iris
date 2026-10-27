@@ -86,6 +86,24 @@ The Gate and the confirmation step apply to both engines.
 
 ## Run it locally
 
+### Memory
+
+**Before you start:** this was tested with WSL limited to 8 GB on a machine with 16 GB of RAM. Close other programs during both `docker image load` and the build: each of them left Windows with only about 250 to 300 MB free here.
+
+The image build starts IRIS for Health, enables interoperability (which also loads the FHIR packages) and compiles the portal. Measured inside the Docker VM: about 1 GB in use before the build and about 2.3 GB at its peak; the running container uses about 1 GB. On the Windows side, a build started with 4.9 GB free dropped to about 250 MB free during the FHIR load and still finished. Lower WSL limits are not tested.
+
+The WSL limits live in `%UserProfile%\.wslconfig` (run `wsl --shutdown` and restart Docker Desktop after changing it). The tested configuration:
+
+```ini
+[wsl2]
+memory=8GB
+swap=8GB
+```
+
+**If `docker compose up` is stopped for lack of memory:** close programs or raise `memory=` in `.wslconfig`, then run the same `docker compose ... up --build -d` again; Docker reuses the layers that finished. Closing the terminal does not stop a build already running inside Docker (`docker buildx history ls` shows it), so wait for it before starting another one. An image whose installation did not finish is never used: the build writes the marker `docker/.install-complete` only after the portal compiled, fails without it, and the container refuses to start an image that lacks it, with a message saying to rebuild.
+
+### Install
+
 **Image.** InterSystems IRIS AI Hub Community build **`2026.3.0AI.154.0`** (IRIS and IRIS for Health are both accepted; this repository defaults to IRIS for Health). Download it from the [AI Hub Early Access portal](https://evaluation.intersystems.com/Eval/early-access/AIHub), then load and retag it once per machine:
 
 ```shell
@@ -141,20 +159,6 @@ docker volume rm myown-portal-data
 
 The container is always named `myown-portal-iris`. If an earlier copy of the portal, in another folder, still has its container (even a stopped one), `up` builds the image and then fails with `The container name "/myown-portal-iris" is already in use`. Run `docker compose -f compose.yaml -f compose.aihub.yaml down` in that folder first (it keeps that folder's volume), then the same `up` again; the image is not rebuilt.
 
-### Memory
-
-The image build starts IRIS for Health, enables interoperability (which also loads the FHIR packages) and compiles the portal. Measured inside the Docker VM: about 1 GB in use before the build and about 2.3 GB at its peak; the running container uses about 1 GB. On the Windows side, a build started with 4.9 GB free dropped to about 250 MB free during the FHIR load and still finished. Tested with WSL limited to 8 GB on a machine with 16 GB of RAM; lower limits are not tested. With other programs open, the build can leave Windows with very little free memory, so close what you can before building.
-
-The WSL limits live in `%UserProfile%\.wslconfig` (run `wsl --shutdown` and restart Docker Desktop after changing it). The tested configuration:
-
-```ini
-[wsl2]
-memory=8GB
-swap=8GB
-```
-
-**If `docker compose up` is stopped for lack of memory:** close programs or raise `memory=` in `.wslconfig`, then run the same `docker compose ... up --build -d` again; Docker reuses the layers that finished. Closing the terminal does not stop a build already running inside Docker (`docker buildx history ls` shows it), so wait for it before starting another one. An image whose installation did not finish is never used: the build writes the marker `docker/.install-complete` only after the portal compiled, fails without it, and the container refuses to start an image that lacks it, with a message saying to rebuild.
-
 > **Do not push the AI Hub image, or any image built on it, to a public registry.** Share only the Dockerfile and Compose files.
 
 Other installation paths (a local IRIS instance, `Instalar.bat`) are described in [docs/REFERENCE.md](docs/REFERENCE.md).
@@ -191,7 +195,7 @@ Run every suite once, with a final table (passed / failed / skipped per suite) a
 .\scripts\Test-All.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential _SYSTEM)
 ```
 
-The UI suite needs Node.js on `PATH` (tested with Node 24) and network access the first time, when it installs the pinned Playwright 1.55.0 and its Chromium into `tests/ui` (an isolated browser, never yours); without Node it fails with "Node.js was not found". The other suites need only Windows PowerShell and the running container.
+The UI suite needs Node.js on `PATH` or in `.tools\node` (tested with Node 24) and, the first time, network access to install the pinned Playwright 1.55.0 and its Chromium (an isolated browser, never yours). Without them `Test-All.ps1` skips that suite and prints `UI: skipped (<reason and how to enable it>)`; add `-RequireUI` to count that as a failure. The other suites need only Windows PowerShell and the running container.
 
 Reports go to `test-results/all/` (one log and JSON report per suite, plus `test-all.json`). The last row checks that the run left no error in the interoperability Event Log. `-SkipEndToEnd` skips the adapter end-to-end check (a real task failing three times, about 3 to 5 minutes); `-DemoCredential` adds the REST part of the demo suite when demo mode is on.
 

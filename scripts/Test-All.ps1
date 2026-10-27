@@ -12,7 +12,10 @@ param(
     [string]$Edition = 'irisforhealth',
     [string]$OutputDirectory = 'test-results/all',
     # Skips the adapter end-to-end check (a real task failing three times; about 3 to 5 minutes).
-    [switch]$SkipEndToEnd
+    [switch]$SkipEndToEnd,
+    # The UI suite needs Node.js (and, the first time, network to install Playwright and Chromium);
+    # without them it is skipped with the reason. With -RequireUI their absence is a failure.
+    [switch]$RequireUI
 )
 
 # Runs every test suite once against one instance, in order, and prints one table:
@@ -41,6 +44,25 @@ if ($DemoCredential) { $demoArguments.DemoCredential = $DemoCredential }
 $adapterArguments = @{}
 if ($SkipEndToEnd) { $adapterArguments.SkipEndToEnd = $true }
 
+# Why the UI suite cannot run here ("" when it can): Node.js, the pinned Playwright package and
+# its Chromium, or network access to install the missing ones.
+function Get-UIUnavailableReason {
+    $localNode = Join-Path $projectRoot '.tools\node'
+    $hasNode = (Test-Path -LiteralPath (Join-Path $localNode 'node.exe')) -or [bool](Get-Command node -ErrorAction SilentlyContinue)
+    if (-not $hasNode) { return 'Node.js was not found; to enable: install Node.js (tested with 24) and put it on PATH, or in .tools\node, then run again' }
+    $missing = @()
+    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot 'tests\ui\node_modules\playwright'))) { $missing += 'the Playwright package' }
+    $browsers = if ($env:PLAYWRIGHT_BROWSERS_PATH) { $env:PLAYWRIGHT_BROWSERS_PATH } else { Join-Path $env:LOCALAPPDATA 'ms-playwright' }
+    if (-not (Get-ChildItem -LiteralPath $browsers -Directory -Filter 'chromium-*' -ErrorAction SilentlyContinue)) { $missing += 'the Playwright Chromium' }
+    if ($missing.Count -eq 0) { return '' }
+    try {
+        Invoke-WebRequest -Uri 'https://registry.npmjs.org/playwright' -Method Head -UseBasicParsing -TimeoutSec 10 | Out-Null
+        return ''
+    } catch {
+        return "$($missing -join ' and ') not installed and no network to install them; to enable: connect once and run .\scripts\Test-AgentsUI.ps1, which installs them"
+    }
+}
+
 # name, script block, JSON reports holding the counts (none: counted from PASS/FAIL/SKIP lines).
 $suites = @(
     @{ name = 'Test-MyOwn'; run = { & .\scripts\Test-MyOwn.ps1 -BaseUrl $BaseUrl -Credential $Credential -ExpectedProduct $Edition }; reports = @() }
@@ -52,7 +74,7 @@ $suites = @(
     @{ name = 'Test-AgentDemo'; run = { & .\scripts\Test-AgentDemo.ps1 -BaseUrl $BaseUrl -Credential $Credential @demoArguments -OutputPath "$rel/agents-demo.json" }; reports = @('agents-demo.json') }
     @{ name = 'Test-PortalViewer'; run = { & .\scripts\Test-PortalViewer.ps1 -BaseUrl $BaseUrl -Credential $Credential -OutputPath "$rel/portal-viewer.json" }; reports = @('portal-viewer.json') }
     @{ name = 'Test-Adapters'; run = { & .\scripts\Test-Adapters.ps1 -BaseUrl $BaseUrl -Credential $Credential @adapterArguments -OutputPath "$rel/adapters.json" }; reports = @('adapters.json') }
-    @{ name = 'Test-AgentsUI'; run = { & .\scripts\Test-AgentsUI.ps1 -BaseUrl $BaseUrl -Credential $Credential -OutputPath "$rel/agents-ui.json" -ScreenshotDirectory "$rel/ui" }; reports = @('agents-ui.json') }
+    @{ name = 'Test-AgentsUI'; run = { & .\scripts\Test-AgentsUI.ps1 -BaseUrl $BaseUrl -Credential $Credential -OutputPath "$rel/agents-ui.json" -ScreenshotDirectory "$rel/ui" }; reports = @('agents-ui.json'); unavailable = { Get-UIUnavailableReason } }
     @{ name = 'Test-AgentSecretScan'; run = { & .\scripts\Test-AgentSecretScan.ps1 -OutputPath "$rel/agents-secrets.json" }; reports = @('agents-secrets.json') }
 )
 
@@ -63,6 +85,20 @@ $runStarted = [DateTimeOffset]::Now
 foreach ($suite in $suites) {
     $log = Join-Path $out "$($suite.name).txt"
     foreach ($report in $suite.reports) { Remove-Item -LiteralPath (Join-Path $out $report) -ErrorAction SilentlyContinue }
+    if ($suite.unavailable) {
+        $reason = & $suite.unavailable
+        if ($reason) {
+            Set-Content -LiteralPath $log -Value "Not run: $reason" -Encoding UTF8
+            if ($RequireUI) {
+                Write-Host "$($suite.name) cannot run (-RequireUI): $reason" -ForegroundColor Red
+                $rows.Add([pscustomobject]@{ Suite = $suite.name; Result = 'FAIL'; Passed = 0; Failed = 1; Skipped = 0; Seconds = 0; Error = "required by -RequireUI, but $reason" })
+            } else {
+                Write-Host "Skipping $($suite.name): $reason" -ForegroundColor Yellow
+                $rows.Add([pscustomobject]@{ Suite = $suite.name; Result = 'SKIP'; Passed = 0; Failed = 0; Skipped = 1; Seconds = 0; Error = $reason })
+            }
+            continue
+        }
+    }
     Write-Host "Running $($suite.name)..." -ForegroundColor Cyan
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $errorText = ''
@@ -113,6 +149,7 @@ $summary = [ordered]@{
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $out 'test-all.json') -Encoding UTF8
 
 $rows | Format-Table Suite, Result, Passed, Failed, Skipped, Seconds -AutoSize | Out-String -Width 200 | Write-Host
+foreach ($row in $rows | Where-Object Result -eq 'SKIP') { Write-Host "UI: skipped ($($row.Error))" -ForegroundColor Yellow }
 foreach ($row in $rows | Where-Object Result -eq 'FAIL') {
     $logName = if ($row.Suite -eq 'Event Log clean') { 'Event-Log.txt' } else { "$($row.Suite).txt" }
     Write-Host "FAIL  $($row.Suite): $($row.Error) (log: $rel/$logName)" -ForegroundColor Red

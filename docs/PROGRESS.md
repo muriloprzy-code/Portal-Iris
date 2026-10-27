@@ -322,6 +322,10 @@ Clean installation following only the README (new copy of the tracked files in `
 
 Memory: build started with 4.9 GB free on Windows; minimum 242 MB during the FHIR load; it finished.
 
+## UI suite skipped when it cannot run (T19, 2026-10-27)
+
+`Test-All.ps1` checks before the UI suite whether Node.js is available (`PATH` or `.tools\node`) and, when the pinned Playwright package or its Chromium is missing, whether the npm registry answers. When the suite cannot run it is skipped with the reason and how to enable it (`UI: skipped (...)` under the table); `-RequireUI` turns that into a failure. Checked on the clean installation of T18: without Node, 243 passed, 0 failed, 3 skipped, exit 0; without Node and `-RequireUI`, the UI row fails, exit 1; with Node (main folder) and `-RequireUI`, 258 passed, 0 failed, 2 skipped, exit 0. The "Playwright or Chromium missing and no network" path was not exercised (both are installed here). README: the memory warning is now the first thing in "Run it locally".
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:
