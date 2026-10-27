@@ -28,6 +28,13 @@ test-results/*
 !test-results/.gitkeep
 .iris-agentic-dev.toml
 
+# Keys, certificates, image archives and partial downloads never belong in the repository
+*.key
+*.pem
+*.tar.gz
+*.crdownload
+*.docker
+
 # Local scratch material, not part of the portal
 extras/
 tests/ui/node_modules/
