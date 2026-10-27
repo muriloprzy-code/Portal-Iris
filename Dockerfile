@@ -15,7 +15,10 @@ ADD --chown=${ISC_PACKAGE_MGRUSER}:${ISC_PACKAGE_IRISGROUP} \
 
 # Public local-demo credential; override it through .env before non-local use.
 ARG MYOWN_DEMO_PASSWORD=change-me-please
-RUN ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
+# MYOWN_IMAGE_BUILD=1 (this step only): the installer sets the production to start at boot
+# instead of starting it during the build.
+RUN export MYOWN_IMAGE_BUILD=1 && \
+    ISC_CPF_MERGE_FILE=/home/irisowner/dev/docker/merge.cpf \
     iris start IRIS && \
     iris session IRIS < /home/irisowner/dev/docker/iris.script && \
     iris session IRIS < /home/irisowner/dev/docker/finish-build.script && \

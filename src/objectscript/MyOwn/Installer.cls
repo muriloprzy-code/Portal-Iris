@@ -148,6 +148,15 @@ ClassMethod EnsureAgentProduction() As %Status [ Private ]
 {
     Set production = "MyOwn.Production.Main"
     Set active = ##class(Ens.Director).GetActiveProductionName()
+    ; In an image build the production is only set to start at boot. On IRIS for Health the
+    ; Foundation job still holds the Ens runtime lock there, so starting (or stopping) a production
+    ; would wait 30 s and leave ErrCanNotAcquireRuntimeLock errors in the Event Log of every new
+    ; installation. MYOWN_IMAGE_BUILD is set only by the Dockerfile's build step.
+    If $System.Util.GetEnviron("MYOWN_IMAGE_BUILD") = "1" {
+        If (active '= "") && (active '= production) && '..IsEmptyFoundationProduction(active) Quit $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
+        Write !, "MyOwn Portal: image build, the agent production starts automatically when IRIS starts.", !
+        Quit ##class(Ens.Director).SetAutoStart(production)
+    }
     If (active = production) || ..IsEmptyFoundationProduction(active) {
         Set tSC = ##class(Ens.Director).StopProduction(30, 0)
         If $$$ISERR(tSC) Set tSC = ##class(Ens.Director).StopProduction(10, 1)
@@ -155,8 +164,7 @@ ClassMethod EnsureAgentProduction() As %Status [ Private ]
         Set active = ""
     }
     If active '= "" Quit $$$ERROR($$$GeneralError, "Another production is already active: " _ active)
-    ; Auto-start first: if starting now fails (on IRIS for Health image builds the Foundation
-    ; job can still hold the Ens runtime lock), IRIS starts the production on the next boot.
+    ; Auto-start first: if starting now fails, IRIS still starts the production on the next boot.
     Set tSC = ##class(Ens.Director).SetAutoStart(production)
     If $$$ISERR(tSC) Quit tSC
     Quit ##class(Ens.Director).StartProduction(production)

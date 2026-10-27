@@ -113,7 +113,10 @@ $summary = [ordered]@{
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $out 'test-all.json') -Encoding UTF8
 
 $rows | Format-Table Suite, Result, Passed, Failed, Skipped, Seconds -AutoSize | Out-String -Width 200 | Write-Host
-foreach ($row in $rows | Where-Object Result -eq 'FAIL') { Write-Host "FAIL  $($row.Suite): $($row.Error) (log: $rel/$($row.Suite).txt)" -ForegroundColor Red }
+foreach ($row in $rows | Where-Object Result -eq 'FAIL') {
+    $logName = if ($row.Suite -eq 'Event Log clean') { 'Event-Log.txt' } else { "$($row.Suite).txt" }
+    Write-Host "FAIL  $($row.Suite): $($row.Error) (log: $rel/$logName)" -ForegroundColor Red
+}
 $failedSuites = @($rows | Where-Object Result -eq 'FAIL').Count
 Write-Host ("Total: {0} passed, {1} failed, {2} skipped; {3} of {4} suites failed. Reports in {5}." -f $summary.total.passed, $summary.total.failed, $summary.total.skipped, $failedSuites, $rows.Count, $rel) -ForegroundColor $(if ($failedSuites) { 'Red' } else { 'Green' })
 if ($failedSuites -gt 0) { exit 1 }

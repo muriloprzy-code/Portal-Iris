@@ -301,6 +301,27 @@ Regression on build 154, first run after a production restart: Test-MyOwn, SysAd
 
 First run on build 154: 258 passed, 0 failed, 2 skipped (REST optional check, demo REST part with demo mode off); Event Log clean. The only errors in that Event Log are three `ErrCanNotAcquireRuntimeLock` entries from `Ens.Director` written during the image build (the Foundation job holds the runtime lock when the installer starts the production; IRIS starts it at boot), so a new installation shows them too.
 
+## Production start moved out of the image build (T18, 2026-10-27)
+
+Cause of the three `ErrCanNotAcquireRuntimeLock` errors in every new installation: during the image build, `MyOwn.Installer.Setup` called `Ens.Director.StartProduction`, which waited 30 s for the Ens runtime lock held by the IRIS for Health Foundation job and logged the error (the production then started at boot from auto-start). Fix: the Dockerfile build step exports `MYOWN_IMAGE_BUILD=1`, and in that case the installer only sets the production to start automatically (it still refuses when another, non-empty production is active). Installs outside Docker still start it at once. No Event Log entry is deleted.
+
+Before the rebuild, `Test-All.ps1` was run against a port with no IRIS (59999): 11 of 12 rows FAIL with the reason, exit code 1.
+
+Clean installation following only the README (new copy of the tracked files in `C:\Projetos\PortalIris-clean2`, new `.env` from `.env.example`, new volume `myown-portal-data-t18`, no key):
+
+| Step | Time | Note |
+|---|---|---|
+| `docker image load` | 459 s | Windows free memory fell to 299 MB during the load (README now says so) |
+| `docker tag` | 0.6 s | |
+| `docker compose ... up --build -d` | 348 s | image built (build log: "image build, the agent production starts automatically when IRIS starts", no lock error, no 30 s wait); then **failed**: the container name `myown-portal-iris` was still used by the stopped container of the previous clean test. README now says to run `down` in the earlier folder |
+| `down` in the earlier folder, same `up` again | 9 s | image reused |
+| container healthy | 23 s after start | `/health` ok, `/agent/status` `aiHubInstalled` 1 |
+| production start at boot | 38 s after container start | first Event Log entry is `Production 'MyOwn.Production.Main' starting...` from auto-start; no call made it |
+| Event Log | — | no error, warning or alert at all (115 info entries after the tests) |
+| `Test-All.ps1`, first and only run | 303 s | 243 passed, 1 failed, 2 skipped: every suite passed except the UI suite, "Node.js was not found" (the copy has no `.tools`, and Node is not on PATH). README now lists Node.js and the first-run Playwright download as prerequisites. The UI suite run once from the main folder against this container: 15/15 |
+
+Memory: build started with 4.9 GB free on Windows; minimum 242 MB during the FHIR load; it finished.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:

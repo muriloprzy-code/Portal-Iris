@@ -200,7 +200,7 @@ The portal was exercised with the temporary stand-in engine (the existing `Agent
 Build notes for IRIS for Health:
 
 - Enabling interoperability on a namespace (`%EnsembleMgr.EnableNamespace`, and `Interop=1` in a CPF merge) creates and starts an empty `MYOWNPKG.FoundationProduction` and loads the FHIR packages (about 3 minutes; peak about 1.3 GB RAM during the image build, no swap).
-- During the image build the Foundation job can keep the Ens runtime lock, so starting the portal production fails there (`ErrCanNotAcquireRuntimeLock`); the installer sets the portal production to auto-start first, and IRIS starts it when the container boots.
+- During the image build the Foundation job can keep the Ens runtime lock, so starting a production there waits 30 s and fails with `ErrCanNotAcquireRuntimeLock`. Since T18 the installer does not try: in the build step (`MYOWN_IMAGE_BUILD=1`) it only sets the portal production to auto-start, and IRIS starts it at boot.
 - On this machine `docker compose ... build` used a `docker-container` buildx builder (`buildx_buildkit_default`) that cannot see locally loaded images and tried to pull the image from Docker Hub. The verified sequence was:
 
 ```text

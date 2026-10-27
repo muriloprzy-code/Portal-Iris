@@ -94,7 +94,7 @@ docker image load -i irishealth-community-2026.3.0AI.154.0-docker.tar.gz
 docker tag docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2026.3.0AI.154.0 irishealth-community:2026.3.0AI.154.0
 ```
 
-If `docker image load` prints a different name, tag that name instead (`docker images` lists it). Loading the 5 GB archive took about 4 minutes here.
+If `docker image load` prints a different name, tag that name instead (`docker images` lists it). Loading the 5 GB archive took 4 to 8 minutes here, and it needs memory too: Windows free memory fell to about 300 MB while it ran (see [Memory](#memory)).
 
 For the IRIS edition, load `iris-community-2026.3.0AI.154.0-docker.tar.gz`, tag it `iris-community:2026.3.0AI.154.0` and set `IRIS_IMAGE` in `.env`.
 
@@ -139,9 +139,11 @@ docker compose -f compose.yaml -f compose.aihub.yaml down
 docker volume rm myown-portal-data
 ```
 
+The container is always named `myown-portal-iris`. If an earlier copy of the portal, in another folder, still has its container (even a stopped one), `up` builds the image and then fails with `The container name "/myown-portal-iris" is already in use`. Run `docker compose -f compose.yaml -f compose.aihub.yaml down` in that folder first (it keeps that folder's volume), then the same `up` again; the image is not rebuilt.
+
 ### Memory
 
-The image build starts IRIS for Health, enables interoperability (which also loads the FHIR packages) and compiles the portal. Measured inside the Docker VM: about 1 GB in use before the build and about 2.3 GB at its peak; the running container uses about 1 GB. Tested with WSL limited to 8 GB on a machine with 16 GB of RAM; lower limits are not tested. With other programs open, the build can leave Windows with very little free memory, so close what you can before building.
+The image build starts IRIS for Health, enables interoperability (which also loads the FHIR packages) and compiles the portal. Measured inside the Docker VM: about 1 GB in use before the build and about 2.3 GB at its peak; the running container uses about 1 GB. On the Windows side, a build started with 4.9 GB free dropped to about 250 MB free during the FHIR load and still finished. Tested with WSL limited to 8 GB on a machine with 16 GB of RAM; lower limits are not tested. With other programs open, the build can leave Windows with very little free memory, so close what you can before building.
 
 The WSL limits live in `%UserProfile%\.wslconfig` (run `wsl --shutdown` and restart Docker Desktop after changing it). The tested configuration:
 
@@ -188,6 +190,8 @@ Run every suite once, with a final table (passed / failed / skipped per suite) a
 ```powershell
 .\scripts\Test-All.ps1 -BaseUrl http://localhost:52774 -Credential (Get-Credential _SYSTEM)
 ```
+
+The UI suite needs Node.js on `PATH` (tested with Node 24) and network access the first time, when it installs the pinned Playwright 1.55.0 and its Chromium into `tests/ui` (an isolated browser, never yours); without Node it fails with "Node.js was not found". The other suites need only Windows PowerShell and the running container.
 
 Reports go to `test-results/all/` (one log and JSON report per suite, plus `test-all.json`). The last row checks that the run left no error in the interoperability Event Log. `-SkipEndToEnd` skips the adapter end-to-end check (a real task failing three times, about 3 to 5 minutes); `-DemoCredential` adds the REST part of the demo suite when demo mode is on.
 
