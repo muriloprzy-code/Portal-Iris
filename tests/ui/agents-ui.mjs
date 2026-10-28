@@ -168,6 +168,22 @@ try {
     if (!closed) add(`UI-${scenario}-CLOSE`, false, 'Escape did not close the decision drawer.')
   }
 
+  // "Open trace" on the scenario result switches to Observability and shows the TRACE panel.
+  await openTab(page, 'Overview')
+  await page.getByLabel('Demonstration scenario').selectOption('S1')
+  const traceRun = page.waitForResponse((response) => response.url().endsWith('/agent/simulate') && response.request().method() === 'POST')
+  await page.getByRole('button', { name: 'Run scenario' }).click()
+  const traceId = (await (await traceRun).json()).data?.traceId
+  await page.getByText('S1 completed through the interoperability production.').waitFor()
+  await page.locator('.simulation-result').getByRole('button', { name: 'Open trace' }).click()
+  const tracePanel = page.locator('.trace-panel')
+  const traceShown = await tracePanel.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)
+  const traceTab = await page.getByRole('tab', { name: 'Observability', exact: true }).getAttribute('aria-selected')
+  const traceHeading = traceShown ? (await tracePanel.locator('h3').innerText()).trim() : ''
+  const traceLabel = traceShown ? (await tracePanel.locator('small', { hasText: /^TRACE$/ }).count()) : 0
+  await page.screenshot({ path: path.join(outDir, 'open-trace.png') })
+  add('UI-OPEN-TRACE', Boolean(traceId) && traceShown && traceTab === 'true' && traceLabel === 1 && traceHeading === traceId, `Open trace on the S1 result: Observability selected ${traceTab}, TRACE panel visible ${traceShown}, heading "${traceHeading}" (expected ${traceId}).`)
+
   // Expired proposals must never be shown (or counted in the badge) as pending.
   await openTab(page, 'Approvals')
   await page.locator('.agent-card-list').first().waitFor()

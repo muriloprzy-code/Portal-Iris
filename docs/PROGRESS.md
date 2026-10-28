@@ -371,6 +371,10 @@ New: `MyOwn.REST.Docs`, a base class for `%CSP.REST` dispatch classes. It handle
 
 Tests: `MyOwn.Test.Docs` (DOC-01..04, in IRIS) and `scripts/Test-ApiDocs.ps1` (DOC-10..14 over HTTP, with a temporary web application `/myown/test-docs` for `MyOwn.Test.DocsSample`, removed at the end). The viewer test now also opens `/openapi.json` and `/docs`. Local 2026.2: compiles, DOC-01..04 pass.
 
+## "Open trace" on the scenario result (T27, 2026-10-28, branch t27-trace-tab)
+
+Bug: on Agents › Overview, "Open trace" under the scenario result loaded the trace but stayed on Overview, and the trace panel only renders on Observability, so nothing visible happened. The button now switches to Observability first, like "View trace" in the decision drawer. That was the only button with the problem ("Open" on a decision opens the drawer on the Decisions tab itself). New UI check `UI-OPEN-TRACE`: runs S1, clicks "Open trace" and expects the Observability tab selected and the TRACE panel showing the run's trace id.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:
