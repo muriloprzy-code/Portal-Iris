@@ -70,7 +70,7 @@ Until then the registry has 1.0.3; to install 1.1.0 from a clone, `zpm "load /pa
 
 - Only the Gemini provider was used for real calls (`gemini-3.8-flash`, free tier). OpenAI, Anthropic and Bedrock go through the same `%AI.Provider` path but are untested.
 - Gemini free-tier latency was 12 to 83 s per decision, against the portal's 20 s default deadline, so live decisions often fall back to Rules (`provider_timeout`). The provider also retries HTTP 429 and 503 on its own before reporting them. The online demo therefore uses replay mode.
-- Replay fixtures S2 to S4, S8 and S9 come from earlier calls with equivalent, not identical, contexts (each fixture header says so); re-recording them stopped on provider 503 "high demand" answers.
+- Replay fixtures S2 to S4, S8 and S9 come from earlier calls with equivalent, not identical, contexts (each fixture header says so). Re-recording them with the exact context failed three times (2026-10-24, 26 and 28): Gemini timed out or answered 503 "high demand".
 - The IRIS edition of build 154 was not tested; only IRIS for Health.
 - A viewer (`MyOwnViewer`) cannot file an access request: SysAdmin API v2 refuses it even its own account. The portal answers with a clear 403 and administrators file requests.
 - The image build needs about 2.3 GB inside the Docker VM at its peak, and loading the image archive also needs memory; with other programs open, Windows can run low.

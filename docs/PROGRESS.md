@@ -353,6 +353,10 @@ Docker, clean installation following only the README (new copy `C:\Projetos\Port
 - README: the default `_SYSTEM` password in `.env.example` is for local use only and must be changed before exposing the portal. The hosted demo uses a different, generated password for the `demo` account (`scripts/New-DemoPassword.ps1` writes `MYOWN_DEMO_USER_PASSWORD` to `.env`; without it the account stays disabled).
 - `Test-All.ps1 -RequireUI` from the main folder against that container: 258 passed, 0 failed, 2 skipped; Event Log clean.
 
+## Fixture re-recording, third attempt (T22, 2026-10-28)
+
+Goal: re-record S2, S3, S4, S8 and S9 with the exact context. On the clean installation (engine preference `rules` during the window, key only in the container environment, live mode, 55 s deadline): the first call (S2) got no answer within 55 s and the recording script stopped there; a foreground diagnostic call for S2 with the `%AI` trace timed out after 184 s at the HTTP request itself ("operation timed out"), without a 429 or 503. The Google API host answered in 0.5 s from the container and the host. Two of the six allowed calls were used; no fixture changed. `Build-ReplayFixtures.ps1 -Check`: the class matches the fixtures; AI Hub engine suite in replay: 20/20. Afterwards the container was recreated without the key, the deadline back to 20 s and the engine preference back to `auto`. README: the scenario table now says which recordings use the exact context, and the limitation note gives the dates of the attempts. Details in `docs/AI-HUB-NOTES.md` ("Third attempt").
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:

@@ -259,6 +259,15 @@ A second recording run (deadline raised to 55 s for the recording window only, e
 
 The run stopped there. S2, S3, S4, S8 and S9 keep their T03 recordings (equivalent contexts, stated in each header).
 
+### Third attempt (2026-10-28)
+
+Clean installation of build 154, engine preference `rules` during the window (so the production made no calls of its own), key passed to the container only through the environment, `MYOWN_AI_MODE=live`, deadline 55 s. Two real calls of the six allowed:
+
+1. S2 through `Record-ReplayFixtures.ps1`: no answer within 55 s, no tool executed (`provider_timeout`, also in the ledger).
+2. S2 in the foreground with the `%AI` trace at `info`: one "Creating chat completion with model: gemini-3.8-flash" line, then after 184 s `ProviderError: ... error sending request for url (https://generativelanguage.googleapis.com/v1beta/openai/chat/completions): ... operation timed out`. No 429 or 503 this time: the request itself never got an answer. The key was checked absent from the trace, and the trace was deleted.
+
+From the same container and from the host, `https://generativelanguage.googleapis.com/` answered (404 at the root, as expected) in 0.5 s, so the network was not the cause. Stopped after two failures of the same kind; S2, S3, S4, S8 and S9 keep their T03 recordings.
+
 ## Web gateway HTTP 504 on the first run (2026-10-24)
 
 Symptom: `Test-AgentSmoke.ps1` and `Test-Agents-AIHub.ps1` sometimes ended with HTTP 504, usually on the first regression run after a container start, and passed when repeated.
