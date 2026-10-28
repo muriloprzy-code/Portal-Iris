@@ -65,6 +65,15 @@ The AI Hub engine (`aihub/src`, part of the one IPM module `myown-portal`) is co
 
 **IPM module.** One module, `myown-portal` (`module.xml`). `MyOwn.Bootstrap` (in `preload/`, compiled first) enables interoperability on the namespace before the Ens-based classes compile. The module installs the `MyOwn` package and copies the built React UI from `web/` to the `/myown` web application. `MyOwn.Installer.LoadAIHub` compiles the AI Hub engine from `aihub/src` (engine, read-only tools and ToolSet, policies, replay fixtures) only where `%AI` exists. `MyOwn.Installer.Setup` seeds the health patterns and agent defaults, creates the `MyOwn.*` resources, roles and the `/myown/api` REST application, registers the agent audit events, schedules the health snapshot and agent retention tasks, grants SQL read access to the portal schemas and sets the agent production to start automatically. The test classes are not installed from the registry: `MyOwn.AIHub.Test` comes only in developer mode (`-dev`), and `MyOwn.Test` (`Scope="test"`) is loaded by the Docker build itself (`docker/iris.script`), because the test scripts need both. The registry currently has `myown-portal` 1.0.3; 1.1.0 is not published yet (see [docs/PUBLISH-CHECKLIST.md](docs/PUBLISH-CHECKLIST.md)).
 
+## Ideas Portal
+
+Two ideas from the InterSystems Ideas Portal are implemented in this repository:
+
+| Idea | Implemented in | Where |
+|---|---|---|
+| [DPI-I-767 "Automatically Expose Interactive API Documentation"](https://ideas.intersystems.com/ideas/DPI-I-767) | this entry | `MyOwn.REST.Docs`: `/openapi.json` and an interactive `/docs` for any `%CSP.REST` class (see [API docs](#api-docs)) |
+| [DPI-I-512 "add AI to Instance Monitor to prevent major incident"](https://ideas.intersystems.com/ideas/DPI-I-512) | MyOwn Portal, for the earlier *Build Your Own Management Portal* contest, and kept here | the AI Instance Monitor on the Overview page: health snapshots and Embedded Python anomaly detection against the instance's own history (`MyOwn.Service.HealthAnalysis`, see [docs/REFERENCE.md](docs/REFERENCE.md)). Its anomalies are now also what the `HealthMonitor` service sends to the agent |
+
 ## API docs
 
 The portal API documents itself: `GET /myown/api/docs` is an interactive page and `GET /myown/api/openapi.json` the OpenAPI 3.0 document, both behind the same sign-in as the rest of the API. This answers what the community still asks for in the Ideas Portal idea [DPI-I-767 "Automatically Expose Interactive API Documentation"](https://ideas.intersystems.com/ideas/DPI-I-767): a FastAPI-style `/docs` for `%CSP.REST` classes.
