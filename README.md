@@ -293,8 +293,8 @@ The agent workflow sits on MyOwn Portal, built for the earlier *Build Your Own M
 
 ## Team
 
-- Murilo Przybyloviecz — **[TODO: Developer Community profile link and role]**
-- Andre Larsen Barbosa — **[TODO: Developer Community profile link and role]**
+- Murilo Przybyloviecz — [Developer Community profile](https://community.intersystems.com/user/murilo-przyby)
+- Andre Larsen Barbosa — [Developer Community profile](https://community.intersystems.com/user/andre-larsenbarbosa)
 
 ## License
 
