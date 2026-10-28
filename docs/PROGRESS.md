@@ -363,6 +363,14 @@ Model list of the key (no generation call): the lightest text family is flash-li
 
 Regression: the first `Test-All -RequireUI` failed only in the UI suite: `npx playwright install` printed an "npm notice" update hint to stderr, which Windows PowerShell 5.1 turns into a terminating error under redirection. `Test-AgentsUI.ps1` now sets `NPM_CONFIG_UPDATE_NOTIFIER=false` for its own process. Second run: 257 passed, 0 failed, 3 skipped (adapter end-to-end skipped; it passed in the first run), UI 15/15.
 
+## Interactive API docs (T24, 2026-10-28, branch t24-apidocs)
+
+Ideas Portal DPI-I-767 asks for a FastAPI-style `/docs` for `%CSP.REST` classes. What build 154 already has: `%REST.API.GetWebRESTApplication` (also behind `/api/mgmnt`) generates Swagger 2.0 from the `UrlMap` of a web application (51 paths here, `///` comments as descriptions, method names as operationId, no parameters); it needs the web application name and security read access. `%REST.OpenAPI` converts the other way (OpenAPI to the spec-first `%REST` model); its `ConvertURL` leaves `:id` untouched. `%iKnow.REST.Utils` writes Swagger YAML for iKnow only. Nothing serves an interactive page.
+
+New: `MyOwn.REST.Docs`, a base class for `%CSP.REST` dispatch classes. It handles `GET /openapi.json` and `GET /docs` in `OnPreDispatch`, which `%CSP.REST` calls before route matching; `DispatchRequest` is final, and the tooling refuses compile-time generators, so the spec is built on every request from the compiled class (no test recompiles a class to check it): the `UrlMap` routes, the `///` comment of each method, the query parameters read with `%request.Data`/`%request.Get`, and whether a JSON body is read. The page is our own interactive viewer, not Swagger UI (inline script with a nonce, strict CSP, nothing external); only GET operations can be tried. `MyOwn.REST` extends it and calls `##super` after its own access and demo checks. Its 52 route methods without a comment got one, and the 21 that require the administrator check say so. The old hand-written `/openapi` (27 of 54 routes) now returns the generated document, so the API explorer keeps working.
+
+Tests: `MyOwn.Test.Docs` (DOC-01..04, in IRIS) and `scripts/Test-ApiDocs.ps1` (DOC-10..14 over HTTP, with a temporary web application `/myown/test-docs` for `MyOwn.Test.DocsSample`, removed at the end). The viewer test now also opens `/openapi.json` and `/docs`. Local 2026.2: compiles, DOC-01..04 pass.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:

@@ -72,6 +72,7 @@ $suites = @(
     @{ name = 'Test-AgentSmoke'; run = { & .\scripts\Test-AgentSmoke.ps1 -BaseUrl $BaseUrl -Credential $Credential -IrisImage $IrisImage -Edition $Edition -OutputDirectory $rel }; reports = @('agents-smoke-core.json', 'agents-smoke-integration.json') }
     @{ name = 'Test-Agents-AIHub'; run = { & .\scripts\Test-Agents-AIHub.ps1 -BaseUrl $BaseUrl -Credential $Credential -IrisImage $IrisImage -Edition $Edition -OutputPath "$rel/agents-aihub.json" }; reports = @('agents-aihub.json') }
     @{ name = 'Test-AgentDemo'; run = { & .\scripts\Test-AgentDemo.ps1 -BaseUrl $BaseUrl -Credential $Credential @demoArguments -OutputPath "$rel/agents-demo.json" }; reports = @('agents-demo.json') }
+    @{ name = 'Test-ApiDocs'; run = { & .\scripts\Test-ApiDocs.ps1 -BaseUrl $BaseUrl -Credential $Credential -OutputPath "$rel/api-docs.json" }; reports = @('api-docs.json') }
     @{ name = 'Test-PortalViewer'; run = { & .\scripts\Test-PortalViewer.ps1 -BaseUrl $BaseUrl -Credential $Credential -OutputPath "$rel/portal-viewer.json" }; reports = @('portal-viewer.json') }
     @{ name = 'Test-Adapters'; run = { & .\scripts\Test-Adapters.ps1 -BaseUrl $BaseUrl -Credential $Credential @adapterArguments -OutputPath "$rel/adapters.json" }; reports = @('adapters.json') }
     @{ name = 'Test-AgentsUI'; run = { & .\scripts\Test-AgentsUI.ps1 -BaseUrl $BaseUrl -Credential $Credential -OutputPath "$rel/agents-ui.json" -ScreenshotDirectory "$rel/ui" }; reports = @('agents-ui.json'); unavailable = { Get-UIUnavailableReason } }

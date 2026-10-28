@@ -30,7 +30,9 @@ function Invoke-Portal([hashtable]$Headers, [string]$Method, [string]$Path, [obj
     if ($null -ne $Body) { $arguments.ContentType = 'application/json'; $arguments.Body = ($Body | ConvertTo-Json -Depth 10 -Compress) }
     try {
         $response = Invoke-WebRequest @arguments
-        return [pscustomobject]@{ status = [int]$response.StatusCode; body = ($response.Content | ConvertFrom-Json) }
+        # /docs answers HTML; only JSON bodies are parsed.
+        $parsed = if ("$($response.Headers['Content-Type'])" -match 'json') { $response.Content | ConvertFrom-Json } else { $null }
+        return [pscustomobject]@{ status = [int]$response.StatusCode; body = $parsed }
     } catch [System.Net.WebException] {
         if ($null -eq $_.Exception.Response) { throw }
         $parsed = $null
@@ -66,7 +68,7 @@ try {
     Add-Result 'VW-01-SESSION' (($session.status -eq 200) -and ($session.body.data.accessLevel -eq 'Viewer') -and -not [bool][int]$session.body.data.canManage) "A MyOwnViewer-only account signs in as Viewer (HTTP $($session.status), level $($session.body.data.accessLevel))."
 
     # Routes of the Overview, Logs and Agents screens for a viewer.
-    $routes = '/health', '/system/summary', '/system/health-report', '/logs', '/agent/status', '/agent/decisions', '/agent/access-requests', '/agent/ledger/summary', '/agent/production/status', '/agent/guardrails', '/demo/state'
+    $routes = '/health', '/system/summary', '/system/health-report', '/logs', '/agent/status', '/agent/decisions', '/agent/access-requests', '/agent/ledger/summary', '/agent/production/status', '/agent/guardrails', '/demo/state', '/openapi.json', '/docs'
     $statuses = foreach ($path in $routes) { $r = Invoke-Portal $viewer GET $path; "$path=$($r.status)$(if ($r.status -ne 200 -and $r.body.error.code) { " $($r.body.error.code)" })" }
     Add-Result 'VW-02-SCREENS' (-not ($statuses | Where-Object { $_ -notmatch '=200$' })) "Viewer screens: $($statuses -join ', ')."
 

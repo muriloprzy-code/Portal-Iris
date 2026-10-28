@@ -20,6 +20,7 @@
       <Resource Name="MyOwn.Installer.CLS" />
       <Resource Name="MyOwn.HealthPattern.CLS" />
       <Resource Name="MyOwn.REST.CLS" />
+      <Resource Name="MyOwn.REST.PKG" />
       <Resource Name="MyOwn.Agent.PKG" />
       <Resource Name="MyOwn.Demo.PKG" />
       <Resource Name="MyOwn.Install.PKG" />

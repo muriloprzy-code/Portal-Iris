@@ -1,7 +1,11 @@
-Class MyOwn.REST Extends %CSP.REST
+/// Authenticated REST entry point for the MyOwn Portal administration interface: system, security,
+/// tasks and logs, and the AI agent (decisions, proposals, access requests, ledger, production).
+Class MyOwn.REST Extends MyOwn.REST.Docs
 {
 
-/// Authenticated REST entry point for the MyOwn Portal administration interface.
+Parameter DOCSTITLE = "MyOwn Portal API";
+
+Parameter DOCSVERSION = "1.1.0";
 
 /// The React frontend is served from the same origin (or through the Vite proxy
 /// during development), so cross-origin requests are deliberately not accepted.
@@ -69,6 +73,7 @@ XData UrlMap
 </Routes>
 }
 
+/// Checks that the API answers and returns the instance name and IRIS version.
 ClassMethod Health() As %Status
 {
     Set tSC = $$$OK
@@ -86,6 +91,7 @@ ClassMethod Health() As %Status
     Quit tSC
 }
 
+/// The signed-in account: name, access level (Viewer or Administrator) and what the portal lets it do.
 ClassMethod CurrentSession() As %Status
 {
     Set tSC = $$$OK
@@ -107,6 +113,7 @@ ClassMethod CurrentSession() As %Status
     Quit tSC
 }
 
+/// IRIS system summary: version, uptime, memory, disk, database space, lock table and process counts.
 ClassMethod SystemSummary() As %Status
 {
     Set tSC = $$$OK
@@ -132,6 +139,7 @@ ClassMethod SystemSummary() As %Status
     Quit $$$OK
 }
 
+/// Active IRIS processes (at most 25) (administrator).
 ClassMethod SystemProcesses() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -161,7 +169,7 @@ ClassMethod SystemProcesses() As %Status
     Quit $$$OK
 }
 
-/// Confirms that this IRIS instance provides the required SysAdmin API v2.
+/// Confirms that this IRIS instance provides the required SysAdmin API v2 (administrator).
 ClassMethod SysAdminStatus() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -179,6 +187,7 @@ ClassMethod SysAdminStatus() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Health report: an Embedded Python score, the anomalies against recent history and the closest known health pattern (Vector Search).
 ClassMethod SystemHealthReport() As %Status
 {
     Set tSC = ##class(MyOwn.Service.HealthAnalysis).GetReport(.data)
@@ -186,24 +195,28 @@ ClassMethod SystemHealthReport() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// IRIS users (names, roles, enabled), read through SysAdmin API v2 with the caller's credentials (administrator).
 ClassMethod PermissionUsers() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WritePermissionResponse("users")
 }
 
+/// IRIS roles and their resources (administrator).
 ClassMethod PermissionRoles() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WritePermissionResponse("roles")
 }
 
+/// IRIS resources and their public permissions (administrator).
 ClassMethod PermissionResources() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WritePermissionResponse("resources")
 }
 
+/// One IRIS user: roles, state and login settings (administrator).
 ClassMethod PermissionUserDetail(user As %String) As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -214,6 +227,7 @@ ClassMethod PermissionUserDetail(user As %String) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Effective privileges of one user: roles and the resources they grant (administrator).
 ClassMethod PermissionUserEffective(user As %String) As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -228,6 +242,7 @@ ClassMethod PermissionUserEffective(user As %String) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// One IRIS role: resources and members (administrator).
 ClassMethod PermissionRoleDetail(role As %String) As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -238,6 +253,7 @@ ClassMethod PermissionRoleDetail(role As %String) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Adds a role to a user through SysAdmin API v2 (administrator; refused in demo mode).
 ClassMethod AddPermissionUserRole(user As %String) As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -261,6 +277,7 @@ ClassMethod AddPermissionUserRole(user As %String) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Removes a role from a user through SysAdmin API v2 (administrator; refused in demo mode).
 ClassMethod RemovePermissionUserRole(user As %String, role As %String) As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -275,6 +292,7 @@ ClassMethod RemovePermissionUserRole(user As %String, role As %String) As %Statu
     Quit ..WriteSuccess(data)
 }
 
+/// IRIS web applications (path, namespace, enabled, authentication methods) (administrator).
 ClassMethod Applications() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -303,6 +321,7 @@ ClassMethod Applications() As %Status
     Quit $$$OK
 }
 
+/// One web application, selected by name (administrator).
 ClassMethod ApplicationDetail() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -316,6 +335,7 @@ ClassMethod ApplicationDetail() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Enables or disables a web application (administrator; refused in demo mode).
 ClassMethod SetApplicationState() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -343,6 +363,7 @@ ClassMethod SetApplicationState() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Runs one bounded request against a local /myown/api or /api path, after an explicit confirmation for state-changing methods (administrator; refused in demo mode).
 ClassMethod TestAPI() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -378,76 +399,14 @@ ClassMethod TestAPI() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// The OpenAPI document of this API (same content as /openapi.json, kept for the API explorer).
 ClassMethod OpenAPI() As %Status
 {
-    Set spec = {}
-    Set spec.openapi = "3.0.3"
-    Set spec.info = {}
-    Set spec.info.title = "MyOwn Portal API"
-    Set spec.info.version = "1.0.0"
-    Set spec.info.description = "Local administration API for InterSystems IRIS."
-    Set spec.servers = []
-    Set server = {}
-    Set server.url = "/myown/api"
-    Do spec.servers.%Push(server)
-    Set spec.paths = {}
-    Do ..AddOpenAPIPath(spec.paths, "/health", "get", "Check API and IRIS availability")
-    Do ..AddOpenAPIPath(spec.paths, "/sysadmin/status", "get", "Check the local IRIS SysAdmin API capability")
-    Do ..AddOpenAPIPath(spec.paths, "/system/summary", "get", "Read the IRIS system summary")
-    Do ..AddOpenAPIPath(spec.paths, "/system/health-report", "get", "Analyze instance health with Embedded Python and IRIS Vector Search")
-    Do ..AddOpenAPIPath(spec.paths, "/system/processes", "get", "List active IRIS processes")
-    Do ..AddOpenAPIPath(spec.paths, "/permissions/users", "get", "List IRIS users")
-    Do ..AddOpenAPIPath(spec.paths, "/applications", "get", "List IRIS web applications")
-    Do ..AddOpenAPIPath(spec.paths, "/security", "get", "Read sanitized security metadata")
-    Do ..AddOpenAPIPath(spec.paths, "/tasks", "get", "List scheduled tasks")
-    Do ..AddOpenAPIPath(spec.paths, "/logs", "get", "Read sanitized IRIS log events")
-    Do ..AddOpenAPIPath(spec.paths, "/apis/test", "post", "Execute a bounded local API request")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/status", "get", "Read the agent subsystem status")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/config", "get", "Read the sanitized agent configuration")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/config", "put", "Update the agent configuration")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/killswitch", "post", "Enable or disable all agent actions")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/decisions", "get", "List recent agent decisions")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/decisions/{id}", "get", "Read an agent decision")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/proposals", "get", "List state-changing proposals")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/proposals/{id}/confirm", "post", "Confirm a pending proposal")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/proposals/{id}/reject", "post", "Reject a pending proposal")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests", "get", "List access requests visible to the current user")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests", "post", "Queue an access request for asynchronous agent analysis")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/access-requests/{id}", "get", "Read an access request and its decision")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/ledger/summary", "get", "Read agent observability totals")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/ledger", "get", "List agent execution ledger entries")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/traces/{traceId}", "get", "Read an end-to-end agent trace")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/pricing", "get", "List configured model prices")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/pricing", "put", "Create or update a model price")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/production/status", "get", "Read the interoperability production status")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/production/start", "post", "Start the agent production")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/production/stop", "post", "Stop the agent production")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/guardrails", "get", "Read the enforced agent guardrails")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/simulate", "post", "Run a deterministic demonstration scenario")
-    Do ..AddOpenAPIPath(spec.paths, "/agent/analyze", "post", "Analyze the current instance health")
-    Set %response.ContentType = "application/vnd.oai.openapi+json;version=3.0"
-    Write spec.%ToJSON()
-    Quit $$$OK
+    Quit ..WriteOpenAPI()
 }
 
-ClassMethod AddOpenAPIPath(paths As %DynamicObject, path As %String, method As %String, summary As %String) As %Status [ Private ]
-{
-    If paths.%IsDefined(path) {
-        Set pathItem = paths.%Get(path)
-    } Else {
-        Set pathItem = {}
-    }
-    Set operation = {}
-    Set operation.summary = summary
-    Set operation.responses = {}
-    Set response = {}
-    Set response.description = "Successful response"
-    Do operation.responses.%Set("200", response)
-    Do pathItem.%Set(method, operation)
-    Do paths.%Set(path, pathItem)
-    Quit $$$OK
-}
 
+/// Scheduled tasks of the instance (name, namespace, schedule, last run, suspended) (administrator).
 ClassMethod Tasks() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -476,6 +435,7 @@ ClassMethod Tasks() As %Status
     Quit $$$OK
 }
 
+/// One scheduled task, selected by id (administrator).
 ClassMethod TaskDetail() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -488,6 +448,7 @@ ClassMethod TaskDetail() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Runs, suspends or resumes a task (JSON body: id and action); refused in demo mode (administrator).
 ClassMethod TaskAction() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -515,6 +476,7 @@ ClassMethod TaskAction() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Security inventory (users, roles, applications, certificates, OAuth and credentials), without secrets (administrator).
 ClassMethod Security() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -543,6 +505,7 @@ ClassMethod Security() As %Status
     Quit $$$OK
 }
 
+/// Counts for the security overview (administrator).
 ClassMethod SecuritySummary() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -553,24 +516,28 @@ ClassMethod SecuritySummary() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// TLS configurations and certificates, without private keys (administrator).
 ClassMethod SecurityCertificates() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WriteSecurityCategory("certificates")
 }
 
+/// OAuth 2.0 client and server definitions, without secrets (administrator).
 ClassMethod SecurityOAuth() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WriteSecurityCategory("oauth")
 }
 
+/// Interoperability credentials by name; passwords are never returned (administrator).
 ClassMethod SecurityCredentials() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
     Quit ..WriteSecurityCategory("credentials")
 }
 
+/// One security item, selected by category and name, without secrets (administrator).
 ClassMethod SecurityDetail() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -593,6 +560,7 @@ ClassMethod WriteSecurityCategory(category As %String) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Recent IRIS log events (messages.log and alerts), sanitized.
 ClassMethod Logs() As %Status
 {
     Set tSC = $$$OK
@@ -618,6 +586,7 @@ ClassMethod Logs() As %Status
     Quit $$$OK
 }
 
+/// Agent subsystem status: active engine, provider and model names, AI mode, deadline, whether a key is configured (never the key), kill switch.
 ClassMethod AgentStatus() As %Status
 {
     Set tSC = ##class(MyOwn.Agent.Service.Agent).Status(.data)
@@ -625,6 +594,7 @@ ClassMethod AgentStatus() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Agent settings (engine preference, autonomy, budgets, cooldown); administrator only.
 ClassMethod AgentConfig() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -633,6 +603,7 @@ ClassMethod AgentConfig() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Updates the agent settings; every change is audited (administrator).
 ClassMethod UpdateAgentConfig() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -648,6 +619,7 @@ ClassMethod UpdateAgentConfig() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Turns the kill switch on or off: with it on, the agent makes no AI call and proposes nothing (administrator).
 ClassMethod SetAgentKillSwitch() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -665,6 +637,7 @@ ClassMethod SetAgentKillSwitch() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Recent agent decisions with their engine, outcome and fallback reason.
 ClassMethod AgentDecisions() As %Status
 {
     Set tSC = ##class(MyOwn.Agent.Service.Agent).ListDecisions(.data)
@@ -672,6 +645,7 @@ ClassMethod AgentDecisions() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// One decision: rationale, evidence, conditions, Gate result, proposal and the model text as plain text.
 ClassMethod AgentDecisionDetail(id As %Integer) As %Status
 {
     Set tSC = ##class(MyOwn.Agent.Service.Agent).DecisionDetail(id, .data)
@@ -679,6 +653,7 @@ ClassMethod AgentDecisionDetail(id As %Integer) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Proposals waiting for a human, and their state.
 ClassMethod AgentProposals() As %Status
 {
     If '..CanOperateProposals() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -688,6 +663,7 @@ ClassMethod AgentProposals() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Confirms a pending proposal: state, expiry, separation of duties, prohibited targets, target fingerprint and live permission are checked again, then the change runs with the confirming user's credentials and is read back.
 ClassMethod ConfirmAgentProposal(id As %Integer) As %Status
 {
     If '..CanOperateProposals() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -696,6 +672,7 @@ ClassMethod ConfirmAgentProposal(id As %Integer) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Rejects a pending proposal; the rejection is audited.
 ClassMethod RejectAgentProposal(id As %Integer) As %Status
 {
     If '..CanOperateProposals() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -715,6 +692,7 @@ ClassMethod RejectAgentProposal(id As %Integer) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Queues an access request (role and justification) for asynchronous agent analysis.
 ClassMethod SubmitAgentAccessRequest() As %Status
 {
     ; The privilege delta is read through SysAdmin API v2 with the requester's own credentials,
@@ -739,6 +717,7 @@ ClassMethod SubmitAgentAccessRequest() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Access requests visible to the current user.
 ClassMethod AgentAccessRequests() As %Status
 {
     Set includeAll = ##class(MyOwn.Service.Access).CanManage()
@@ -747,6 +726,7 @@ ClassMethod AgentAccessRequests() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// One access request and its decision.
 ClassMethod AgentAccessRequestDetail(id As %Integer) As %Status
 {
     Set includeAll = ##class(MyOwn.Service.Access).CanManage()
@@ -755,6 +735,7 @@ ClassMethod AgentAccessRequestDetail(id As %Integer) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Observability totals: decisions, AI calls, tokens and estimated cost.
 ClassMethod AgentLedgerSummary() As %Status
 {
     Set tSC = ##class(MyOwn.Agent.Service.Agent).LedgerSummary(.data)
@@ -762,6 +743,7 @@ ClassMethod AgentLedgerSummary() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Execution ledger entries: engine, provider, model, latency, tokens and outcome per decision (administrator).
 ClassMethod AgentLedger() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -770,6 +752,7 @@ ClassMethod AgentLedger() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// End-to-end trace of one event through the production: messages, decision, Gate and proposal.
 ClassMethod AgentTrace(traceId As %String) As %Status
 {
     Set tSC = ##class(MyOwn.Agent.Service.Agent).Trace(traceId, .data)
@@ -777,6 +760,7 @@ ClassMethod AgentTrace(traceId As %String) As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Configured model prices used for cost estimates (administrator).
 ClassMethod AgentPricing() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -785,6 +769,7 @@ ClassMethod AgentPricing() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Updates the model prices (administrator).
 ClassMethod UpdateAgentPricing() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -800,6 +785,7 @@ ClassMethod UpdateAgentPricing() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// State of the agent interoperability production and its items.
 ClassMethod AgentProductionStatus() As %Status
 {
     Set tSC = ##class(MyOwn.Agent.Service.Agent).ProductionStatus(.data)
@@ -807,6 +793,7 @@ ClassMethod AgentProductionStatus() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Starts the agent production (administrator).
 ClassMethod StartAgentProduction() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -816,6 +803,7 @@ ClassMethod StartAgentProduction() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Stops the agent production (administrator).
 ClassMethod StopAgentProduction() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -825,6 +813,7 @@ ClassMethod StopAgentProduction() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// The guardrails in force: hard rules, prohibited targets, prompts and the data sent to the model.
 ClassMethod AgentGuardrails() As %Status
 {
     Set tSC = ##class(MyOwn.Agent.Service.Agent).Guardrails(.data)
@@ -832,6 +821,7 @@ ClassMethod AgentGuardrails() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Runs a demonstration scenario (S1 to S10) through the interoperability production; needs demo scenarios enabled.
 ClassMethod SimulateAgentScenario() As %Status
 {
     Set demo = ##class(MyOwn.Demo.Mode).Enabled()
@@ -857,6 +847,7 @@ ClassMethod SimulateAgentScenario() As %Status
     Quit ..WriteSuccess(data)
 }
 
+/// Sends one incident context to the agent through the production and returns the decision (administrator).
 ClassMethod AnalyzeWithAgent() As %Status
 {
     If '##class(MyOwn.Service.Access).CanManage() Quit ..WriteError(403, "FORBIDDEN", "Administrator access is required.")
@@ -974,6 +965,8 @@ ClassMethod OnPreDispatch(pUrl As %String, pMethod As %String, ByRef pContinue A
             Do ..WriteError(403, "DEMO_MODE_FORBIDDEN", $Select(reason = "real-system": "The public demo does not change the real system.", 1: "The demo account cannot use this function."))
         }
     }
+    ; /openapi.json and /docs (MyOwn.REST.Docs), after the same access checks as every route.
+    If pContinue Set tSC = ##super(pUrl, pMethod, .pContinue)
     Quit tSC
 }
 
@@ -1006,6 +999,7 @@ ClassMethod DemoRateAllowed(Output retryAfter As %Integer) As %Boolean [ Private
     Quit ##class(MyOwn.Demo.RateLimit).Allow("session:" _ session, limit, .retryAfter)
 }
 
+/// Demo mode state: whether it is on, whether the caller is the demo account, the reset interval and, in demo mode, the synthetic targets.
 ClassMethod DemoState() As %Status
 {
     Set data = {"demoMode": (##class(MyOwn.Demo.Mode).Enabled()), "isDemoUser": (##class(MyOwn.Demo.Mode).IsDemoUser()), "resetHours": (##class(MyOwn.Demo.Mode).ResetHours()), "simulationsPerMinute": (##class(MyOwn.Demo.Mode).SimulationsPerMinute())}

@@ -53,6 +53,12 @@ Reproduzidos em 2026-10-27, salvo indicação. Servidor falso: um servidor HTTP 
 
 Ficaram fora por exigir chave ou provider real: o `generationConfig` recusado pelo Gemini quando vai em `extra_params` (T04), e o 503 "high demand" que só aparece com o trace ligado (2026-10-26). O servidor falso foi removido do container depois do teste; nenhuma classe temporária ficou no namespace.
 
+## Extra: ideia do Ideas Portal (T24, 2026-10-28)
+
+| Ideia | Estado | Evidência |
+|---|---|---|
+| [DPI-I-767](https://ideas.intersystems.com/ideas/DPI-I-767) "Automatically Expose Interactive API Documentation" | **Implementada no portal** | `src/objectscript/MyOwn/REST/Docs.cls` (classe base: `/openapi.json` em OpenAPI 3.0, com o spec montado a cada requisição a partir da classe compilada, sem teste de recompilação; e `/docs`, um visualizador interativo próprio, não o Swagger UI, sem CDN), aplicada a `MyOwn.REST`; `scripts/Test-ApiDocs.ps1`. Lê o `UrlMap` e os comentários do dicionário compilado do IRIS; o gerador nativo (`%REST.API.GetWebRESTApplication`, Swagger 2.0) foi avaliado e não serve para um usuário só leitura nem tem página interativa |
+
 ## Resumo de esforço
 
 | Prioridade sugerida | Item | Horas |
