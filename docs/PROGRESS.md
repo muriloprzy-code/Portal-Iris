@@ -371,6 +371,10 @@ New: `MyOwn.REST.Docs`, a base class for `%CSP.REST` dispatch classes. It handle
 
 Tests: `MyOwn.Test.Docs` (DOC-01..04, in IRIS) and `scripts/Test-ApiDocs.ps1` (DOC-10..14 over HTTP, with a temporary web application `/myown/test-docs` for `MyOwn.Test.DocsSample`, removed at the end). The viewer test now also opens `/openapi.json` and `/docs`. Local 2026.2: compiles, DOC-01..04 pass.
 
+## "Open trace" on the scenario result (T27, 2026-10-28, branch t27-trace-tab)
+
+Bug: on Agents › Overview, "Open trace" under the scenario result loaded the trace but stayed on Overview, and the trace panel only renders on Observability, so nothing visible happened. The button now switches to Observability first, like "View trace" in the decision drawer. That was the only button with the problem ("Open" on a decision opens the drawer on the Decisions tab itself). New UI check `UI-OPEN-TRACE`: runs S1, clicks "Open trace" and expects the Observability tab selected and the TRACE panel showing the run's trace id. Clean install from the branch (new volume, no key): build 225 s, then `scripts/Test-All.ps1 -RequireUI` 268 passed, 0 failed, 2 skipped on the first run, Event Log clean.
+
 ## Hosted online demo (T28, 2026-10-28)
 
 The online demo is up at http://163.176.71.47:52774/myown/index.html (user `demo`, public password `demo`): a live IRIS 2026.3.0AI.154.0 AI Hub instance on ARM64 with `MYOWN_DEMO_MODE=1` and `MYOWN_AI_MODE=replay`. Only the model's answer is replayed from a recorded real decision; the production, Gate, Validator and ledger run for real. The organizers' rule disqualifies only a static demo built on recorded REST API responses; this one runs a live IRIS. Served over plain HTTP; administration pages answer 403 in demo mode. README "Links" and "Demo mode" updated.

@@ -9,8 +9,9 @@ param(
 
 # Runs the Agents screens in an isolated browser (Playwright's bundled Chromium with a fresh
 # profile, never the user's browser): S1..S10 from the Overview simulator, then each decision
-# drawer. Installs the pinned test dependency and browser on first use. The credential is
-# passed to Node through process environment variables only, never on the command line.
+# drawer, and "Open trace" on a scenario result. Installs the pinned test dependency and browser
+# on first use. The credential is passed to Node through process environment variables only,
+# never on the command line.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
