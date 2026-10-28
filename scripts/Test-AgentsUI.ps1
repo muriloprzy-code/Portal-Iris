@@ -18,6 +18,9 @@ $testDirectory = Join-Path $root 'tests\ui'
 $localNode = Join-Path $root '.tools\node'
 if (Test-Path -LiteralPath (Join-Path $localNode 'node.exe')) { $env:PATH = "$localNode;$env:PATH" }
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Node.js was not found (expected in .tools\node or on PATH).' }
+# npm writes "npm notice" update hints to stderr, which Windows PowerShell turns into a terminating
+# error when the output is redirected (as Test-All.ps1 does); this process does not need them.
+$env:NPM_CONFIG_UPDATE_NOTIFIER = 'false'
 
 Push-Location $testDirectory
 try {

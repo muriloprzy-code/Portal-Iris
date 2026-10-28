@@ -71,15 +71,15 @@ Run them from the **Agents** page or with `POST /myown/api/agent/simulate` (admi
 
 | # | Scenario | Rules engine | Recorded AI decision (replay) | Recorded with |
 |---|---|---|---|---|
-| S1 | Critical disk anomaly | `notify` | `escalate` | exact context, 2026-10-24 |
-| S2 | Task failing repeatedly | proposal: suspend task | proposal: suspend task | equivalent context, 2026-10-21 |
-| S3 | Suspended task whose last run succeeded | proposal: resume task | proposal: resume task | equivalent context, 2026-10-21 |
-| S4 | Normal conditions | `ignore` | `ignore` | equivalent context, 2026-10-21 |
-| S5 | Low-risk role request | `approve`, proposal created | `approve` | exact context, 2026-10-24 |
-| S6 | High-risk role request | `escalate` | `escalate` | exact context, 2026-10-24 |
-| S7 | Request for the prohibited `%All` role | blocked by the Gate | `deny` | exact context, 2026-10-24 |
-| S8 | Prompt injection in a log line | treated as data, `notify` | `escalate` | equivalent context, 2026-10-21 |
-| S9 | Prompt injection in a justification | treated as data, `escalate` | `deny` | equivalent context, 2026-10-21 |
+| S1 | Critical disk anomaly | `notify` | `escalate` | exact context, `gemini-3.8-flash`, 2026-10-24 |
+| S2 | Task failing repeatedly | proposal: suspend task | proposal: suspend task | exact context, `gemini-3.5-flash-lite`, 2026-10-28 |
+| S3 | Suspended task whose last run succeeded | proposal: resume task | proposal: resume task | equivalent context, `gemini-3.8-flash`, 2026-10-21 |
+| S4 | Normal conditions | `ignore` | `ignore` | exact context, `gemini-3.5-flash-lite`, 2026-10-28 |
+| S5 | Low-risk role request | `approve`, proposal created | `approve` | exact context, `gemini-3.8-flash`, 2026-10-24 |
+| S6 | High-risk role request | `escalate` | `escalate` | exact context, `gemini-3.8-flash`, 2026-10-24 |
+| S7 | Request for the prohibited `%All` role | blocked by the Gate | `deny` | exact context, `gemini-3.8-flash`, 2026-10-24 |
+| S8 | Prompt injection in a log line | treated as data, `notify` | `escalate` | exact context, `gemini-3.5-flash-lite`, 2026-10-28 |
+| S9 | Prompt injection in a justification | treated as data, `escalate` | `deny` | exact context, `gemini-3.5-flash-lite`, 2026-10-28 |
 | S10 | Budget exhausted | Rules decide (`budget`) | not applicable: no AI call is made | — |
 
 The Gate and the confirmation step apply to both engines.
@@ -186,7 +186,7 @@ Other installation paths (a local IRIS instance, `Instalar.bat`) are described i
 
 ## Demo mode
 
-The online demo runs with `MYOWN_AI_MODE=replay`: each AI answer is a **real model decision recorded earlier**, not generated live. Every fixture in `aihub/fixtures/` names the provider, model and recording date; the screen shows the badge "Replay of recorded real decisions". S1, S5, S6 and S7 were recorded with the exact scenario context; S2, S3, S4, S8 and S9 come from earlier real calls with equivalent contexts, as each fixture header states (re-recording them with the exact context was tried on 2026-10-24, 2026-10-26 and 2026-10-28; Gemini did not answer). Replay still goes through the tool manager, policies, Validator, Gate and ledger.
+The online demo runs with `MYOWN_AI_MODE=replay`: each AI answer is a **real model decision recorded earlier**, not generated live. Every fixture in `aihub/fixtures/` names the provider, model and recording date; the screen shows the badge "Replay of recorded real decisions". Every scenario except S3 now uses its exact context: S1, S5, S6 and S7 were recorded with `gemini-3.8-flash` (2026-10-24), S2, S4, S8 and S9 with `gemini-3.5-flash-lite` (2026-10-28, after `gemini-3.8-flash` stopped answering). S3 keeps its 2026-10-21 recording from an equivalent context: the flash-lite answer for S3 was `ignore` instead of a resume proposal, so it was not used. Replay still goes through the tool manager, policies, Validator, Gate and ledger.
 
 Running the agent live requires a local installation with your own key (`MYOWN_AI_MODE=live`).
 
@@ -241,7 +241,7 @@ Reports are written to `test-results/`. The full regression passed on a fresh bu
 - **Live calls are fragile on a free tier.** Gemini (`gemini-3.8-flash`, free tier) answered in 11 to 18 s when available, but it also returned HTTP 429 (quota) and 503 ("high demand"). The `%AI` provider retries those internally, so they often look like a slow provider. The portal stops waiting at its own deadline and the Rules engine decides, with the badge `Rules (provider_timeout)` or `Rules (provider_error)`.
 - Only Gemini was tested. OpenAI, Anthropic and Bedrock go through the same `%AI.Provider` code path but have not been run.
 - Only the IRIS for Health edition of build 154 was tested; the IRIS edition image was not available here.
-- Five replay fixtures (S2, S3, S4, S8, S9) come from equivalent rather than identical contexts (see [Demo mode](#demo-mode)). The last re-recording attempt, on 2026-10-28, stopped after two calls: Gemini did not answer the chat request within 55 s, nor within 184 s in a foreground diagnostic call with the `%AI` trace on ("error sending request ... operation timed out"), while the API host itself answered in 0.5 s.
+- One replay fixture, S3, still comes from an equivalent rather than identical context (see [Demo mode](#demo-mode)). `gemini-3.8-flash` did not answer the re-recording on 2026-10-24, 26 and 28 (timeouts and 503 "high demand"); `gemini-3.5-flash-lite` answered the other scenarios in 10 to 27 s, but chose `ignore` for S3.
 - Agent audit records become visible in the audit log about a minute after the event (IRIS writes its audit buffer periodically).
 - The portal has no audit viewer yet, so there is no "agent events only" filter.
 - The online demo is not deployed yet. The demo account exists only where `MYOWN_DEMO_MODE=1` and a password are set.

@@ -41,17 +41,20 @@ ClassMethod Checks(report As %DynamicObject, waitAudit As %Boolean = 1) [ Privat
     Do ..Add(report, "AH-01-READY", replayReady && 'liveReady && (liveReason = "no_key"), "Replay is always ready; live mode without a key reports no_key.")
 
     ; Valid JSON straight from the engine, with a read-only tool call through the policies.
+    ; Expected model and tokens come from the S2 fixture itself, so a re-recording needs no test change.
+    Do ##class(MyOwn.AIHub.Fixtures).Get("S2", .s2)
+    Set s2Model = "replay:" _ s2.%Get("model"), s2Tokens = +s2.usage.%Get("totalTokens")
     Set context = ..TaskContext("S2")
     Set tSC = $ClassMethod(engine, "Decide", "incident-triage", context.%ToJSON(), .result)
     Set validStatus = ##class(MyOwn.Agent.Decision.Validator).Validate("incident-triage", $Select($IsObject($Get(result)): result.%Get("raw"), 1: ""), context.%ToJSON(), .decision, .errors)
-    Do ..Add(report, "AH-02-VALID", $$$ISOK(tSC) && $$$ISOK(validStatus) && (decision.action = "propose_task_suspend") && (decision.targetId = "1001") && (result.usage.totalTokens = 1014) && (result.model = "replay:gemini-3.8-flash"), "The recorded S2 answer (gemini-3.8-flash, T03) passes the Validator with the context task id and the real T03 tokens.")
+    Do ..Add(report, "AH-02-VALID", $$$ISOK(tSC) && $$$ISOK(validStatus) && (decision.action = "propose_task_suspend") && (decision.targetId = "1001") && (result.usage.totalTokens = s2Tokens) && (result.model = s2Model), "The recorded S2 answer (" _ s2.%Get("model") _ ", " _ s2.%Get("recordedAt") _ ") passes the Validator with the context task id and the recorded tokens (" _ s2Tokens _ ").")
 
     ; Through the portal service: success, then every fallback reason.
     Do ..Configure("auto", 0, 20)
     Set before = ..RealCallsLastHour()
     Set tSC = ..Service("S2", .decided)
     Set ledger = ..LedgerFor(decided.%Get("traceId"))
-    Do ..Add(report, "AH-03-AI", $$$ISOK(tSC) && (decided.engine = "aihub") && (decided.fallbackReason = "") && (decided.validationStatus = "valid") && (ledger.provider = "replay") && (ledger.totalTokens = 1014) && (ledger.latencyMs > 0), "The service records an AI decision (engine aihub, no fallback reason) with tokens and latency in the ledger.")
+    Do ..Add(report, "AH-03-AI", $$$ISOK(tSC) && (decided.engine = "aihub") && (decided.fallbackReason = "") && (decided.validationStatus = "valid") && (ledger.provider = "replay") && (ledger.totalTokens = s2Tokens) && (ledger.latencyMs > 0), "The service records an AI decision (engine aihub, no fallback reason) with tokens and latency in the ledger.")
 
     Set tSC = ..Service("invalid-json", .decided)
     Set ledger = ..LedgerFor(decided.%Get("traceId"))

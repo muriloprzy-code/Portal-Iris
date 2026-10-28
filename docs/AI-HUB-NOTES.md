@@ -268,6 +268,21 @@ Clean installation of build 154, engine preference `rules` during the window (so
 
 From the same container and from the host, `https://generativelanguage.googleapis.com/` answered (404 at the root, as expected) in 0.5 s, so the network was not the cause. Stopped after two failures of the same kind; S2, S3, S4, S8 and S9 keep their T03 recordings.
 
+### Recording with gemini-3.5-flash-lite (2026-10-28)
+
+The key's model list (`GET /v1beta/models`, no generation) has, for text, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-2.5-flash-lite` and the alias `gemini-flash-lite-latest`, next to `gemini-3.8-flash`. With `MYOWN_AI_MODEL=gemini-3.5-flash-lite` (same engine, prompt, `reasoning_effort` low, 55 s deadline), six real calls, no 429 or 503:
+
+| Call | Scenario | Latency | Tokens (in / out / total) | Answer |
+|---|---|---|---|---|
+| 1 | S2 (test) | 26.4 s | 1,196 / 133 / 1,329, one `GetTaskRuns` call | `propose_task_suspend`, valid |
+| 2 | S2 (repeat) | 22.8 s | 1,196 / 129 / 1,325, one tool call | same action, severity and target; kept |
+| 3 | S3 | 16.4 s | 580 total | `ignore`: not used, the scenario expects a resume proposal |
+| 4 | S4 | 9.9 s | 516 total | `ignore` |
+| 5 | S8 | 11.6 s | 575 total | `escalate`, cites the injected "SYSTEM ALERT" |
+| 6 | S9 | 12.3 s | 595 total | `deny`, high risk |
+
+In call 1 the tool showed the real demonstration task with successful runs while the scenario context says three failures; the model noted it and still proposed the suspension. S3 keeps its 2026-10-21 `gemini-3.8-flash` recording. The engine tests now read the expected S2 model and tokens from the fixture.
+
 ## Web gateway HTTP 504 on the first run (2026-10-24)
 
 Symptom: `Test-AgentSmoke.ps1` and `Test-Agents-AIHub.ps1` sometimes ended with HTTP 504, usually on the first regression run after a container start, and passed when repeated.
