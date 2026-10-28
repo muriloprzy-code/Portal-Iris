@@ -371,10 +371,14 @@ New: `MyOwn.REST.Docs`, a base class for `%CSP.REST` dispatch classes. It handle
 
 Tests: `MyOwn.Test.Docs` (DOC-01..04, in IRIS) and `scripts/Test-ApiDocs.ps1` (DOC-10..14 over HTTP, with a temporary web application `/myown/test-docs` for `MyOwn.Test.DocsSample`, removed at the end). The viewer test now also opens `/openapi.json` and `/docs`. Local 2026.2: compiles, DOC-01..04 pass.
 
+## Hosted online demo (T28, 2026-10-28)
+
+The online demo is up at http://163.176.71.47:52774/myown/index.html (user `demo`, public password `demo`): a live IRIS 2026.3.0AI.154.0 AI Hub instance on ARM64 with `MYOWN_DEMO_MODE=1` and `MYOWN_AI_MODE=replay`. Only the model's answer is replayed from a recorded real decision; the production, Gate, Validator and ledger run for real. The organizers' rule disqualifies only a static demo built on recorded REST API responses; this one runs a live IRIS. Served over plain HTTP; administration pages answer 403 in demo mode. README "Links" and "Demo mode" updated.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:
 
 1. Re-record the replay fixtures S2 to S4, S8 and S9 with real calls when Gemini is available again (`scripts/Record-ReplayFixtures.ps1`, at most 6 calls, 15 s apart; they still come from T03).
-2. Publish the online demo in replay mode (`MYOWN_AI_MODE=replay`, `MYOWN_DEMO_MODE=1`).
+2. ~~Publish the online demo in replay mode~~ (done in T28).
 3. Review the contest bonus items against what is done.

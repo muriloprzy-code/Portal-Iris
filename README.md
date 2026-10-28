@@ -8,7 +8,7 @@ MyOwn Portal is an administration portal for InterSystems IRIS and IRIS for Heal
 
 ## Links
 
-- Online demo: **[TODO: URL]** (replay mode, see [Demo mode](#demo-mode))
+- Online demo: http://163.176.71.47:52774/myown/index.html (user `demo`, password `demo`; replay mode on a live IRIS 2026.3.0AI.154.0 ARM64 AI Hub instance, see [Demo mode](#demo-mode))
 - Video: **[TODO: URL]**
 - Article on the Developer Community: **[TODO: URL]**
 
@@ -208,11 +208,13 @@ Other installation paths (a local IRIS instance, `Instalar.bat`) are described i
 
 The online demo runs with `MYOWN_AI_MODE=replay`: each AI answer is a **real model decision recorded earlier**, not generated live. Every fixture in `aihub/fixtures/` names the provider, model and recording date; the screen shows the badge "Replay of recorded real decisions". Every scenario except S3 now uses its exact context: S1, S5, S6 and S7 were recorded with `gemini-3.8-flash` (2026-10-24), S2, S4, S8 and S9 with `gemini-3.5-flash-lite` (2026-10-28, after `gemini-3.8-flash` stopped answering). S3 keeps its 2026-10-21 recording from an equivalent context: the flash-lite answer for S3 was `ignore` instead of a resume proposal, so it was not used. Replay still goes through the tool manager, policies, Validator, Gate and ledger.
 
+The hosted demo shows only the safe areas (Overview, Logs, Agents) for the low-privilege `demo` account. Administration pages (users and roles, web applications, task actions, API explorer, Settings) are switched off in demo mode and answer 403; the full portal runs in a local installation with an administrator account. The demo runs on a live IRIS instance, not on recorded HTTP responses: only the model's answer is replayed from a recording of a real decision. It is served over plain HTTP and its credentials are public by design.
+
 Running the agent live requires a local installation with your own key (`MYOWN_AI_MODE=live`).
 
 With `MYOWN_DEMO_MODE=1` the portal is safe to expose:
 
-- **Demo account.** A user `demo` with the role `MyOwnDemo`: it can view the portal, run the demonstration scenarios, and confirm or reject proposals. It has no IRIS administration privileges, no Settings, no access to the provider configuration or key, and every administration route answers 403. Database and SQL read access are granted only inside `/myown/api` (application role `MyOwnPortalData`, shared with the viewer role).
+- **Demo account.** A user `demo` with the role `MyOwnDemo`: it can view the portal, run the demonstration scenarios, and confirm or reject proposals. It has no IRIS administration privileges, no Settings, no access to the provider configuration or key, and every administration route answers 403. Database and SQL read access are granted only inside `/myown/api` (application role `MyOwnPortalData`, shared with the viewer role). On the hosted demo its password is the public `demo`; if you host your own instance, generate yours with `scripts/New-DemoPassword.ps1` (below).
 - **Synthetic targets only.** The scenarios use seeded demo tasks (9001, 9002), users (`demo.alice`, `demo.bob`) and roles (`DemoOperator`, `DemoAuditor`). A confirmation revalidates as usual and then changes only that synthetic record; the proposal ends as `simulated`, and **IRIS is never changed**. A confirmation on any other target is refused (`DEMO_TARGET_REFUSED`) and audited (`MyOwn/Agent/DemoRefused`). Prohibited targets such as `%All` stay blocked.
 - **Real-system routes are off for everyone** in this mode (users and roles, web applications, task actions, the API explorer), administrators included.
 - **Reset.** The synthetic state is restored every `MYOWN_DEMO_RESET_HOURS` (default 6) by the task `MyOwn Demo reset`, and by the "Reset demo" button that only the demo account sees; both are audited (`MyOwn/Agent/DemoReset`).
@@ -266,7 +268,7 @@ Reports are written to `test-results/`. The full regression passed on a fresh bu
 - One replay fixture, S3, still comes from an equivalent rather than identical context (see [Demo mode](#demo-mode)). `gemini-3.8-flash` did not answer the re-recording on 2026-10-24, 26 and 28 (timeouts and 503 "high demand"); `gemini-3.5-flash-lite` answered the other scenarios in 10 to 27 s, but chose `ignore` for S3.
 - Agent audit records become visible in the audit log about a minute after the event (IRIS writes its audit buffer periodically).
 - The portal has no audit viewer yet, so there is no "agent events only" filter.
-- The online demo is not deployed yet. The demo account exists only where `MYOWN_DEMO_MODE=1` and a password are set.
+- The hosted online demo is served over plain HTTP, with public credentials. The demo account exists only where `MYOWN_DEMO_MODE=1` and a password are set.
 - A viewer (`MyOwnViewer`) cannot file an access request: the privilege delta is read through SysAdmin API v2 with the requester's own credentials, and that API refuses a viewer even its own account (it needs `%Admin_Secure`, which a read-only role should not have). The portal answers `ACCESS_REQUEST_NEEDS_SECURITY_READ` and the Access tab explains it; administrators file requests.
 - The demo rate limit uses the client address seen by IRIS; behind a reverse proxy all visitors share one address.
 
