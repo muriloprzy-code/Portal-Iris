@@ -373,7 +373,7 @@ Tests: `MyOwn.Test.Docs` (DOC-01..04, in IRIS) and `scripts/Test-ApiDocs.ps1` (D
 
 ## "Open trace" on the scenario result (T27, 2026-10-28, branch t27-trace-tab)
 
-Bug: on Agents › Overview, "Open trace" under the scenario result loaded the trace but stayed on Overview, and the trace panel only renders on Observability, so nothing visible happened. The button now switches to Observability first, like "View trace" in the decision drawer. That was the only button with the problem ("Open" on a decision opens the drawer on the Decisions tab itself). New UI check `UI-OPEN-TRACE`: runs S1, clicks "Open trace" and expects the Observability tab selected and the TRACE panel showing the run's trace id.
+Bug: on Agents › Overview, "Open trace" under the scenario result loaded the trace but stayed on Overview, and the trace panel only renders on Observability, so nothing visible happened. The button now switches to Observability first, like "View trace" in the decision drawer. That was the only button with the problem ("Open" on a decision opens the drawer on the Decisions tab itself). New UI check `UI-OPEN-TRACE`: runs S1, clicks "Open trace" and expects the Observability tab selected and the TRACE panel showing the run's trace id. Clean install from the branch (new volume, no key): build 225 s, then `scripts/Test-All.ps1 -RequireUI` 268 passed, 0 failed, 2 skipped on the first run, Event Log clean.
 
 ## Next verified milestone
 
