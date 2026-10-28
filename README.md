@@ -128,7 +128,7 @@ For the IRIS edition, load `iris-community-2026.3.0AI.154.0-docker.tar.gz`, tag 
 | `MYOWN_DEMO_PASSWORD` | initial `_SYSTEM` password of a new container volume; choose your own |
 | `IRIS_BIND_ADDRESS` | where the ports are published; default `127.0.0.1` (this computer only) |
 
-The defaults in `.env.example` are the tested provider, Gemini (`gemini-3.8-flash`). OpenAI (for example `gpt-4.1-mini`), Anthropic and Bedrock are accepted by the same `%AI.Provider` path but untested; see [Limitations](#limitations). Without a key the portal starts and uses the Rules engine.
+The defaults in `.env.example` are what we tested: provider Gemini, model `gemini-3.5-flash-lite` (free tier, tested on 2026-10-28; `gemini-3.8-flash` was used from 2026-10-21 to 2026-10-24 and later stopped answering). OpenAI (for example `MYOWN_AI_MODEL=gpt-4.1-mini`), Anthropic and Bedrock are accepted by the same `%AI.Provider` path but not tested by us; see [Limitations](#limitations). Without a key the portal starts and uses the Rules engine.
 
 **Start:**
 
@@ -238,7 +238,8 @@ Reports are written to `test-results/`. The full regression passed on a fresh bu
 
 ## Limitations
 
-- **Live calls are fragile on a free tier.** Gemini (`gemini-3.8-flash`, free tier) answered in 11 to 18 s when available, but it also returned HTTP 429 (quota) and 503 ("high demand"). The `%AI` provider retries those internally, so they often look like a slow provider. The portal stops waiting at its own deadline and the Rules engine decides, with the badge `Rules (provider_timeout)` or `Rules (provider_error)`.
+- **Live calls are fragile on a free tier.** Gemini on the free tier answered in 10 to 27 s when available (`gemini-3.5-flash-lite`, 2026-10-28; `gemini-3.8-flash` 11 to 18 s before it stopped answering), but it also returned HTTP 429 (quota) and 503 ("high demand"), or no answer at all. The `%AI` provider retries 429 and 503 internally, so they often look like a slow provider. The portal stops waiting at its own deadline and the Rules engine decides, with the badge `Rules (provider_timeout)` or `Rules (provider_error)`.
+- **The default deadline is shorter than scenario S2 on the free tier.** S2 took 23 to 26 s with `gemini-3.5-flash-lite`, above the default `MYOWN_AI_TIMEOUT_SECONDS` of 20 s, so live it falls back to Rules with the reason `provider_timeout`. Set `MYOWN_AI_TIMEOUT_SECONDS=40` to see the AI decision in that scenario. The engine always records the fallback reason (ledger, decision, badge).
 - Only Gemini was tested. OpenAI, Anthropic and Bedrock go through the same `%AI.Provider` code path but have not been run.
 - Only the IRIS for Health edition of build 154 was tested; the IRIS edition image was not available here.
 - One replay fixture, S3, still comes from an equivalent rather than identical context (see [Demo mode](#demo-mode)). `gemini-3.8-flash` did not answer the re-recording on 2026-10-24, 26 and 28 (timeouts and 503 "high demand"); `gemini-3.5-flash-lite` answered the other scenarios in 10 to 27 s, but chose `ignore` for S3.

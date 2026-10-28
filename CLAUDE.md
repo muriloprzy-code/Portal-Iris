@@ -12,7 +12,7 @@ Responda sempre em **português**, de forma **objetiva e curta**. Não faça com
 Concurso InterSystems Programming Contest "AI Agents in Interoperability Workflows" (26/10 a 15/11/2026; envio até 08/11/2026 23:59 EST; votação 09 a 15/11). Meta: ficar entre os primeiros.
 - Spec: `docs/SPEC-AI-AGENTS.md`. Em conflito vale `docs/SPEC-AI-AGENTS-ADDENDUM-1.md` (respostas oficiais dos organizadores).
 - Imagem alvo: AI Hub build **2026.3.0AI.154.0** (IRIS e IRIS for Health aceitas). Nunca publicar essa imagem nem imagens derivadas em registro público; só Dockerfile e compose.
-- Chave de LLM: variáveis de ambiente / `.env` (`MYOWN_AI_PROVIDER`, `MYOWN_AI_MODEL`, `MYOWN_AI_API_KEY`; opcionais `MYOWN_AI_MODE`, `MYOWN_AI_TIMEOUT_SECONDS`, `MYOWN_AI_MAX_OUTPUT_TOKENS`, `MYOWN_AI_THINKING`). Com Gemini free tier, o modelo que funciona é `gemini-3.8-flash`. Provedores oficiais: OpenAI, Anthropic, Gemini, Bedrock. Ollama é experimental, nunca padrão.
+- Chave de LLM: variáveis de ambiente / `.env` (`MYOWN_AI_PROVIDER`, `MYOWN_AI_MODEL`, `MYOWN_AI_API_KEY`; opcionais `MYOWN_AI_MODE`, `MYOWN_AI_TIMEOUT_SECONDS`, `MYOWN_AI_MAX_OUTPUT_TOKENS`, `MYOWN_AI_THINKING`). Com Gemini free tier, o modelo padrão (testado em 28/10) é `gemini-3.5-flash-lite`; o `gemini-3.8-flash` funcionou de 21 a 24/10 e depois parou de responder. S2 leva 23–26 s: com o timeout padrão de 20 s cai para o Rules (`provider_timeout`); use 40 s para ver a decisão da IA. Provedores oficiais: OpenAI, Anthropic, Gemini, Bedrock. Ollama é experimental, nunca padrão.
 
 ## Design (não violar)
 - O agente só decide e propõe, nunca escreve. Quem executa é um humano, com as credenciais dele.
