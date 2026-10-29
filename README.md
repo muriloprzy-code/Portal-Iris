@@ -86,6 +86,16 @@ The production `MyOwn.Production.Main` has ten items:
 | Operation | `ProposalStore` | `MyOwn.Production.Operation.ProposalStore` | Step 3: re-checks the Gate on the final decision and creates the proposal (before/after diff, expiry) |
 | Operation | `Notifier` | `MyOwn.Production.Operation.Notifier` | Stores execution feedback and budget notifications |
 
+![The production MyOwn.Production.Main running, with its five services, two processes and three operations active](docs/images/production.png)
+
+*The production `MyOwn.Production.Main` running, with all ten items active (Interoperability > Production Configuration).*
+
+![Visual Trace of one session: IncidentEvent from HealthMonitor to TriageProcess, AgentRequest and AgentResponse with AgentGateway, ProposalRequest and ProposalResponse with ProposalStore, and the AgentResponse back to HealthMonitor](docs/images/visual-trace.png)
+
+*The Visual Trace of one message: from the business service `HealthMonitor` through `TriageProcess` to the agent operation `AgentGateway`, then `ProposalStore`, and the response back to the service.*
+
+The production runs inside IRIS and is viewed in the native Management Portal (Interoperability > Configure > Production); the hosted demo shows only the safe areas of MyOwn Portal.
+
 Each event enters the production as a message sent by a Business Service, so its path through the process and the operations can be followed in the Visual Trace of the Message Viewer; the Gate runs inside the process and writes an Event Log entry with the same trace id. `AgentGateway` is where the AI Hub agent is called: it calls `MyOwn.Agent.Service.Agent.Decide`, which runs `MyOwn.AIHub.Engine` when it is installed and ready and the kill switch, the engine preference and the budget allow it; otherwise, or when the AI call fails or its reply fails the Validator, the Rules engine decides.
 
 The AI Hub engine (`aihub/src`, part of the one IPM module `myown-portal`) is compiled only where the `%AI` package exists; elsewhere the portal runs on Rules.

@@ -383,6 +383,8 @@ The online demo is up at http://163.176.71.47:52774/myown/index.html (user `demo
 
 Read in `REST.cls` (`OnPreDispatch`, `DemoRefusal`, `SimulateAgentScenario`, `AgentProposals`): in demo mode the `demo` account may call `POST /agent/simulate`, `GET /agent/decisions`, `GET /agent/proposals` and `GET /agent/traces/:id` (every GET except `/agent/config` and `/agent/pricing`). The body is `{"scenario": "S1"}`; `taskId` is ignored in demo mode, where S2/S3 use the synthetic tasks 9001/9002. The simulate response has no tokens; they come from the `ledger` entries of the trace (`totalTokens`, `toolCallCount`). New `scripts/Try-Demo.ps1` runs S1, S2 and S5 and prints scenario, action, engine, tokens, tool calls and proposal; clear messages for 401, 403, 429 and timeouts. Checked on the hosted demo (replay: S1 `escalate`, S2 `propose_task_suspend` with a proposal, S5 `approve` with a proposal, all `aihub`, 0 tool calls) and the 401 message on the local clean container, where demo mode is off. 403 and 429 were not triggered. README: "Try it in a minute" with the script, three `curl.exe` calls and the real output.
 
+T32 (2026-10-29): README "Architecture" shows `docs/images/production.png` (the production with its ten items running) and `docs/images/visual-trace.png` (Visual Trace from `HealthMonitor` to `AgentGateway` and `ProposalStore`); both checked for passwords, keys, IPs and personal data (none).
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:
