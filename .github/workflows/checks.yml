@@ -50,7 +50,12 @@ jobs:
           fi
           echo "No .env, key or archive file is tracked."
       - name: module.xml is well-formed
-        run: python3 -c "import xml.etree.ElementTree as E; E.parse('module.xml'); print('module.xml: well-formed XML')"
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as E
+          E.parse('module.xml')
+          print('module.xml is well-formed XML')
+          PY
       - name: Compose files are valid
         run: |
           docker compose -f compose.yaml config -q
