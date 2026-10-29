@@ -39,6 +39,23 @@ AgentGateway ─┬─ AI Hub engine: %AI.Agent + read-only ToolSet,      Busine
 REST /myown/api/agent/*  →  React UI: Decisions, Approvals, Access, Production, Guardrails, Settings
 ```
 
+The production `MyOwn.Production.Main` has ten items:
+
+| Layer | Name | Class | Role |
+|---|---|---|---|
+| Service | `HealthMonitor` | `MyOwn.Production.Service.HealthMonitor` | Every 60 s reads the instance health report and sends an incident to `TriageProcess` when it finds anomalies; also the entry point of the demonstration scenarios |
+| Service | `TaskWatcher` | `MyOwn.Production.Service.TaskWatcher` | Through the adapter `TaskHistoryInbound`, every 120 s, reports tasks of `MYOWN` with 3 or more consecutive failures, or suspended with a last run that succeeded, to `TriageProcess` |
+| Service | `LogWatcher` | `MyOwn.Production.Service.LogWatcher` | Through the adapter `LogEntriesInbound`, every 120 s, sends up to 10 log entries of severity 2 or higher to `TriageProcess` |
+| Service | `AccessRequestService` | `MyOwn.Production.Service.AccessRequest` | Receives access requests filed in the portal and sends them to `AccessProcess` |
+| Service | `ExecutionFeedbackService` | `MyOwn.Production.Service.ExecutionFeedback` | Receives the result (executed or failed) of a confirmed proposal and sends it to `Notifier` |
+| Process | `TriageProcess` | `MyOwn.Production.Process.Triage` | Routes the incident with the rule `MyOwn.Production.Rule.Routing` (or drops it), then decide (`AgentGateway`) → Gate → proposal (`ProposalStore`); notifies `Notifier` when the AI budget is exhausted |
+| Process | `AccessProcess` | `MyOwn.Production.Process.Access` | The same three steps for access requests |
+| Operation | `AgentGateway` | `MyOwn.Production.Operation.AgentGateway` | Step 1: chooses the engine (AI Hub or Rules), validates the decision and writes the ledger |
+| Operation | `ProposalStore` | `MyOwn.Production.Operation.ProposalStore` | Step 3: re-checks the Gate on the final decision and creates the proposal (before/after diff, expiry) |
+| Operation | `Notifier` | `MyOwn.Production.Operation.Notifier` | Stores execution feedback and budget notifications |
+
+Each event enters the production as a message sent by a Business Service, so its path through the process and the operations can be followed in the Visual Trace of the Message Viewer; the Gate runs inside the process and writes an Event Log entry with the same trace id. `AgentGateway` is where the AI Hub agent is called: it calls `MyOwn.Agent.Service.Agent.Decide`, which runs `MyOwn.AIHub.Engine` when it is installed and ready and the kill switch, the engine preference and the budget allow it; otherwise, or when the AI call fails or its reply fails the Validator, the Rules engine decides.
+
 The AI Hub engine (`aihub/src`, part of the one IPM module `myown-portal`) is compiled only where the `%AI` package exists; elsewhere the portal runs on Rules.
 
 ## Technologies used
