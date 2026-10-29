@@ -13,6 +13,7 @@ MyOwn Portal is an administration portal for InterSystems IRIS and IRIS for Heal
 - Article on the Developer Community: **[TODO: URL]**
 - API docs (DPI-I-767): http://163.176.71.47:52774/myown/api/docs (user `demo`, password `demo`)
 - Embedded Python bug found and reported: [python-bugreports #25](https://github.com/intersystems-community/python-bugreports/issues/25)
+- AI Hub bugs found and reported: [ai-hub-eap-bugreports #5](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/5), [#6](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/6)
 
 ## Try it in a minute
 
