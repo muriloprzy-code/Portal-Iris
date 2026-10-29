@@ -164,6 +164,43 @@ The portal API documents itself: `GET /myown/api/docs` is an interactive page an
 
 Tests: `scripts/Test-ApiDocs.ps1`. It checks that the document is valid and covers every `UrlMap` route of `REST.cls`, that `/docs` and `/openapi.json` answer 401 without credentials, that nothing leaks, and that a second class that only extends the base (`MyOwn.Test.DocsSample`, served by a temporary web application) gets its own `/docs`.
 
+## How the demo works
+
+You pick a **scenario** (S1 to S10) on the Agents page. Each one injects a synthetic event into the production (`HealthMonitor` or `AccessRequestService`). The event goes through `TriageProcess` or `AccessProcess` to `AgentGateway`, where the agent decides (in the hosted demo, by replaying a real decision recorded earlier). The Gate checks the decision, and it may become a **proposal**. You, as the human, confirm or reject it. In the demo a confirmation changes only a synthetic record; IRIS is never changed.
+
+In a local installation the scenarios are **off by default**: turn on Demo mode in Agents > Settings (as an administrator), or set `MYOWN_DEMO_MODE=1` in `.env`, which turns on the whole public demo mode (the `demo` account, synthetic targets only, real-system routes off; see [Demo mode](#demo-mode)). On the AI Hub build, with the engine preference on Automatic (the default): with `MYOWN_AI_MODE=live` and your own key, the model decides for real and the answer may vary; without a key the Rules engine decides; with `MYOWN_AI_MODE=replay` you reproduce the recorded decisions.
+
+### The Agents page, tab by tab
+
+These are the tabs the `demo` account sees. Next to the tabs, **Reset demo** restores the synthetic state and **Refresh** reloads the data.
+
+| Tab | What it shows |
+|---|---|
+| **Overview** | The active engine (AI Hub or Rules), the number of decisions, pending proposals and the daily token budget. Below them, "Run a deterministic scenario": choose S1 to S10 and press **Run scenario**; the result shows the outcome, the action, the engine, the trace id and an **Open trace** button. |
+| **Decisions** | Every decision: id, workflow, action, engine (with the fallback reason when Rules decided), risk, confidence, validation, proposal and time. **Open** shows the engine, risk, validation, confidence, Gate result, proposal, rationale, evidence and conditions, with **View trace**. |
+| **Approvals** | The proposals the agent created, with target, expiry, required privilege and how to undo. Pending ones have **Confirm** and **Reject**. |
+| **Observability** | Ledger totals (decisions, tokens, estimated cost, average latency) and the full timeline of one event (the trace). |
+| **Guardrails** | The four guardrails (human confirmation, read-only tools, untrusted output, separation of duties), the data that may be sent to the model and the data that never leaves IRIS. |
+
+Other accounts also see **Access** (administrators request an IRIS role there for the agent to analyze; viewers follow existing requests), and administrators see **Production** (start and stop the production, list its ten items) and **Settings** (kill switch, preferred engine, budgets, cooldown). The `demo` account does not see them.
+
+### What each scenario means
+
+| # | Scenario | What it shows |
+|---|---|---|
+| S1 | Critical disk anomaly | The AI **escalates** to a person; the Rules engine would only notify |
+| S2 | Task failing repeatedly | Proposes to **suspend** the task (creates a proposal) |
+| S3 | Suspended task whose last run succeeded | Proposes to **resume** the task |
+| S4 | Normal conditions | **Ignores** it: no false alarm |
+| S5 | Low-risk role request | **Approves**, and creates a proposal |
+| S6 | High-risk role request | **Escalates** to a person |
+| S7 | Request for the prohibited `%All` role | The Gate **blocks** it (the AI denies it) |
+| S8 | Prompt injection in a log line | The text is treated as **data**, not as an instruction |
+| S9 | Prompt injection in a justification | Same, and the AI **denies** the request |
+| S10 | Budget exhausted | The Rules engine decides (reason `budget`); no AI call is made |
+
+A good first run: Overview, run **S2** and press **Open trace**; then Approvals (confirm the proposal), then Decisions (**Open** on the decision). If a proposal for the same task and action is still pending, it is reused; if one was confirmed within the cooldown, the Gate creates no new one and says why.
+
 ## Demonstration scenarios
 
 Run them from the **Agents** page or with `POST /myown/api/agent/simulate` (an administrator with Demo mode on in Agents › Settings, or the `demo` account where `MYOWN_DEMO_MODE=1`; see [Try it in a minute](#try-it-in-a-minute)).
