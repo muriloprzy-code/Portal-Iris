@@ -385,6 +385,10 @@ Read in `REST.cls` (`OnPreDispatch`, `DemoRefusal`, `SimulateAgentScenario`, `Ag
 
 T32 (2026-10-29): README "Architecture" shows `docs/images/production.png` (the production with its ten items running) and `docs/images/visual-trace.png` (Visual Trace from `HealthMonitor` to `AgentGateway` and `ProposalStore`); both checked for passwords, keys, IPs and personal data (none).
 
+## T34 (2026-10-29)
+
+README: link to the live API docs of the hosted demo (http://163.176.71.47:52774/myown/api/docs, user `demo`) in "Links" and at the top of "API docs". Checked on the hosted demo: `/docs` and `/openapi.json` answer 200 to the demo account, 56 operations (40 GET) on 53 paths. Documentation only.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:

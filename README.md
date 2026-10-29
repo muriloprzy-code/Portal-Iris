@@ -11,6 +11,7 @@ MyOwn Portal is an administration portal for InterSystems IRIS and IRIS for Heal
 - Online demo: http://163.176.71.47:52774/myown/index.html (user `demo`, password `demo`; replay mode on a live IRIS 2026.3.0AI.154.0 ARM64 AI Hub instance, see [Demo mode](#demo-mode))
 - Video: **[TODO: URL]**
 - Article on the Developer Community: **[TODO: URL]**
+- API docs (DPI-I-767): http://163.176.71.47:52774/myown/api/docs (user `demo`, password `demo`)
 
 ## Try it in a minute
 
@@ -134,6 +135,8 @@ Two ideas from the InterSystems Ideas Portal are implemented in this repository:
 | [DPI-I-512 "add AI to Instance Monitor to prevent major incident"](https://ideas.intersystems.com/ideas/DPI-I-512) | MyOwn Portal, for the earlier *Build Your Own Management Portal* contest, and kept here | the AI Instance Monitor on the Overview page: health snapshots and Embedded Python anomaly detection against the instance's own history (`MyOwn.Service.HealthAnalysis`, see [docs/REFERENCE.md](docs/REFERENCE.md)). Its anomalies are now also what the `HealthMonitor` service sends to the agent |
 
 ## API docs
+
+Try it live: http://163.176.71.47:52774/myown/api/docs (user `demo`, password `demo`). It lists 56 operations; GET operations can be tried in the page.
 
 The portal API documents itself: `GET /myown/api/docs` is an interactive page and `GET /myown/api/openapi.json` the OpenAPI 3.0 document, both behind the same sign-in as the rest of the API. This answers what the community still asks for in the Ideas Portal idea [DPI-I-767 "Automatically Expose Interactive API Documentation"](https://ideas.intersystems.com/ideas/DPI-I-767): a FastAPI-style `/docs` for `%CSP.REST` classes.
 
