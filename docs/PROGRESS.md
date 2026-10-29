@@ -389,6 +389,10 @@ T32 (2026-10-29): README "Architecture" shows `docs/images/production.png` (the 
 
 README: link to the live API docs of the hosted demo (http://163.176.71.47:52774/myown/api/docs, user `demo`) in "Links" and at the top of "API docs". Checked on the hosted demo: `/docs` and `/openapi.json` answer 200 to the demo account, 56 operations (40 GET) on 53 paths. Documentation only.
 
+## T39 (2026-10-29)
+
+README: new section "Contest bonuses" after "Links", listing only what was checked: the two custom inbound adapters, Embedded Python and Vector Search (classes and methods in `src/`), Docker files, the hosted demo (replay mode; index and `/docs` answered 200), DPI-I-767, AI Hub issues #5 and #6 and Embedded Python issue #25 (all open, filed by the project's account). ZPM/IPM, video, articles and the questionnaire are left out. Documentation only.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:

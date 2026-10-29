@@ -15,6 +15,21 @@ MyOwn Portal is an administration portal for InterSystems IRIS and IRIS for Heal
 - Embedded Python bug found and reported: [python-bugreports #25](https://github.com/intersystems-community/python-bugreports/issues/25)
 - AI Hub bugs found and reported: [ai-hub-eap-bugreports #5](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/5), [#6](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/6)
 
+## Contest bonuses
+
+What the project has for each technology bonus; whether it counts is up to the organizers.
+
+| Bonus | Status | Where to see it |
+|---|---|---|
+| Custom Adapter | Two custom inbound adapters used in the production | `MyOwn.Production.Adapter.TaskHistoryInbound` (`src/objectscript/MyOwn/Production/Adapter/TaskHistoryInbound.cls`, used by `TaskWatcher`) and `MyOwn.Production.Adapter.LogEntriesInbound` (`LogEntriesInbound.cls`, used by `LogWatcher`), both extending `Ens.InboundAdapter` |
+| Embedded Python | Used by the health score, anomaly detection and host metrics | `AnalyzeWithPython` (health score) and `DetectAnomaliesWithPython` (z-score anomalies) in `src/objectscript/MyOwn/Service/HealthAnalysis.cls`; `GetDiskUsage` and `GetPhysicalMemoryKB` in `src/objectscript/MyOwn/Service/System.cls` |
+| Vector Search | Matches the current health vector to the closest stored pattern | `FindClosestPattern` in `src/objectscript/MyOwn/Service/HealthAnalysis.cls` (`VECTOR_COSINE` over `MyOwn.HealthPattern.MetricVector`, a `%Vector(DOUBLE, 6)`) |
+| Docker container | `Dockerfile`, `compose.yaml` and `compose.aihub.yaml` | `docker compose -f compose.yaml -f compose.aihub.yaml up --build -d` (see [Run it locally](#run-it-locally)) |
+| Online demo | Live IRIS demo in replay mode | http://163.176.71.47:52774/myown/index.html (user `demo`, password `demo`; see [Demo mode](#demo-mode)) |
+| Community idea | [DPI-I-767 "Automatically Expose Interactive API Documentation"](https://ideas.intersystems.com/ideas/DPI-I-767) implemented | `MyOwn.REST.Docs`; live: http://163.176.71.47:52774/myown/api/docs (see [API docs](#api-docs)) |
+| AI Hub bugs | Two bugs reported | [ai-hub-eap-bugreports #5](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/5), [#6](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/6) |
+| Embedded Python bug | One bug reported | [python-bugreports #25](https://github.com/intersystems-community/python-bugreports/issues/25) |
+
 ## Try it in a minute
 
 Run three scenarios on the hosted demo through the REST API, as the `demo` account (Windows PowerShell 5.1 or later):
