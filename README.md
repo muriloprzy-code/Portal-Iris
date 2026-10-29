@@ -12,6 +12,38 @@ MyOwn Portal is an administration portal for InterSystems IRIS and IRIS for Heal
 - Video: **[TODO: URL]**
 - Article on the Developer Community: **[TODO: URL]**
 
+## Try it in a minute
+
+Run three scenarios on the hosted demo through the REST API, as the `demo` account (Windows PowerShell 5.1 or later):
+
+```powershell
+.\scripts\Try-Demo.ps1 -BaseUrl http://163.176.71.47:52774
+```
+
+The same calls with `curl.exe` (from PowerShell; in `cmd` write the body as `"{\"scenario\":\"S1\"}"`):
+
+```powershell
+curl.exe -s -u demo:demo -H "Content-Type: application/json" -d '{\"scenario\":\"S1\"}' http://163.176.71.47:52774/myown/api/agent/simulate
+curl.exe -s -u demo:demo http://163.176.71.47:52774/myown/api/agent/decisions
+curl.exe -s -u demo:demo http://163.176.71.47:52774/myown/api/agent/traces/<traceId from the first call>
+```
+
+Output of a real run on 2026-10-29 (proposal numbers depend on what the demo already holds):
+
+```
+Server http://163.176.71.47:52774, AI mode replay, engine preference auto, model gemini-3.5-flash-lite.
+
+Scenario Action               Engine Tokens ToolCalls Proposal
+-------- ------               ------ ------ --------- --------
+S1       escalate             aihub     587         0 -
+S2       propose_task_suspend aihub    1325         0 #2 task.suspend (pending)
+S5       approve              aihub     571         0 #3 role.assign (pending)
+
+Proposals stay pending until a human confirms or rejects them in Agents > Approvals.
+```
+
+The demo allows 6 scenarios per minute per address; beyond that the script reports HTTP 429.
+
 ## Why this design
 
 - **The agent only decides.** It has read-only tools and no write path. A state change exists only as a proposal that expires.
@@ -104,7 +136,9 @@ Tests: `scripts/Test-ApiDocs.ps1`. It checks that the document is valid and cove
 
 ## Demonstration scenarios
 
-Run them from the **Agents** page or with `POST /myown/api/agent/simulate` (administrator role and demo mode required).
+Run them from the **Agents** page or with `POST /myown/api/agent/simulate` (an administrator with Demo mode on in Agents › Settings, or the `demo` account where `MYOWN_DEMO_MODE=1`; see [Try it in a minute](#try-it-in-a-minute)).
+
+A live model's decision can vary from one run to the next. Replay reproduces one real decision recorded earlier, and each recording names its model and date (last column).
 
 | # | Scenario | Rules engine | Recorded AI decision (replay) | Recorded with |
 |---|---|---|---|---|

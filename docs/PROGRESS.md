@@ -379,6 +379,10 @@ Bug: on Agents › Overview, "Open trace" under the scenario result loaded the t
 
 The online demo is up at http://163.176.71.47:52774/myown/index.html (user `demo`, public password `demo`): a live IRIS 2026.3.0AI.154.0 AI Hub instance on ARM64 with `MYOWN_DEMO_MODE=1` and `MYOWN_AI_MODE=replay`. Only the model's answer is replayed from a recorded real decision; the production, Gate, Validator and ledger run for real. The organizers' rule disqualifies only a static demo built on recorded REST API responses; this one runs a live IRIS. Served over plain HTTP; administration pages answer 403 in demo mode. README "Links" and "Demo mode" updated.
 
+## Try the demo from the API (T30, 2026-10-29)
+
+Read in `REST.cls` (`OnPreDispatch`, `DemoRefusal`, `SimulateAgentScenario`, `AgentProposals`): in demo mode the `demo` account may call `POST /agent/simulate`, `GET /agent/decisions`, `GET /agent/proposals` and `GET /agent/traces/:id` (every GET except `/agent/config` and `/agent/pricing`). The body is `{"scenario": "S1"}`; `taskId` is ignored in demo mode, where S2/S3 use the synthetic tasks 9001/9002. The simulate response has no tokens; they come from the `ledger` entries of the trace (`totalTokens`, `toolCallCount`). New `scripts/Try-Demo.ps1` runs S1, S2 and S5 and prints scenario, action, engine, tokens, tool calls and proposal; clear messages for 401, 403, 429 and timeouts. Checked on the hosted demo (replay: S1 `escalate`, S2 `propose_task_suspend` with a proposal, S5 `approve` with a proposal, all `aihub`, 0 tool calls) and the 401 message on the local clean container, where demo mode is off. 403 and 429 were not triggered. README: "Try it in a minute" with the script, three `curl.exe` calls and the real output.
+
 ## Next verified milestone
 
 T02 (AI Hub API spike) and T13 (API review and tool hardening) are done, on IRIS for Health build 154; the IRIS edition of build 154 is not needed. Next:
