@@ -293,6 +293,8 @@ The UI suite needs Node.js on `PATH` or in `.tools\node` (tested with Node 24) a
 
 Reports go to `test-results/all/` (one log and JSON report per suite, plus `test-all.json`). The last row checks that the run left no error in the interoperability Event Log. `-SkipEndToEnd` skips the adapter end-to-end check (a real task failing three times, about 3 to 5 minutes); `-DemoCredential` adds the REST part of the demo suite when demo mode is on.
 
+GitHub Actions (`.github/workflows/checks.yml`) runs on every push and pull request without secrets: the secret scan, a check that no `.env`, key or archive is tracked, `module.xml` and the compose files, and the front-end build. It does not compile the ObjectScript classes or run `Test-All.ps1`, because those need the AI Hub build 154 image, which must not be pushed to a registry; run them locally.
+
 | Suite | Script | IRIS 2026.2 (local) | Build 154 (IRIS for Health) |
 |---|---|---|---|
 | Portal smoke | `scripts/Test-MyOwn.ps1` | pass | pass |

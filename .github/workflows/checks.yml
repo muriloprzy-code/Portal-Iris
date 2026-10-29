@@ -1,0 +1,78 @@
+# Repository checks that need no secrets and no InterSystems image.
+#
+# What is NOT checked here: compiling the ObjectScript classes and running scripts/Test-All.ps1.
+# Both need a running IRIS from the AI Hub build 2026.3.0AI.154.0 image, which is distributed
+# through the AI Hub Early Access portal and must not be pushed to any registry (public or
+# private), so a hosted runner cannot pull it. Those tests run locally (see README, "Tests").
+#
+# Jobs:
+#   secret-scan   scripts/Test-AgentSecretScan.ps1 in Windows PowerShell 5.1 on windows-latest
+#                 (the script builds Windows paths, so it runs where it was written and tested).
+#   repository    no .env, key or archive is tracked; module.xml is well-formed XML; the compose
+#                 files parse and resolve (docker compose config, nothing is pulled or built).
+#   frontend      type check and Vite build with pinned Node and pnpm; the output is discarded.
+
+name: checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The scan also reads the last 20 commits.
+          fetch-depth: 21
+      - name: Secret scan
+        shell: powershell
+        run: |
+          .\scripts\Test-AgentSecretScan.ps1 -OutputPath test-results/agents-secrets.json
+          $report = Get-Content test-results/agents-secrets.json -Raw | ConvertFrom-Json
+          if ($report.scannedFiles -lt 1) { throw 'The secret scan read no files.' }
+
+  repository:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No .env, key or archive is tracked
+        run: |
+          found=$(git ls-files | grep -E '(^|/)\.env($|\.)|\.(tar\.gz|tgz|key|pem|p12|pfx|docker)$|(^|/)id_(rsa|ecdsa|ed25519)' | grep -vE '(^|/)\.env\.example$' || true)
+          if [ -n "$found" ]; then
+            echo "These files must not be versioned:"
+            echo "$found"
+            exit 1
+          fi
+          echo "No .env, key or archive file is tracked."
+      - name: module.xml is well-formed
+        run: python3 -c "import xml.etree.ElementTree as E; E.parse('module.xml'); print('module.xml: well-formed XML')"
+      - name: Compose files are valid
+        run: |
+          docker compose -f compose.yaml config -q
+          docker compose -f compose.yaml -f compose.aihub.yaml config -q
+          echo "compose.yaml and compose.aihub.yaml: valid"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install (lockfile only)
+        run: pnpm install --frozen-lockfile
+      - name: Type check and build (tsc, vite build)
+        run: pnpm run build
