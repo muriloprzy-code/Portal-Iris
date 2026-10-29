@@ -320,7 +320,7 @@ This installs the published version from the community registry (1.0.3 today; 1.
 
 Tested on build 154 (IRIS for Health) in a new namespace without interoperability: install from the code 105 s (most of it enabling interoperability), then package, uninstall with the production running and reinstall from the package twice (2 s and 8 s); the production was running after each install and the Event Log had no error.
 
-Other installation paths (a local IRIS instance, `Instalar.bat`) are described in [docs/REFERENCE.md](docs/REFERENCE.md).
+Installing into a local IRIS instance is described in [docs/REFERENCE.md](docs/REFERENCE.md).
 
 ## Demo mode
 

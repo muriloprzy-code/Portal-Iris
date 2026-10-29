@@ -72,7 +72,7 @@ Open an elevated PowerShell window in the project folder and run:
 .\scripts\Install-All.ps1
 ```
 
-(This is the same script `Instalar.bat` runs for the local-IRIS path — running it directly is only useful to pass explicit parameters, e.g. `-IrisInstallDir`, `-Instance`, or `-Namespace`.)
+(Pass explicit parameters when needed, e.g. `-IrisInstallDir`, `-Instance`, or `-Namespace`.)
 
 This one script does everything:
 
@@ -397,7 +397,7 @@ MyOwn Portal calls the official `/api/admin/v2/...` endpoints from its ObjectScr
 - **Pages fail for users that are not administrators of IRIS:** rerun `MyOwn.Installer.Setup()` so that the `MatchRoles` mapping on `/myown/api` is created, then sign in again.
 - **The Security page shows a warning about an inventory:** that category could not be read and its items are missing from the list; the message names the cause (for example, a missing `%Admin_Wallet` privilege).
 - **Frontend shows old files:** rebuild, redeploy, and clear the browser cache.
-- **`Install-All.ps1` (or `Instalar.bat`) stops because the namespace does not exist:** the namespace typed at the prompt (or passed with `-Namespace`, default `MYOWN`) does not exist yet on that IRIS instance — create it once in the Management Portal (see [Path B, Step 1](#step-1--create-the-namespace-one-time-about-30-seconds)) and run the installer again.
-- **ObjectScript changes made later in VS Code are missing:** VS Code is optional (used for ongoing development, not for the initial install) — confirm it is connected to `MYOWN` and compile-on-save succeeded, or rerun `Instalar.bat` / `Install-All.ps1`, which reloads and recompiles every class under `src/objectscript` from disk.
+- **`Install-All.ps1` stops because the namespace does not exist:** the namespace typed at the prompt (or passed with `-Namespace`, default `MYOWN`) does not exist yet on that IRIS instance — create it once in the Management Portal (see [Path B, Step 1](#step-1--create-the-namespace-one-time-about-30-seconds)) and run the installer again.
+- **ObjectScript changes made later in VS Code are missing:** VS Code is optional (used for ongoing development, not for the initial install) — confirm it is connected to `MYOWN` and compile-on-save succeeded, or rerun `Install-All.ps1`, which reloads and recompiles every class under `src/objectscript` from disk.
 - **`npm`/`node` is not recognized:** Node.js is not on `PATH`. Either install Node.js 20+ normally, or use the admin-rights-free helper scripts described in [What needs to be installed on the computer](#what-needs-to-be-installed-on-the-computer).
-- **`Instalar.bat` opens and closes immediately, nothing happens:** this is almost always the administrator-permission prompt (UAC) being declined, blocked, or opening behind another window — most common when the project was downloaded as a ZIP from GitHub (rather than `git clone`), since Windows marks those files as coming from the internet and SmartScreen can silently interfere with the elevation request. Right-click `Instalar.bat` → Properties → check "Unblock" (if present) → OK, then try again; or just right-click `Instalar.bat` → "Run as administrator" directly, which skips the automatic elevation step entirely.
+- **`Install-All.ps1` stops with a message about administrator rights:** it restarts the IRIS private web server, so run it from an elevated PowerShell window (right-click PowerShell → "Run as administrator"). If the project was downloaded as a ZIP from GitHub, Windows may block the scripts: right-click the ZIP → Properties → check "Unblock" before extracting, or run `Unblock-File` on the scripts.

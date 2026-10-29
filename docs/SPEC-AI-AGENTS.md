@@ -76,7 +76,7 @@ Um projeto vencedor anterior (OcuPilot) cobre **amplitude de telas** e um **chat
 | Auditoria | `Audit.Record` → `$System.Security.Audit("MyOwn","Administration","Change", ...)` | `Service/Audit.cls` |
 | RBAC | Recursos `MyOwn.View`, `MyOwn.Manage`; papéis `MyOwnViewer`, `MyOwnAdministrator`; proteções (`%All` intocável, apps/tasks "não gerenciáveis") | `Installer.cls`, `REST.cls` |
 | Frontend | React + TypeScript + Vite; páginas: Overview, Permissions, Applications & APIs, Security, Tasks, Logs; `api/client.ts` | `frontend/src/` |
-| Empacotamento | `module.xml` (IPM `myown-portal` 1.0.3), `Dockerfile` (base `iris-community:2026.2`), `compose.yaml` (web 52774), `Instalar.bat`, `scripts/*.ps1` | raiz |
+| Empacotamento | `module.xml` (IPM `myown-portal` 1.0.3), `Dockerfile` (base `iris-community:2026.2`), `compose.yaml` (web 52774), `scripts/*.ps1` | raiz |
 | Testes | `Test-MyOwn.ps1` (smoke), `Test-SysAdminMutations.ps1`, `Test-DockerConfig.ps1`, `Test-IPMPackage.ps1` | `scripts/` |
 | Docs | `README.md`, `docs/REFERENCE.md`, artigo na Dev Community (EN/PT) | — |
 
@@ -602,7 +602,7 @@ Gráficos: SVG leve ou biblioteca pequena já compatível com o build; sem depen
 - `scripts/Build-IPMPackage.ps1` e `Test-IPMPackage.ps1` atualizados para os dois módulos.
 
 ### 13.4 Instaladores Windows
-- `Instalar.bat`/`Install-All.ps1`: após o backend, instalar o módulo `aihub` **apenas se** `%AI.Agent` existir; imprimir qual engine ficou ativa.
+- `Install-All.ps1`: após o backend, instalar o módulo `aihub` **apenas se** `%AI.Agent` existir; imprimir qual engine ficou ativa.
 - Informar claramente quando Interoperability precisou ser habilitada (e que exige privilégio adequado).
 
 ---
@@ -785,7 +785,7 @@ Registrar em `docs/ARTICLE-NOTES.md` como o MCP ajudou (compilar, testes, inspe�
 | T18 | M | M | Frontend: Observability + Trace | números = ledger; timeline completa |
 | T19 | M | M | `Test-Agents.ps1` + relatórios JSON + `Test-Agents-AIHub.ps1` | relatórios gerados (§15.6) |
 | T20 | M | M | Playwright smoke + screenshots para README | screenshots em `docs/images/` |
-| T21 | M | M | Docker AI Hub (`compose.aihub.yaml`), módulos IPM, `Instalar.bat` | IT-01 nas duas imagens; `Test-IPMPackage.ps1` ok |
+| T21 | M | M | Docker AI Hub (`compose.aihub.yaml`), módulos IPM, `Install-All.ps1` | IT-01 nas duas imagens; `Test-IPMPackage.ps1` ok |
 | T22 | M | M | README (EN), REFERENCE, "For judges", vídeo, notas do artigo | revisão contra §16 |
 
 ### Fase D — Diferenciais (se sobrar tempo, nesta ordem)
@@ -865,7 +865,7 @@ Registrar o resultado de cada item em `docs/AI-HUB-NOTES.md`.
 1. T01–T22 concluídas com aceite demonstrado em `docs/PROGRESS.md`.
 2. `test-results/*.json` mostram **0 falhas**; os testes `core` passam também na imagem Community padrão; AH-* passam na imagem AI Hub.
 3. SEC-01..SEC-10 passam; varredura de segredos limpa.
-4. Instalação limpa (Docker padrão, Docker AI Hub, IPM, `Instalar.bat`) funciona seguindo **somente** o README.
+4. Instalação limpa (Docker padrão, Docker AI Hub, IPM, `Install-All.ps1`) funciona seguindo **somente** o README.
 5. Os 10 cenários do §14 rodam e geram trace completo; vídeo gravado a partir deles.
 6. Nenhum segredo/imagem/chave commitado; `.gitignore` atualizado; licença MIT mantida.
 7. README (EN) cumpre §16.1; link do vídeo; perfis da equipe; artigo publicado ou em rascunho final.

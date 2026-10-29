@@ -4,8 +4,7 @@ One-click installer for MyOwn Portal. Detects whether to use Docker or an
 existing local IRIS installation and automates everything it safely can.
 
 .DESCRIPTION
-This script is meant to be started by double-clicking Instalar.bat at the
-project root, not run by hand. It:
+Run it from an elevated PowerShell window at the project root. It:
 
   1. Detects Docker Desktop and/or a local IRIS installation.
   2. If both are available, asks once which to use. If only one is
@@ -200,7 +199,7 @@ $configEnd = '# END MYOWN PORTAL'
 # Check for administrator rights - needed to restart the private web server.
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Fail 'This step needs administrator rights (to restart the IRIS private web server). Right-click Instalar.bat and choose "Run as administrator", or approve the permission prompt if one appeared.'
+    Fail 'This step needs administrator rights (to restart the IRIS private web server). Run it again from a PowerShell window opened with "Run as administrator".'
 }
 
 Write-Step 'Choosing the IRIS namespace'

@@ -32,7 +32,7 @@
   - `iris-community:2026.3.0AI.154.0`
   - `irishealth-community:2026.3.0AI.154.0`
 - `Dockerfile`: `ARG IMAGE=irishealth-community:2026.3.0AI.154.0` (e documentar a variante IRIS). `compose.yaml` lê `IRIS_IMAGE` do `.env`. **Nada de `docker push`.**
-- Comandos de carga/re-etiquetagem (para o README e para `Instalar.bat`/script de apoio):
+- Comandos de carga/re-etiquetagem (para o README e para o script de apoio):
 
 ```text
 docker image load -i irishealth-community-2026.3.0AI.154.0-docker.tar.gz
