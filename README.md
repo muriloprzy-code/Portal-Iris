@@ -416,11 +416,7 @@ The agent workflow sits on MyOwn Portal, built for the earlier *Build Your Own M
 
 ## Built with AI assistance
 
-> **[TODO Murilo: escrever com suas palavras]**
->
-> 1. Which decisions did I make (design, safety model, scope)?
-> 2. What did the AI assistants implement?
-> 3. What did I change or reject from what they produced?
+I'm an ObjectScript developer, and I used AI assistants as a pair-programming partner on this project. The idea, the safety design and every decision about what ships are mine; the assistant sped up the typing and the testing. I reviewed and verified the work.
 
 ## Team
 
