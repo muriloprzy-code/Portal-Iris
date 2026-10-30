@@ -238,6 +238,27 @@ These events follow the same path as the scenarios: Triage, AgentGateway, Valida
 
 Verified end to end with `TaskWatcher`: a task that always fails ran three times, the watcher raised the event by itself, the agent (Gemini, through the AI Hub) proposed to suspend it, and the proposal waited for a person. `scripts/Try-RealTaskIncident.ps1` repeats this check. It needs the `MyOwn.Test` package, which the Docker build loads (the IPM install does not).
 
+## Safety in one screen
+
+| Guard | What it does |
+|---|---|
+| The agent only decides | It has two read-only tools (`GetTaskRuns`, `GetMetricHistory`). `MyOwn.AIHub.Policy.ReadOnlyAuth` denies any other tool call. |
+| Proposal, then a person | A change exists only as a proposal that expires (30 minutes by default, "Proposal lifetime" in Agents > Settings). It runs only after a person confirms it with their own credentials, and the confirmation revalidates state, expiry, separation of duties (a requester cannot confirm their own request), prohibited targets and the target fingerprint. |
+| Validator and Gate | The Validator accepts one JSON object of schema v1, with allowed fields and actions and a target from the server's candidate list. The Gate applies the kill switch, prohibited targets (`%All`, `_SYSTEM`, the portal's own roles, web applications and production), the downgrade of high-risk approvals to escalation, read-only mode, one open proposal per target and action, and the cooldown. Over the token budget, the Rules engine decides. |
+| Untrusted data stays data | Log lines, task errors and justifications are sanitized and reach the model only inside `<untrusted_data>` delimiters, with `<` and `>` escaped. |
+| Audit | Eleven IRIS audit events `MyOwn/Agent/*` (decision, proposal created, confirmed, rejected or expired, execution result, config change, kill switch, tool denied, demo refused, demo reset). `MyOwn.AIHub.Policy.LedgerAudit`, a `%AI.Policy.Audit`, records every tool call and denial in the ledger. |
+| See it work | S7 (the Gate blocks `%All`), S8 and S9 (prompt injection treated as data), and the Guardrails tab. `scripts/Test-AgentAdversarial.ps1` runs the corpus of 92 hostile model outputs. |
+
+Code: [Gate](src/objectscript/MyOwn/Agent/Policy/Gate.cls), [prohibited targets](src/objectscript/MyOwn/Agent/Policy/Prohibited.cls) and [Validator](src/objectscript/MyOwn/Agent/Decision/Validator.cls).
+
+## Community contributions
+
+- [ai-hub-eap-bugreports #5](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/5): `%AI.Provider` silently retries HTTP 429 and 503 (four requests per `Chat`), with no setting and no signal to the caller.
+- [ai-hub-eap-bugreports #6](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/6): the session `timeout_ms` does not stop a slow provider request.
+- [python-bugreports #25](https://github.com/intersystems-community/python-bugreports/issues/25): a finite Python float outside about 1e-128 to 9.2e145 cannot be returned to ObjectScript, even as `%Double`.
+- Ideas Portal [DPI-I-767](https://ideas.intersystems.com/ideas/DPI-I-767), implemented in `MyOwn.REST.Docs`: an OpenAPI 3 document and an interactive `/docs` page for `%CSP.REST` classes; the portal API lists 56 operations (see [API docs](#api-docs)).
+- [IRIS Agentic Dev](https://github.com/intersystems-community/iris-agentic-dev) 1.5.0 (MCP server `iris-agentic-dev`) was used to compile classes, run SQL and read the `%AI` signatures on the build 154 container.
+
 ## Run it locally
 
 ### Memory
