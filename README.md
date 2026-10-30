@@ -66,7 +66,8 @@ The demo allows 6 scenarios per minute per address; beyond that the script repor
 
 - **The agent only decides.** It has read-only tools and no write path. A state change exists only as a proposal that expires.
 - **Validator.** The model output must be a single JSON object matching schema v1: strict types, an allow-list of fields and actions, bounded text, and targets taken from the candidate list the server supplied.
-- **Gate.** Kill switch, read-only mode, prohibited targets (for example the `%All` role), downgrade of high-risk decisions to escalation, one open proposal per target and action, budget and cooldown.
+- **Gate.** Kill switch, read-only mode, prohibited targets (for example the `%All` role), downgrade of high-risk decisions to escalation, one open proposal per target and action, and cooldown.
+- **Budget.** `MyOwn.Agent.Policy.Budget`, called by the agent service before each AI call, checks the daily token budget and the calls per hour; over budget, the Rules engine decides.
 - **Human confirmation revalidates everything:** state, expiry, separation of duties (a requester cannot confirm their own request), prohibited targets, the target fingerprint (`TARGET_CHANGED`) and the confirming user's live permission. The change runs with that user's credentials and is read back.
 - **Untrusted data stays data.** Log lines, task errors and justifications reach the model only inside delimiters, sanitized and with the delimiter characters escaped.
 - **Always a working system.** Without AI Hub, without a key, with the kill switch on, over budget, or when the provider fails, the Rules engine decides. The reason is recorded and shown as a badge such as `Rules (provider_timeout)`.
@@ -247,7 +248,7 @@ Verified end to end with `TaskWatcher`: a task that always fails ran three times
 | Validator and Gate | The Validator accepts one JSON object of schema v1, with allowed fields and actions and a target from the server's candidate list. The Gate applies the kill switch, prohibited targets (`%All`, `_SYSTEM`, the portal's own roles, web applications and production), the downgrade of high-risk approvals to escalation, read-only mode, one open proposal per target and action, and the cooldown. Over the token budget, the Rules engine decides. |
 | Untrusted data stays data | Log lines, task errors and justifications are sanitized and reach the model only inside `<untrusted_data>` delimiters, with `<` and `>` escaped. |
 | Audit | Eleven IRIS audit events `MyOwn/Agent/*` (decision, proposal created, confirmed, rejected or expired, execution result, config change, kill switch, tool denied, demo refused, demo reset). `MyOwn.AIHub.Policy.LedgerAudit`, a `%AI.Policy.Audit`, records every tool call and denial in the ledger. |
-| See it work | S7 (the Gate blocks `%All`), S8 and S9 (prompt injection treated as data), and the Guardrails tab. `scripts/Test-AgentAdversarial.ps1` runs the corpus of 92 hostile model outputs. |
+| See it work | S7: the decision denies a request for `%All`, and the Gate still marks the target as prohibited, escalates it and creates no proposal; an approval of `%All` is turned into an escalation the same way (cases ADV-R07 and ADV-R08 of the corpus below). S8 and S9 (prompt injection treated as data), and the Guardrails tab. `scripts/Test-AgentAdversarial.ps1` runs the corpus of 92 hostile model outputs. |
 
 Code: [Gate](src/objectscript/MyOwn/Agent/Policy/Gate.cls), [prohibited targets](src/objectscript/MyOwn/Agent/Policy/Prohibited.cls) and [Validator](src/objectscript/MyOwn/Agent/Decision/Validator.cls).
 

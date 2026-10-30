@@ -17,7 +17,7 @@ Release for the InterSystems Programming Contest "AI Agents in Interoperability 
 ### Guardrails: the agent never writes
 
 - **Validator.** The model output must be one JSON object that matches schema v1: strict types, allow-listed fields and actions, bounded text, targets taken only from the candidates the server supplied. 92 hostile model outputs are in the adversarial test corpus.
-- **Gate.** Kill switch, read-only mode, prohibited targets (for example the `%All` role), high-risk decisions downgraded to escalation, one open proposal per target and action, budget and cooldown.
+- **Gate.** Kill switch, read-only mode, prohibited targets (for example the `%All` role), high-risk decisions downgraded to escalation, one open proposal per target and action, and cooldown. The token budget is enforced separately (`MyOwn.Agent.Policy.Budget`, called by the agent service); over budget, Rules decide.
 - **Human confirmation.** A state change exists only as a proposal that expires. Confirming it revalidates everything: state, expiry, separation of duties (a requester cannot confirm their own request), prohibited targets, the target fingerprint (`TARGET_CHANGED`) and the confirming user's live permission. The change is then executed with that user's credentials, read back and audited (`MyOwn/Agent/*`).
 - Untrusted text (log lines, task errors, justifications) reaches the model only inside delimiters, sanitized.
 
