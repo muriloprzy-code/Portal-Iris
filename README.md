@@ -222,6 +222,22 @@ A live model's decision can vary from one run to the next. Replay reproduces one
 
 The Gate and the confirmation step apply to both engines.
 
+## Real events, no simulation
+
+The scenarios S1–S10 are only a shortcut to trigger an event on demand. The production does not need them: three services watch the instance and send real events through the same pipeline.
+
+| Service | Reads | Every | Creates an event when |
+|---|---|---|---|
+| `TaskWatcher` | the task history and the tasks of the `MYOWN` namespace | 120 s | a task has 3 or more consecutive failures, or is suspended and its last run succeeded |
+| `LogWatcher` | the IRIS `messages.log` | 120 s | a recent entry has severity Error or Fatal |
+| `HealthMonitor` | the live health report and the snapshot history | 60 s | a metric has a z-score above 2 (needs at least 5 snapshots) |
+
+Access requests made on the **Access** tab are also real events: they enter through `AccessRequestService`.
+
+These events follow the same path as the scenarios: Triage, AgentGateway, Validator, Gate, proposal and human confirmation. None of the watchers depends on Demo mode: the Demo mode setting in Agents > Settings only enables the scenario button, and the public demo mode (`MYOWN_DEMO_MODE=1`) also refuses confirmations on real targets.
+
+Verified end to end with `TaskWatcher`: a task that always fails ran three times, the watcher raised the event by itself, the agent (Gemini, through the AI Hub) proposed to suspend it, and the proposal waited for a person. `scripts/Try-RealTaskIncident.ps1` repeats this check. It needs the `MyOwn.Test` package, which the Docker build loads (the IPM install does not).
+
 ## Run it locally
 
 ### Memory
